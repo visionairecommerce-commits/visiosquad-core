@@ -1,10 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
 import { processPayment, calculateTotalWithFee } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
 import { z } from "zod";
-import { addMonths, format } from "date-fns";
+import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
 
 // Demo club ID for tenant isolation
 const DEMO_CLUB_ID = 'demo-club-1';
@@ -61,17 +62,49 @@ const createAthleteSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
+const createFacilitySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+
 const createSessionSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   session_type: z.enum(['practice', 'clinic', 'drop_in']),
   program_id: z.string().min(1),
   team_id: z.string().optional(),
+  facility_id: z.string().optional(),
   start_time: z.string().min(1),
   end_time: z.string().min(1),
   location: z.string().optional(),
   capacity: z.number().optional(),
   price: z.number().optional(),
+  forceCreate: z.boolean().optional(),
+});
+
+const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
+const timeBlockSchema = z.object({
+  days: z.array(dayOfWeekSchema).min(1),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+});
+
+const createRecurringSessionSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  session_type: z.enum(['practice', 'clinic', 'drop_in']),
+  program_id: z.string().min(1),
+  team_id: z.string().optional(),
+  facility_id: z.string().optional(),
+  location: z.string().optional(),
+  capacity: z.number().optional(),
+  price: z.number().optional(),
+  recurrence: z.object({
+    timeBlocks: z.array(timeBlockSchema).min(1),
+    repeatUntil: z.string().min(1),
+  }),
+  forceCreate: z.boolean().optional(),
 });
 
 const cancelSessionSchema = z.object({
@@ -573,6 +606,45 @@ export async function registerRoutes(
     }
   });
 
+  // ============ FACILITIES ============
+  app.get('/api/facilities', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const facilities = await storage.getFacilities(clubId);
+      res.json(facilities);
+    } catch (error) {
+      console.error('Error fetching facilities:', error);
+      res.status(500).json({ error: 'Failed to fetch facilities' });
+    }
+  });
+
+  app.post('/api/facilities', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createFacilitySchema.parse(req.body);
+      const facility = await storage.createFacility(clubId, data);
+      res.status(201).json(facility);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating facility:', error);
+        res.status(500).json({ error: 'Failed to create facility' });
+      }
+    }
+  });
+
+  app.delete('/api/facilities/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteFacility(clubId, req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting facility:', error);
+      res.status(500).json({ error: 'Failed to delete facility' });
+    }
+  });
+
   // ============ SESSIONS ============
   app.get('/api/sessions', async (req, res) => {
     try {
@@ -604,22 +676,48 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = createSessionSchema.parse(req.body);
 
-      // Check for scheduling conflicts (15-minute buffer logic)
+      // Check for scheduling conflicts (15-minute buffer logic) - facility-specific
       const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
         clubId,
         data.start_time,
-        data.end_time
+        data.end_time,
+        data.facility_id
       );
 
+      // Hard block for >15 minute overlaps
       if (conflict && overlapMinutes > 15) {
         return res.status(409).json({
           error: 'Schedule conflict',
-          message: `Overlaps with "${conflictingSession?.title}" by ${Math.round(overlapMinutes)} minutes`,
+          conflictType: 'hard',
+          message: `Conflict: The facility is booked by "${conflictingSession?.title}". Please adjust the time.`,
           conflictingSession,
         });
       }
 
-      const session = await storage.createSession(clubId, data);
+      // Soft warning for ≤15 minute overlaps - require forceCreate to proceed
+      if (conflict && overlapMinutes <= 15 && !data.forceCreate) {
+        return res.status(200).json({
+          requiresConfirmation: true,
+          conflictType: 'soft',
+          message: `Note: This overlaps with "${conflictingSession?.title}" by ${Math.round(overlapMinutes)} minutes. Proceed?`,
+          overlapMinutes: Math.round(overlapMinutes),
+          conflictingSession,
+        });
+      }
+
+      const session = await storage.createSession(clubId, {
+        title: data.title,
+        description: data.description,
+        session_type: data.session_type,
+        program_id: data.program_id,
+        team_id: data.team_id,
+        facility_id: data.facility_id,
+        start_time: data.start_time,
+        end_time: data.end_time,
+        location: data.location,
+        capacity: data.capacity,
+        price: data.price,
+      });
 
       // If team is selected, auto-register all team members
       if (data.team_id) {
@@ -686,6 +784,159 @@ export async function registerRoutes(
         console.error('Error cancelling session:', error);
         res.status(500).json({ error: 'Failed to cancel session' });
       }
+    }
+  });
+
+  // Create recurring sessions
+  app.post('/api/sessions/recurring', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createRecurringSessionSchema.parse(req.body);
+      
+      const dayMapping: Record<string, number> = {
+        sunday: 0,
+        monday: 1,
+        tuesday: 2,
+        wednesday: 3,
+        thursday: 4,
+        friday: 5,
+        saturday: 6,
+      };
+
+      const recurrenceGroupId = randomUUID();
+      const repeatUntil = parseISO(data.recurrence.repeatUntil);
+      const createdSessions: any[] = [];
+      const conflicts: any[] = [];
+      
+      // Generate all session instances
+      for (const timeBlock of data.recurrence.timeBlocks) {
+        for (const day of timeBlock.days) {
+          const targetDayNumber = dayMapping[day];
+          let currentDate = startOfDay(new Date());
+          
+          // Find first occurrence of this day
+          while (getDay(currentDate) !== targetDayNumber) {
+            currentDate = addDays(currentDate, 1);
+          }
+          
+          // Generate sessions for each occurrence until repeatUntil
+          while (isBefore(currentDate, repeatUntil)) {
+            const [startHour, startMin] = timeBlock.startTime.split(':').map(Number);
+            const [endHour, endMin] = timeBlock.endTime.split(':').map(Number);
+            
+            const startTime = setMinutes(setHours(currentDate, startHour), startMin);
+            const endTime = setMinutes(setHours(currentDate, endHour), endMin);
+            
+            // Check for conflicts
+            const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
+              clubId,
+              startTime.toISOString(),
+              endTime.toISOString(),
+              data.facility_id
+            );
+            
+            if (conflict && overlapMinutes > 15 && !data.forceCreate) {
+              conflicts.push({
+                date: format(currentDate, 'yyyy-MM-dd'),
+                day,
+                startTime: timeBlock.startTime,
+                endTime: timeBlock.endTime,
+                overlapMinutes: Math.round(overlapMinutes),
+                conflictingSession: conflictingSession?.title,
+                conflictType: 'hard',
+              });
+            } else {
+              // Create the session
+              const session = await storage.createSession(clubId, {
+                title: data.title,
+                description: data.description,
+                session_type: data.session_type,
+                program_id: data.program_id,
+                team_id: data.team_id,
+                facility_id: data.facility_id,
+                start_time: startTime.toISOString(),
+                end_time: endTime.toISOString(),
+                location: data.location,
+                capacity: data.capacity,
+                price: data.price,
+                recurrence_group_id: recurrenceGroupId,
+              });
+              
+              // If team is selected, auto-register all team members
+              if (data.team_id) {
+                const roster = await storage.getTeamRoster(clubId, data.team_id);
+                const athleteIds = roster.map(r => r.athlete_id);
+                if (athleteIds.length > 0) {
+                  await storage.bulkCreateRegistrations(clubId, session.id, athleteIds);
+                }
+              }
+              
+              createdSessions.push(session);
+              
+              // Track soft conflicts
+              if (conflict && overlapMinutes <= 15) {
+                conflicts.push({
+                  date: format(currentDate, 'yyyy-MM-dd'),
+                  day,
+                  startTime: timeBlock.startTime,
+                  endTime: timeBlock.endTime,
+                  overlapMinutes: Math.round(overlapMinutes),
+                  conflictingSession: conflictingSession?.title,
+                  conflictType: 'soft',
+                  sessionCreated: true,
+                });
+              }
+            }
+            
+            currentDate = addDays(currentDate, 7); // Move to next week
+          }
+        }
+      }
+      
+      if (conflicts.length > 0 && createdSessions.length === 0 && !data.forceCreate) {
+        return res.status(409).json({
+          error: 'Schedule conflicts detected',
+          conflicts,
+          message: 'Some or all sessions could not be created due to scheduling conflicts.',
+        });
+      }
+      
+      res.status(201).json({
+        sessions: createdSessions,
+        conflicts: conflicts.filter(c => c.conflictType === 'hard'),
+        warnings: conflicts.filter(c => c.conflictType === 'soft'),
+        recurrenceGroupId,
+        totalCreated: createdSessions.length,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating recurring sessions:', error);
+        res.status(500).json({ error: 'Failed to create recurring sessions' });
+      }
+    }
+  });
+
+  // Get sessions for a specific athlete (access-controlled by program/team registration)
+  app.get('/api/athletes/:athleteId/sessions', async (req, res) => {
+    try {
+      const { clubId, role, userId } = getAuthContext(req);
+      const { athleteId } = req.params;
+      
+      // Parents can only view sessions for their own athletes
+      if (role === 'parent') {
+        const athlete = await storage.getAthlete(clubId, athleteId);
+        if (!athlete || athlete.parent_id !== userId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+      
+      const sessions = await storage.getSessionsForAthlete(clubId, athleteId);
+      res.json(sessions);
+    } catch (error) {
+      console.error('Error fetching athlete sessions:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete sessions' });
     }
   });
 

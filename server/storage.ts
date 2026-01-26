@@ -81,11 +81,20 @@ export interface AthleteTeamRoster {
   created_at: string;
 }
 
+export interface Facility {
+  id: string;
+  club_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   club_id: string;
   team_id?: string;
   program_id: string;
+  facility_id?: string;
   title: string;
   description?: string;
   session_type: 'practice' | 'clinic' | 'drop_in';
@@ -96,6 +105,7 @@ export interface Session {
   price?: number;
   status: 'scheduled' | 'cancelled' | 'completed';
   cancellation_reason?: string;
+  recurrence_group_id?: string;
   created_at: string;
 }
 
@@ -171,6 +181,12 @@ export interface IStorage {
   createTeam(clubId: string, team: Omit<Team, 'id' | 'club_id' | 'created_at'>): Promise<Team>;
   deleteTeam(clubId: string, teamId: string): Promise<void>;
 
+  // Facilities
+  getFacilities(clubId: string): Promise<Facility[]>;
+  getFacility(clubId: string, facilityId: string): Promise<Facility | undefined>;
+  createFacility(clubId: string, facility: Omit<Facility, 'id' | 'club_id' | 'created_at'>): Promise<Facility>;
+  deleteFacility(clubId: string, facilityId: string): Promise<void>;
+
   // Athletes
   getAthletes(clubId: string): Promise<Athlete[]>;
   getAthlete(clubId: string, athleteId: string): Promise<Athlete | undefined>;
@@ -186,9 +202,14 @@ export interface IStorage {
   // Sessions
   getSessions(clubId: string): Promise<Session[]>;
   getSession(clubId: string, sessionId: string): Promise<Session | undefined>;
+  getSessionsForAthlete(clubId: string, athleteId: string): Promise<Session[]>;
   createSession(clubId: string, session: Omit<Session, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Session>;
   cancelSession(clubId: string, sessionId: string, reason: string): Promise<void>;
-  checkSessionConflict(clubId: string, startTime: string, endTime: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }>;
+  checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }>;
+  
+  // Athlete access checking
+  getAthleteRosterEntries(clubId: string, athleteId: string): Promise<AthleteTeamRoster[]>;
+  isAthleteRegisteredForProgram(clubId: string, athleteId: string, programId: string): Promise<boolean>;
 
   // Registrations
   getSessionRegistrations(clubId: string, sessionId: string): Promise<(Registration & { athlete: Athlete })[]>;
@@ -209,6 +230,7 @@ export class MemStorage implements IStorage {
   private signatures: Map<string, ClubSignature> = new Map();
   private programs: Map<string, Program> = new Map();
   private teams: Map<string, Team> = new Map();
+  private facilities: Map<string, Facility> = new Map();
   private athletes: Map<string, Athlete> = new Map();
   private roster: Map<string, AthleteTeamRoster> = new Map();
   private sessions: Map<string, Session> = new Map();
@@ -488,6 +510,34 @@ export class MemStorage implements IStorage {
     }
   }
 
+  // Facilities
+  async getFacilities(clubId: string): Promise<Facility[]> {
+    return Array.from(this.facilities.values()).filter(f => f.club_id === clubId);
+  }
+
+  async getFacility(clubId: string, facilityId: string): Promise<Facility | undefined> {
+    const facility = this.facilities.get(facilityId);
+    return facility?.club_id === clubId ? facility : undefined;
+  }
+
+  async createFacility(clubId: string, facility: Omit<Facility, 'id' | 'club_id' | 'created_at'>): Promise<Facility> {
+    const newFacility: Facility = {
+      ...facility,
+      id: randomUUID(),
+      club_id: clubId,
+      created_at: new Date().toISOString(),
+    };
+    this.facilities.set(newFacility.id, newFacility);
+    return newFacility;
+  }
+
+  async deleteFacility(clubId: string, facilityId: string): Promise<void> {
+    const facility = this.facilities.get(facilityId);
+    if (facility?.club_id === clubId) {
+      this.facilities.delete(facilityId);
+    }
+  }
+
   // Athletes
   async getAthletes(clubId: string): Promise<Athlete[]> {
     return Array.from(this.athletes.values()).filter(a => a.club_id === clubId);
@@ -587,12 +637,16 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async checkSessionConflict(clubId: string, startTime: string, endTime: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
+  async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
     const newStart = new Date(startTime).getTime();
     const newEnd = new Date(endTime).getTime();
 
     for (const session of this.sessions.values()) {
       if (session.club_id !== clubId || session.status === 'cancelled' || session.id === excludeId) {
+        continue;
+      }
+
+      if (facilityId && session.facility_id !== facilityId) {
         continue;
       }
 
@@ -609,6 +663,33 @@ export class MemStorage implements IStorage {
     }
 
     return { conflict: false, overlapMinutes: 0 };
+  }
+
+  async getSessionsForAthlete(clubId: string, athleteId: string): Promise<Session[]> {
+    const rosterEntries = await this.getAthleteRosterEntries(clubId, athleteId);
+    const athleteTeamIds = new Set(rosterEntries.map(r => r.team_id));
+    const athleteProgramIds = new Set(rosterEntries.map(r => r.program_id));
+
+    return Array.from(this.sessions.values()).filter(session => {
+      if (session.club_id !== clubId || session.status === 'cancelled') return false;
+      
+      if (session.team_id) {
+        return athleteTeamIds.has(session.team_id);
+      } else {
+        return athleteProgramIds.has(session.program_id);
+      }
+    });
+  }
+
+  async getAthleteRosterEntries(clubId: string, athleteId: string): Promise<AthleteTeamRoster[]> {
+    return Array.from(this.roster.values()).filter(
+      r => r.club_id === clubId && r.athlete_id === athleteId
+    );
+  }
+
+  async isAthleteRegisteredForProgram(clubId: string, athleteId: string, programId: string): Promise<boolean> {
+    const rosterEntries = await this.getAthleteRosterEntries(clubId, athleteId);
+    return rosterEntries.some(r => r.program_id === programId);
   }
 
   // Registrations

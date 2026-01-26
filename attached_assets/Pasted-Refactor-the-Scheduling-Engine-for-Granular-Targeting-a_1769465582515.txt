@@ -1,0 +1,38 @@
+Refactor the Scheduling Engine for Granular Targeting and Recurrence:
+
+1. Target Selection Logic:
+
+Update the 'Create New Session' form to include two dependent dropdowns: Program and Team (Optional).
+
+Logic: If a Program is selected but NO Team is selected, the session applies to the entire Program. If a Team is selected, the session applies ONLY to that specific roster.
+
+Permissions: Both Club Directors and Coaches must be able to access this form for teams they are assigned to.
+
+2. Advanced Recurrence Engine:
+
+Add a 'Recurring Session' checkbox. When checked, show:
+
+Days of the Week: Multi-select (M, T, W, Th, F, Sa, Su).
+
+Time Blocks: Allow different start/end times for different days (e.g., Mon/Wed @ 5 PM, Tue/Thu @ 6 PM).
+
+Duration: A 'Repeat Until' date picker (e.g., set for 3 months out).
+
+Bulk Creation: On submit, the backend must generate individual session records in the sessions table for every instance in that date range.
+
+3. Registration & Access Gate:
+
+Modify the Parent/Athlete view so only athletes who have a signed contract/registration for the specific Program/Team ID can see and 'Join' the session.
+
+The Logic: If Session.team_id is present, check athlete_team_roster. If Session.team_id is null, check athlete_program_registration.
+
+4. Conflict Validation:
+
+Keep the existing 15-minute buffer logic. If any bulk-generated session overlaps with an existing session in the same facility/court by more than 15 minutes, flag those specific dates to the user before saving."
+
+Why this is the "Industry Standard" way:
+The "National Team" Problem: Your logic handles the "Program vs. Team" issue perfectly. It allows for "All-Program" meetings (like a parent orientation) and "Team-Specific" practices.
+
+The "Time-Sucker" Fix: Coaches hate manual entry. Being able to set different times for different days in one "Recurring" block is a high-end feature that usually only expensive platforms like LeagueApps or TeamSnap have.
+
+Financial Integrity: By tying registration to the Contract, you ensure that a kid who only paid for "Rec League" can't accidentally (or intentionally) jump into a "National Team" practice.

@@ -83,11 +83,20 @@ export interface AthleteTeamRoster {
   created_at: string;
 }
 
+export interface Facility {
+  id: string;
+  club_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   club_id: string;
   team_id?: string;
   program_id: string;
+  facility_id?: string;
   title: string;
   description?: string;
   session_type: 'practice' | 'clinic' | 'drop_in';
@@ -98,7 +107,18 @@ export interface Session {
   price?: number;
   status: 'scheduled' | 'cancelled' | 'completed';
   cancellation_reason?: string;
+  recurrence_group_id?: string;
   created_at: string;
+}
+
+export interface RecurrencePattern {
+  days: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday')[];
+  timeBlocks: {
+    days: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday')[];
+    startTime: string;
+    endTime: string;
+  }[];
+  repeatUntil: string;
 }
 
 export interface Registration {
@@ -164,17 +184,44 @@ export const insertAthleteSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
+export const insertFacilitySchema = z.object({
+  name: z.string().min(1, "Facility name is required"),
+  description: z.string().optional(),
+});
+
 export const insertSessionSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
   session_type: z.enum(['practice', 'clinic', 'drop_in']),
   team_id: z.string().optional(),
   program_id: z.string().min(1, "Program is required"),
+  facility_id: z.string().optional(),
   start_time: z.string().min(1, "Start time is required"),
   end_time: z.string().min(1, "End time is required"),
   location: z.string().optional(),
   capacity: z.number().optional(),
   price: z.number().optional(),
+});
+
+export const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
+
+export const timeBlockSchema = z.object({
+  days: z.array(dayOfWeekSchema).min(1, "At least one day required"),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM format"),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM format"),
+});
+
+export const recurrencePatternSchema = z.object({
+  timeBlocks: z.array(timeBlockSchema).min(1, "At least one time block required"),
+  repeatUntil: z.string().min(1, "End date is required"),
+});
+
+export const createRecurringSessionSchema = insertSessionSchema.omit({ 
+  start_time: true, 
+  end_time: true 
+}).extend({
+  recurrence: recurrencePatternSchema,
+  forceCreate: z.boolean().optional(),
 });
 
 export const cashPaymentSchema = z.object({
@@ -226,7 +273,11 @@ export const updateClubDocumentsSchema = z.object({
 export type InsertProgram = z.infer<typeof insertProgramSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type InsertAthlete = z.infer<typeof insertAthleteSchema>;
+export type InsertFacility = z.infer<typeof insertFacilitySchema>;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type DayOfWeek = z.infer<typeof dayOfWeekSchema>;
+export type TimeBlock = z.infer<typeof timeBlockSchema>;
+export type CreateRecurringSession = z.infer<typeof createRecurringSessionSchema>;
 export type CashPayment = z.infer<typeof cashPaymentSchema>;
 export type CancelSession = z.infer<typeof cancelSessionSchema>;
 export type CreateClub = z.infer<typeof createClubSchema>;

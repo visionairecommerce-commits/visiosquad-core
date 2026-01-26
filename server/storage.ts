@@ -145,6 +145,7 @@ export interface IStorage {
   getClubByJoinCode(joinCode: string): Promise<Club | undefined>;
   getClub(clubId: string): Promise<Club | undefined>;
   updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
+  completeOnboarding(clubId: string): Promise<Club>;
   
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -354,6 +355,13 @@ export class MemStorage implements IStorage {
     if (!club) throw new Error('Club not found');
     club.contract_pdf_url = contractPdfUrl;
     club.waiver_content = waiverContent;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+  
+  async completeOnboarding(clubId: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
     club.onboarding_complete = true;
     this.clubs.set(clubId, club);
     return club;

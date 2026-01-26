@@ -17,7 +17,8 @@ type UserRole = 'admin' | 'coach' | 'parent';
 function getAuthContext(req: Request): { clubId: string; role: UserRole; userId: string } {
   const role = (req.headers['x-user-role'] as UserRole) || 'admin';
   const userId = (req.headers['x-user-id'] as string) || 'demo-admin';
-  return { clubId: DEMO_CLUB_ID, role, userId };
+  const clubId = (req.headers['x-club-id'] as string) || DEMO_CLUB_ID;
+  return { clubId, role, userId };
 }
 
 // Role-based access control middleware
@@ -379,6 +380,22 @@ export async function registerRoutes(
         console.error('Error updating documents:', error);
         res.status(500).json({ error: 'Failed to update documents' });
       }
+    }
+  });
+
+  // Complete onboarding (Director only)
+  app.post('/api/clubs/:clubId/complete-onboarding', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const club = await storage.completeOnboarding(clubId);
+      res.json(club);
+    } catch (error) {
+      console.error('Error completing onboarding:', error);
+      res.status(500).json({ error: 'Failed to complete onboarding' });
     }
   });
 

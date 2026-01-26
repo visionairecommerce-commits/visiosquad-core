@@ -35,10 +35,19 @@ function RedirectToLogin() {
   return null;
 }
 
+function RedirectToDashboard() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation('/');
+  }, [setLocation]);
+  return null;
+}
+
 function AdminRoutes() {
   return (
     <Switch>
       <Route path="/" component={AdminDashboard} />
+      <Route path="/onboarding" component={RedirectToDashboard} />
       <Route path="/programs" component={ProgramsPage} />
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />

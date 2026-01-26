@@ -32,6 +32,7 @@ interface AuthContextType {
   registerUser: (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent') => Promise<{ success: boolean; error?: string; needsSignature?: boolean }>;
   signDocument: (documentType: 'contract' | 'waiver', signedName: string) => Promise<{ success: boolean; allSigned?: boolean }>;
   updateClubDocuments: (waiverContent: string, contractPdfUrl?: string) => Promise<{ success: boolean; error?: string }>;
+  completeOnboarding: () => Promise<{ success: boolean; error?: string }>;
   setUser: (user: User | null) => void;
   setClub: (club: Club | null) => void;
 }
@@ -188,6 +189,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const completeOnboarding = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      if (!club) return { success: false, error: 'No club found' };
+      
+      const response = await apiRequest('POST', `/api/clubs/${club.id}/complete-onboarding`, {});
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Failed to complete onboarding' };
+      }
+      
+      setClub(data);
+      if (user) {
+        saveSession(user, data);
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Connection failed' };
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -199,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registerUser, 
       signDocument, 
       updateClubDocuments,
+      completeOnboarding,
       setUser,
       setClub
     }}>

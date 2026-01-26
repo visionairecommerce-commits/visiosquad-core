@@ -8,14 +8,21 @@ async function throwIfResNotOk(res: Response) {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const stored = localStorage.getItem('visiosport_user');
+  const stored = localStorage.getItem('visiosport_session');
   if (stored) {
     try {
-      const user = JSON.parse(stored);
-      return {
-        'X-User-Role': user.role || 'admin',
-        'X-User-Id': user.id || 'demo-user',
-      };
+      const session = JSON.parse(stored);
+      const headers: Record<string, string> = {};
+      
+      if (session.user) {
+        headers['X-User-Role'] = session.user.role || 'admin';
+        headers['X-User-Id'] = session.user.id || 'demo-user';
+      }
+      if (session.club) {
+        headers['X-Club-Id'] = session.club.id;
+      }
+      
+      return headers;
     } catch {
       return {};
     }

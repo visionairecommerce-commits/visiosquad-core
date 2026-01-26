@@ -15,7 +15,7 @@ export default function OnboardingPage() {
   const [waiverContent, setWaiverContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { club, updateClubDocuments } = useAuth();
+  const { club, updateClubDocuments, completeOnboarding } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -53,8 +53,13 @@ export default function OnboardingPage() {
     window.open(smsUrl, '_blank');
   };
 
-  const goToDashboard = () => {
+  const goToDashboard = async () => {
+    // Navigate first to avoid race condition with state update
     setLocation('/');
+    const result = await completeOnboarding();
+    if (!result.success) {
+      toast({ title: result.error || 'Failed to complete setup', variant: 'destructive' });
+    }
   };
 
   if (!club) {

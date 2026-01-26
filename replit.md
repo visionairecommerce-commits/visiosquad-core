@@ -65,9 +65,20 @@ Preferred communication style: Simple, everyday language.
 
 ### Business Logic Patterns
 - **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`
-- **Scheduling Conflicts**: 15-minute buffer rule - soft warning for minor overlaps, hard block for major conflicts
 - **Platform Ledger**: Automatic fee tracking ($1.00/month for athletes, $1.00 per clinic, $0.75 per drop-in)
 - **Convenience Fees**: Credit card payments add 3% fee, ACH payments have no additional fee
+
+### Advanced Scheduling Engine
+- **Facilities**: Physical locations (fields, courts, gyms) used for facility-specific conflict detection
+- **Session Targeting**: Sessions can target entire programs (team_id=null) or specific teams (team_id set)
+- **Recurring Sessions**: Create multiple sessions at once with time blocks supporting different times per day
+  - Example: Mon/Wed @ 5 PM, Tue/Thu @ 6 PM using separate time blocks
+  - Sessions share a `recurrence_group_id` for grouped management
+- **Conflict Detection**: 
+  - Facility-specific: Only sessions at the same facility are checked for conflicts
+  - Soft warning (≤15 min overlap): Yellow alert, allows proceeding with forceCreate
+  - Hard block (>15 min overlap): Red error, prevents session creation
+- **Registration Access Gate**: `getSessionsForAthlete` filters sessions based on athlete's program/team roster membership
 
 ## External Dependencies
 

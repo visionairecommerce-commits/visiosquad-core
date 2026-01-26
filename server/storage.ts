@@ -6,6 +6,10 @@ export interface Club {
   id: string;
   name: string;
   logo_url?: string;
+  join_code: string;
+  contract_pdf_url?: string;
+  waiver_content?: string;
+  onboarding_complete: boolean;
   created_at: string;
 }
 
@@ -15,6 +19,18 @@ export interface User {
   full_name: string;
   role: 'admin' | 'coach' | 'parent';
   club_id: string;
+  has_signed_documents: boolean;
+  created_at: string;
+}
+
+export interface ClubSignature {
+  id: string;
+  club_id: string;
+  user_id: string;
+  document_type: 'contract' | 'waiver';
+  signed_name: string;
+  signed_at: string;
+  ip_address?: string;
   created_at: string;
 }
 
@@ -124,6 +140,24 @@ export const PLATFORM_FEES = {
 
 // Storage interface
 export interface IStorage {
+  // Auth & Clubs
+  createClub(name: string, directorEmail: string, directorName: string, directorPassword: string): Promise<{ club: Club; user: User }>;
+  getClubByJoinCode(joinCode: string): Promise<Club | undefined>;
+  getClub(clubId: string): Promise<Club | undefined>;
+  updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
+  
+  // Users
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
+  updateUserSignedDocuments(userId: string): Promise<void>;
+  
+  // Signatures
+  createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', signedName: string, ipAddress?: string): Promise<ClubSignature>;
+  getUserSignatures(clubId: string, userId: string): Promise<ClubSignature[]>;
+  
+  // Auth validation
+  validateUserPassword(email: string, password: string): Promise<User | null>;
+
   // Programs
   getPrograms(clubId: string): Promise<Program[]>;
   getProgram(clubId: string, programId: string): Promise<Program | undefined>;
@@ -169,6 +203,9 @@ export interface IStorage {
 
 // In-memory storage implementation
 export class MemStorage implements IStorage {
+  private clubs: Map<string, Club> = new Map();
+  private users: Map<string, User & { password: string }> = new Map();
+  private signatures: Map<string, ClubSignature> = new Map();
   private programs: Map<string, Program> = new Map();
   private teams: Map<string, Team> = new Map();
   private athletes: Map<string, Athlete> = new Map();
@@ -182,8 +219,65 @@ export class MemStorage implements IStorage {
     this.seedData();
   }
 
+  private generateClubCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
   private seedData() {
     const clubId = 'demo-club-1';
+    
+    // Seed demo club
+    const demoClub: Club = {
+      id: clubId,
+      name: 'Demo Sports Club',
+      join_code: 'DEMO01',
+      waiver_content: 'This is a sample waiver agreement for Demo Sports Club. By signing, you acknowledge the risks associated with athletic activities.',
+      onboarding_complete: true,
+      created_at: new Date().toISOString(),
+    };
+    this.clubs.set(demoClub.id, demoClub);
+    
+    // Seed demo users
+    const demoAdmin: User & { password: string } = {
+      id: 'demo-admin-1',
+      email: 'admin@demo.com',
+      full_name: 'Demo Admin',
+      role: 'admin',
+      club_id: clubId,
+      has_signed_documents: true,
+      password: 'demo123',
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(demoAdmin.id, demoAdmin);
+    
+    const demoCoach: User & { password: string } = {
+      id: 'demo-coach-1',
+      email: 'coach@demo.com',
+      full_name: 'Demo Coach',
+      role: 'coach',
+      club_id: clubId,
+      has_signed_documents: true,
+      password: 'demo123',
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(demoCoach.id, demoCoach);
+    
+    const demoParent: User & { password: string } = {
+      id: 'demo-parent-1',
+      email: 'parent@demo.com',
+      full_name: 'Demo Parent',
+      role: 'parent',
+      club_id: clubId,
+      has_signed_documents: true,
+      password: 'demo123',
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(demoParent.id, demoParent);
 
     // Seed programs
     const programs: Program[] = [
@@ -216,6 +310,118 @@ export class MemStorage implements IStorage {
       { id: 'roster-2', athlete_id: 'ath-3', team_id: 'team-1', program_id: 'prog-1', club_id: clubId, created_at: new Date().toISOString() },
     ];
     rosterItems.forEach(r => this.roster.set(r.id, r));
+  }
+
+  // Auth & Clubs
+  async createClub(name: string, directorEmail: string, directorName: string, directorPassword: string): Promise<{ club: Club; user: User }> {
+    const clubId = randomUUID();
+    const club: Club = {
+      id: clubId,
+      name,
+      join_code: this.generateClubCode(),
+      onboarding_complete: false,
+      created_at: new Date().toISOString(),
+    };
+    this.clubs.set(club.id, club);
+
+    const userId = randomUUID();
+    const user: User & { password: string } = {
+      id: userId,
+      email: directorEmail,
+      full_name: directorName,
+      role: 'admin',
+      club_id: clubId,
+      has_signed_documents: true,
+      password: directorPassword,
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(user.id, user);
+
+    const { password, ...userWithoutPassword } = user;
+    return { club, user: userWithoutPassword };
+  }
+
+  async getClubByJoinCode(joinCode: string): Promise<Club | undefined> {
+    return Array.from(this.clubs.values()).find(c => c.join_code === joinCode.toUpperCase());
+  }
+
+  async getClub(clubId: string): Promise<Club | undefined> {
+    return this.clubs.get(clubId);
+  }
+
+  async updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.contract_pdf_url = contractPdfUrl;
+    club.waiver_content = waiverContent;
+    club.onboarding_complete = true;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  // Users
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const user = Array.from(this.users.values()).find(u => u.email === email);
+    if (!user) return undefined;
+    const { password, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  async createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User> {
+    const userId = randomUUID();
+    const user: User & { password: string } = {
+      id: userId,
+      email,
+      full_name: fullName,
+      role,
+      club_id: clubId,
+      has_signed_documents: false,
+      password,
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(user.id, user);
+    const { password: pwd, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  async updateUserSignedDocuments(userId: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (user) {
+      user.has_signed_documents = true;
+      this.users.set(userId, user);
+    }
+  }
+
+  // Signatures
+  async createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', signedName: string, ipAddress?: string): Promise<ClubSignature> {
+    const signature: ClubSignature = {
+      id: randomUUID(),
+      club_id: clubId,
+      user_id: userId,
+      document_type: documentType,
+      signed_name: signedName,
+      signed_at: new Date().toISOString(),
+      ip_address: ipAddress,
+      created_at: new Date().toISOString(),
+    };
+    this.signatures.set(signature.id, signature);
+    return signature;
+  }
+
+  async getUserSignatures(clubId: string, userId: string): Promise<ClubSignature[]> {
+    return Array.from(this.signatures.values()).filter(
+      s => s.club_id === clubId && s.user_id === userId
+    );
+  }
+
+  // Validate user password (for login)
+  async validateUserPassword(email: string, password: string): Promise<User | null> {
+    const user = Array.from(this.users.values()).find(
+      u => u.email === email && u.password === password
+    );
+    if (!user) return null;
+    const { password: pwd, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
   // Programs

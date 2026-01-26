@@ -92,6 +92,41 @@ const cashPaymentSchema = z.object({
   months: z.number().min(1).max(12),
 });
 
+// Auth schemas
+const createClubSchema = z.object({
+  name: z.string().min(2),
+  director_name: z.string().min(2),
+  director_email: z.string().email(),
+  director_password: z.string().min(8),
+});
+
+const registerUserSchema = z.object({
+  join_code: z.string().length(6),
+  full_name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(8),
+  role: z.enum(['coach', 'parent']),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+const signDocumentSchema = z.object({
+  signed_name: z.string().min(2),
+  document_type: z.enum(['contract', 'waiver']),
+});
+
+const updateDocumentsSchema = z.object({
+  contract_pdf_url: z.string().optional(),
+  waiver_content: z.string().min(10),
+});
+
+const validateCodeSchema = z.object({
+  join_code: z.string().length(6),
+});
+
 const paymentSchema = z.object({
   athlete_id: z.string().min(1),
   amount: z.number().min(0),
@@ -116,6 +151,251 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // ============ AUTH ROUTES (Public) ============
+  
+  // Create new club (Director signup)
+  app.post('/api/auth/create-club', async (req, res) => {
+    try {
+      const data = createClubSchema.parse(req.body);
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(data.director_email);
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+      
+      const { club, user } = await storage.createClub(
+        data.name,
+        data.director_email,
+        data.director_name,
+        data.director_password
+      );
+      
+      res.status(201).json({ club, user });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating club:', error);
+        res.status(500).json({ error: 'Failed to create club' });
+      }
+    }
+  });
+
+  // Validate club code
+  app.post('/api/auth/validate-code', async (req, res) => {
+    try {
+      const data = validateCodeSchema.parse(req.body);
+      const club = await storage.getClubByJoinCode(data.join_code);
+      
+      if (!club) {
+        return res.status(404).json({ error: 'Invalid club code' });
+      }
+      
+      if (!club.onboarding_complete) {
+        return res.status(400).json({ error: 'Club setup is not complete yet' });
+      }
+      
+      res.json({ 
+        valid: true, 
+        club_name: club.name,
+        club_id: club.id,
+        has_waiver: !!club.waiver_content,
+        has_contract: !!club.contract_pdf_url
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error validating code:', error);
+        res.status(500).json({ error: 'Failed to validate code' });
+      }
+    }
+  });
+
+  // Register new user (Parent/Coach)
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const data = registerUserSchema.parse(req.body);
+      
+      // Validate club code
+      const club = await storage.getClubByJoinCode(data.join_code);
+      if (!club) {
+        return res.status(404).json({ error: 'Invalid club code' });
+      }
+      
+      if (!club.onboarding_complete) {
+        return res.status(400).json({ error: 'Club setup is not complete yet' });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(data.email);
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+      
+      const user = await storage.createUser(
+        club.id,
+        data.email,
+        data.full_name,
+        data.password,
+        data.role
+      );
+      
+      res.status(201).json({ 
+        user,
+        club: {
+          id: club.id,
+          name: club.name,
+          waiver_content: club.waiver_content,
+          contract_pdf_url: club.contract_pdf_url
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error registering user:', error);
+        res.status(500).json({ error: 'Failed to register user' });
+      }
+    }
+  });
+
+  // Login
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const data = loginSchema.parse(req.body);
+      const user = await storage.validateUserPassword(data.email, data.password);
+      
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      
+      const club = await storage.getClub(user.club_id);
+      
+      res.json({ 
+        user,
+        club: club ? {
+          id: club.id,
+          name: club.name,
+          join_code: club.join_code,
+          onboarding_complete: club.onboarding_complete,
+          waiver_content: club.waiver_content,
+          contract_pdf_url: club.contract_pdf_url
+        } : null
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error logging in:', error);
+        res.status(500).json({ error: 'Failed to login' });
+      }
+    }
+  });
+
+  // Sign documents (e-signature)
+  app.post('/api/auth/sign-documents', async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const data = signDocumentSchema.parse(req.body);
+      
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      
+      await storage.createSignature(
+        clubId,
+        userId,
+        data.document_type,
+        data.signed_name,
+        ipAddress
+      );
+      
+      // Check if both documents are signed
+      const signatures = await storage.getUserSignatures(clubId, userId);
+      const hasWaiverSig = signatures.some(s => s.document_type === 'waiver');
+      const hasContractSig = signatures.some(s => s.document_type === 'contract');
+      
+      // If club has waiver and it's signed (contract is optional)
+      if (hasWaiverSig) {
+        await storage.updateUserSignedDocuments(userId);
+      }
+      
+      res.json({ 
+        success: true,
+        all_signed: hasWaiverSig && hasContractSig,
+        signatures: { waiver: hasWaiverSig, contract: hasContractSig }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error signing document:', error);
+        res.status(500).json({ error: 'Failed to sign document' });
+      }
+    }
+  });
+
+  // Get club info (for e-signing page)
+  app.get('/api/clubs/:clubId', async (req, res) => {
+    try {
+      const club = await storage.getClub(req.params.clubId);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      res.json({
+        id: club.id,
+        name: club.name,
+        waiver_content: club.waiver_content,
+        contract_pdf_url: club.contract_pdf_url,
+        onboarding_complete: club.onboarding_complete
+      });
+    } catch (error) {
+      console.error('Error fetching club:', error);
+      res.status(500).json({ error: 'Failed to fetch club' });
+    }
+  });
+
+  // Update club documents (Director only)
+  app.put('/api/clubs/:clubId/documents', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const data = updateDocumentsSchema.parse(req.body);
+      const club = await storage.updateClubDocuments(
+        clubId,
+        data.contract_pdf_url,
+        data.waiver_content
+      );
+      
+      res.json(club);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error updating documents:', error);
+        res.status(500).json({ error: 'Failed to update documents' });
+      }
+    }
+  });
+
+  // Get current user's club info (for Share section)
+  app.get('/api/my-club', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const club = await storage.getClub(clubId);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      res.json(club);
+    } catch (error) {
+      console.error('Error fetching my club:', error);
+      res.status(500).json({ error: 'Failed to fetch club' });
+    }
+  });
 
   // ============ PROGRAMS ============
   app.get('/api/programs', async (req, res) => {

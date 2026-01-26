@@ -8,6 +8,10 @@ export interface Club {
   id: string;
   name: string;
   logo_url?: string;
+  join_code: string;
+  contract_pdf_url?: string;
+  waiver_content?: string;
+  onboarding_complete: boolean;
   created_at: string;
 }
 
@@ -17,6 +21,18 @@ export interface User {
   full_name: string;
   role: UserRole;
   club_id: string;
+  has_signed_documents: boolean;
+  created_at: string;
+}
+
+export interface ClubSignature {
+  id: string;
+  club_id: string;
+  user_id: string;
+  document_type: 'contract' | 'waiver';
+  signed_name: string;
+  signed_at: string;
+  ip_address?: string;
   created_at: string;
 }
 
@@ -170,6 +186,42 @@ export const cancelSessionSchema = z.object({
   reason: z.string().min(1, "Cancellation reason is required"),
 });
 
+// Club creation schema (for Directors)
+export const createClubSchema = z.object({
+  name: z.string().min(2, "Club name must be at least 2 characters"),
+  director_name: z.string().min(2, "Your name is required"),
+  director_email: z.string().email("Valid email is required"),
+  director_password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+// User registration schema (for Parents/Coaches)
+export const registerUserSchema = z.object({
+  join_code: z.string().length(6, "Club code must be 6 characters"),
+  full_name: z.string().min(2, "Name is required"),
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  role: z.enum(['coach', 'parent']),
+});
+
+// E-signature schema
+export const signDocumentSchema = z.object({
+  signed_name: z.string().min(2, "Please type your full legal name"),
+  document_type: z.enum(['contract', 'waiver']),
+  agreed: z.boolean().refine(val => val === true, "You must agree to the terms"),
+});
+
+// Login schema
+export const loginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+// Club documents upload schema
+export const updateClubDocumentsSchema = z.object({
+  contract_pdf_url: z.string().optional(),
+  waiver_content: z.string().min(10, "Waiver content is required"),
+});
+
 // Type exports
 export type InsertProgram = z.infer<typeof insertProgramSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
@@ -177,6 +229,21 @@ export type InsertAthlete = z.infer<typeof insertAthleteSchema>;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type CashPayment = z.infer<typeof cashPaymentSchema>;
 export type CancelSession = z.infer<typeof cancelSessionSchema>;
+export type CreateClub = z.infer<typeof createClubSchema>;
+export type RegisterUser = z.infer<typeof registerUserSchema>;
+export type SignDocument = z.infer<typeof signDocumentSchema>;
+export type Login = z.infer<typeof loginSchema>;
+export type UpdateClubDocuments = z.infer<typeof updateClubDocumentsSchema>;
+
+// Generate unique 6-character club code
+export const generateClubCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
 
 // Convenience fee calculations
 export const calculateConvenienceFee = (amount: number, method: 'credit_card' | 'ach' | 'cash'): number => {

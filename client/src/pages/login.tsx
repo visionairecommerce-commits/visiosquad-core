@@ -5,27 +5,53 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import type { UserRole } from '@shared/schema';
-import { Trophy, Users, ClipboardList, Home } from 'lucide-react';
+import { Trophy, Building2, Users, Loader2, Eye, EyeOff } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+
+type AuthMode = 'signin' | 'create-account';
+type AccountType = 'director' | 'member' | null;
 
 export default function LoginPage() {
+  const [mode, setMode] = useState<AuthMode>('signin');
+  const [accountType, setAccountType] = useState<AccountType>(null);
   const [email, setEmail] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  
   const { login } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
 
-  const handleLogin = () => {
-    if (selectedRole) {
-      login(email || `${selectedRole}@visiosport.com`, selectedRole);
-      setLocation('/');
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      toast({ title: 'Please fill in all fields', variant: 'destructive' });
+      return;
+    }
+    
+    setIsLoading(true);
+    const result = await login(email, password);
+    setIsLoading(false);
+    
+    if (result.success) {
+      if (result.needsOnboarding) {
+        setLocation('/onboarding');
+      } else {
+        setLocation('/');
+      }
+    } else {
+      toast({ title: result.error || 'Login failed', variant: 'destructive' });
     }
   };
 
-  const roles: { role: UserRole; title: string; description: string; icon: typeof Trophy }[] = [
-    { role: 'admin', title: 'Club Admin', description: 'Manage programs, teams, and payments', icon: ClipboardList },
-    { role: 'coach', title: 'Coach', description: 'Track attendance and manage sessions', icon: Users },
-    { role: 'parent', title: 'Parent', description: 'View schedules and register athletes', icon: Home },
-  ];
+  const handleCreateAccountSelection = (type: AccountType) => {
+    setAccountType(type);
+    if (type === 'director') {
+      setLocation('/create-club');
+    } else if (type === 'member') {
+      setLocation('/join');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -40,60 +66,128 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>
-              Select your role to access the dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (optional)</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                data-testid="input-email"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Select Role</Label>
-              <div className="grid gap-2">
-                {roles.map(({ role, title, description, icon: Icon }) => (
-                  <Button
-                    key={role}
-                    variant={selectedRole === role ? 'default' : 'outline'}
-                    className="h-auto py-3 px-4 justify-start gap-3"
-                    onClick={() => setSelectedRole(role)}
-                    data-testid={`button-role-${role}`}
-                  >
-                    <Icon className="h-5 w-5 shrink-0" />
-                    <div className="text-left">
-                      <div className="font-medium">{title}</div>
-                      <div className="text-xs opacity-70">{description}</div>
-                    </div>
-                  </Button>
-                ))}
+        {mode === 'signin' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Sign In</CardTitle>
+              <CardDescription>
+                Enter your credentials to access your account
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  data-testid="input-email"
+                />
               </div>
-            </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    data-testid="input-password"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPassword(!showPassword)}
+                    data-testid="button-toggle-password"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
 
-            <Button
-              className="w-full"
-              disabled={!selectedRole}
-              onClick={handleLogin}
-              data-testid="button-login"
-            >
-              Continue to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
+              <Button
+                className="w-full"
+                onClick={handleSignIn}
+                disabled={isLoading}
+                data-testid="button-signin"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Sign In
+              </Button>
+
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  onClick={() => setMode('create-account')}
+                  data-testid="link-create-account"
+                >
+                  Don't have an account? Create one
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {mode === 'create-account' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Create Account</CardTitle>
+              <CardDescription>
+                Choose how you want to get started
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 justify-start gap-4"
+                onClick={() => handleCreateAccountSelection('director')}
+                data-testid="button-director-signup"
+              >
+                <Building2 className="h-8 w-8 shrink-0 text-primary" />
+                <div className="text-left">
+                  <div className="font-semibold">I am a Club Director</div>
+                  <div className="text-sm text-muted-foreground">
+                    Create a new club and invite members
+                  </div>
+                </div>
+              </Button>
+              
+              <Button
+                variant="outline"
+                className="w-full h-auto py-4 justify-start gap-4"
+                onClick={() => handleCreateAccountSelection('member')}
+                data-testid="button-member-signup"
+              >
+                <Users className="h-8 w-8 shrink-0 text-primary" />
+                <div className="text-left">
+                  <div className="font-semibold">I am a Parent / Coach</div>
+                  <div className="text-sm text-muted-foreground">
+                    Join an existing club with a club code
+                  </div>
+                </div>
+              </Button>
+
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  onClick={() => setMode('signin')}
+                  data-testid="link-signin"
+                >
+                  Already have an account? Sign in
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <p className="text-center text-xs text-muted-foreground">
-          Demo mode - select any role to explore
+          By continuing, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>
     </div>

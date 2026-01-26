@@ -1,50 +1,42 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import type { User, Club, UserRole } from '@shared/schema';
+import { apiRequest } from '@/lib/queryClient';
+import type { UserRole } from '@shared/schema';
+
+interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  club_id: string;
+  has_signed_documents: boolean;
+  created_at: string;
+}
+
+interface Club {
+  id: string;
+  name: string;
+  join_code: string;
+  contract_pdf_url?: string;
+  waiver_content?: string;
+  onboarding_complete: boolean;
+  created_at: string;
+}
 
 interface AuthContextType {
   user: User | null;
   club: Club | null;
   isLoading: boolean;
-  login: (email: string, role: UserRole) => void;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; needsOnboarding?: boolean }>;
   logout: () => void;
-  switchRole: (role: UserRole) => void;
+  createClub: (name: string, directorName: string, directorEmail: string, directorPassword: string) => Promise<{ success: boolean; error?: string }>;
+  registerUser: (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent') => Promise<{ success: boolean; error?: string; needsSignature?: boolean }>;
+  signDocument: (documentType: 'contract' | 'waiver', signedName: string) => Promise<{ success: boolean; allSigned?: boolean }>;
+  updateClubDocuments: (waiverContent: string, contractPdfUrl?: string) => Promise<{ success: boolean; error?: string }>;
+  setUser: (user: User | null) => void;
+  setClub: (club: Club | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Demo users for development
-const DEMO_CLUB: Club = {
-  id: 'demo-club-1',
-  name: 'Elite Sports Academy',
-  created_at: new Date().toISOString(),
-};
-
-const DEMO_USERS: Record<UserRole, User> = {
-  admin: {
-    id: 'demo-admin-1',
-    email: 'admin@elitesports.com',
-    full_name: 'Sarah Johnson',
-    role: 'admin',
-    club_id: 'demo-club-1',
-    created_at: new Date().toISOString(),
-  },
-  coach: {
-    id: 'demo-coach-1',
-    email: 'coach@elitesports.com',
-    full_name: 'Mike Thompson',
-    role: 'coach',
-    club_id: 'demo-club-1',
-    created_at: new Date().toISOString(),
-  },
-  parent: {
-    id: 'demo-parent-1',
-    email: 'parent@example.com',
-    full_name: 'Jennifer Davis',
-    role: 'parent',
-    club_id: 'demo-club-1',
-    created_at: new Date().toISOString(),
-  },
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -52,37 +44,164 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved session
-    const savedRole = localStorage.getItem('visiosport_role') as UserRole | null;
-    if (savedRole && DEMO_USERS[savedRole]) {
-      setUser(DEMO_USERS[savedRole]);
-      setClub(DEMO_CLUB);
+    const savedSession = localStorage.getItem('visiosport_session');
+    if (savedSession) {
+      try {
+        const { user: savedUser, club: savedClub } = JSON.parse(savedSession);
+        setUser(savedUser);
+        setClub(savedClub);
+      } catch (e) {
+        localStorage.removeItem('visiosport_session');
+      }
     }
     setIsLoading(false);
   }, []);
 
-  const login = (email: string, role: UserRole) => {
-    const demoUser = DEMO_USERS[role];
-    setUser({ ...demoUser, email });
-    setClub(DEMO_CLUB);
-    localStorage.setItem('visiosport_role', role);
+  const saveSession = (userData: User, clubData: Club | null) => {
+    localStorage.setItem('visiosport_session', JSON.stringify({ user: userData, club: clubData }));
+  };
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string; needsOnboarding?: boolean }> => {
+    try {
+      const response = await apiRequest('POST', '/api/auth/login', { email, password });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Login failed' };
+      }
+      
+      setUser(data.user);
+      setClub(data.club);
+      saveSession(data.user, data.club);
+      
+      if (data.user.role === 'admin' && data.club && !data.club.onboarding_complete) {
+        return { success: true, needsOnboarding: true };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Connection failed' };
+    }
   };
 
   const logout = () => {
     setUser(null);
     setClub(null);
-    localStorage.removeItem('visiosport_role');
+    localStorage.removeItem('visiosport_session');
   };
 
-  const switchRole = (role: UserRole) => {
-    if (DEMO_USERS[role]) {
-      setUser(DEMO_USERS[role]);
-      localStorage.setItem('visiosport_role', role);
+  const createClub = async (name: string, directorName: string, directorEmail: string, directorPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await apiRequest('POST', '/api/auth/create-club', {
+        name,
+        director_name: directorName,
+        director_email: directorEmail,
+        director_password: directorPassword,
+      });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Failed to create club' };
+      }
+      
+      setUser(data.user);
+      setClub(data.club);
+      saveSession(data.user, data.club);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Connection failed' };
+    }
+  };
+
+  const registerUser = async (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent'): Promise<{ success: boolean; error?: string; needsSignature?: boolean }> => {
+    try {
+      const response = await apiRequest('POST', '/api/auth/register', {
+        join_code: joinCode,
+        full_name: fullName,
+        email,
+        password,
+        role,
+      });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Registration failed' };
+      }
+      
+      setUser(data.user);
+      setClub(data.club);
+      saveSession(data.user, data.club);
+      
+      return { success: true, needsSignature: !data.user.has_signed_documents };
+    } catch (error) {
+      return { success: false, error: 'Connection failed' };
+    }
+  };
+
+  const signDocument = async (documentType: 'contract' | 'waiver', signedName: string): Promise<{ success: boolean; allSigned?: boolean }> => {
+    try {
+      const response = await apiRequest('POST', '/api/auth/sign-documents', {
+        document_type: documentType,
+        signed_name: signedName,
+      });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false };
+      }
+      
+      if (user && data.signatures?.waiver) {
+        const updatedUser = { ...user, has_signed_documents: true };
+        setUser(updatedUser);
+        if (club) {
+          saveSession(updatedUser, club);
+        }
+      }
+      
+      return { success: true, allSigned: data.all_signed };
+    } catch (error) {
+      return { success: false };
+    }
+  };
+
+  const updateClubDocuments = async (waiverContent: string, contractPdfUrl?: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      if (!club) return { success: false, error: 'No club found' };
+      
+      const response = await apiRequest('PUT', `/api/clubs/${club.id}/documents`, {
+        waiver_content: waiverContent,
+        contract_pdf_url: contractPdfUrl,
+      });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Failed to update documents' };
+      }
+      
+      setClub(data);
+      if (user) {
+        saveSession(user, data);
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Connection failed' };
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, club, isLoading, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      club, 
+      isLoading, 
+      login, 
+      logout, 
+      createClub, 
+      registerUser, 
+      signDocument, 
+      updateClubDocuments,
+      setUser,
+      setClub
+    }}>
       {children}
     </AuthContext.Provider>
   );

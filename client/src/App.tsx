@@ -11,6 +11,9 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import CreateClubPage from "@/pages/create-club";
+import JoinPage from "@/pages/join";
+import OnboardingPage from "@/pages/onboarding";
 import AdminDashboard from "@/pages/admin/dashboard";
 import ProgramsPage from "@/pages/admin/programs";
 import TeamsPage from "@/pages/admin/teams";
@@ -105,7 +108,8 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
-  const { user, isLoading } = useAuth();
+  const { user, club, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -119,7 +123,18 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/login" component={LoginPage} />
+        <Route path="/create-club" component={CreateClubPage} />
+        <Route path="/join" component={JoinPage} />
         <Route component={RedirectToLogin} />
+      </Switch>
+    );
+  }
+
+  if (user.role === 'admin' && club && !club.onboarding_complete) {
+    return (
+      <Switch>
+        <Route path="/onboarding" component={OnboardingPage} />
+        <Route>{() => { setLocation('/onboarding'); return null; }}</Route>
       </Switch>
     );
   }

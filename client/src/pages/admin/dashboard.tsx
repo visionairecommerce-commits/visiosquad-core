@@ -2,6 +2,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'wouter';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import {
   Users,
   Calendar,
@@ -11,6 +13,10 @@ import {
   ArrowRight,
   ClipboardList,
   AlertCircle,
+  Copy,
+  MessageSquare,
+  Share2,
+  ExternalLink,
 } from 'lucide-react';
 
 const stats = [
@@ -39,6 +45,32 @@ const pendingPayments = [
 ];
 
 export default function AdminDashboard() {
+  const { club } = useAuth();
+  const { toast } = useToast();
+
+  const getInviteLink = () => {
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/join?code=${club?.join_code}`;
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(getInviteLink());
+    toast({ title: 'Invite link copied to clipboard!' });
+  };
+
+  const copyClubCode = () => {
+    if (club?.join_code) {
+      navigator.clipboard.writeText(club.join_code);
+      toast({ title: 'Club code copied!' });
+    }
+  };
+
+  const openSmsInvite = () => {
+    const message = `Join ${club?.name} on VisioSport! Use code ${club?.join_code} or click here to sign the waiver and register: ${getInviteLink()}`;
+    const smsUrl = `sms:?body=${encodeURIComponent(message)}`;
+    window.open(smsUrl, '_blank');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -55,6 +87,52 @@ export default function AdminDashboard() {
           </Link>
         </div>
       </div>
+
+      <Card className="bg-primary/5 border-primary/20">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <div className="flex items-center gap-2">
+            <Share2 className="h-5 w-5 text-primary" />
+            <CardTitle className="text-lg">Share Club Access</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Club Code:</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={copyClubCode}
+              className="font-mono font-bold"
+              data-testid="button-copy-code"
+            >
+              {club?.join_code || 'N/A'}
+              <Copy className="h-3 w-3 ml-2" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              onClick={copyInviteLink}
+              data-testid="button-copy-invite-link"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copy Invite Link
+            </Button>
+            <Button
+              variant="outline"
+              onClick={openSmsInvite}
+              data-testid="button-sms-invite"
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Text Invite
+              <ExternalLink className="h-3 w-3 ml-2 opacity-50" />
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-3">
+            Share this code with parents and coaches. They'll use it to join and sign your waiver.
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

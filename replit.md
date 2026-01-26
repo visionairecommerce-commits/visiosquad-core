@@ -38,11 +38,30 @@ Preferred communication style: Simple, everyday language.
 - **Primary Database**: Supabase for data persistence and real-time features
 
 ### Authentication & Authorization
-- Demo-based authentication with role switching (Admin, Coach, Parent)
+- **Multi-tenant onboarding system** with club code-based registration
 - Session-based auth context with persistent login state via localStorage
-- Role-based UI rendering and route protection
-- Backend role-based access control via `X-User-Role` and `X-User-Id` headers
+- Role-based UI rendering and route protection (Admin/Director, Coach, Parent)
+- Backend role-based access control via `X-User-Role`, `X-User-Id`, and `X-Club-Id` headers
 - Role middleware pattern: `requireRole('admin', 'coach')` applied to protected endpoints
+
+#### Director (Admin) Onboarding Flow
+1. Director creates account and new club at `/create-club`
+2. System generates unique 6-character club code (excludes ambiguous characters O/0, I/1)
+3. Director sets up waiver document at `/onboarding` (required before accessing dashboard)
+4. After completing onboarding, Director can share club code via invite link or SMS
+5. Dashboard includes "Share Club Access" section with copy link and text invite buttons
+
+#### Parent/Coach Join Flow
+1. Parent or Coach navigates to `/join` (optionally with `?code=XXXXXX`)
+2. Enters club code to find their club
+3. Reviews and e-signs club waiver (checkbox + typed signature)
+4. Creates account with email/password
+5. Account is automatically bound to club via `club_id`
+
+#### E-Signatures
+- Stored in `club_signatures` table with: signed name, document type, timestamp, IP address
+- User's `has_signed_documents` flag tracks signature status
+- Clubs can require waiver signature before granting access
 
 ### Business Logic Patterns
 - **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`

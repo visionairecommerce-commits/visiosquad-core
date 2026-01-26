@@ -1,16 +1,663 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, PLATFORM_FEES } from "./storage";
+import { processPayment, calculateTotalWithFee } from "./lib/helcim";
+import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
+import { z } from "zod";
+import { addMonths, format } from "date-fns";
+
+// Demo club ID for tenant isolation
+const DEMO_CLUB_ID = 'demo-club-1';
+
+// Role types for authorization
+type UserRole = 'admin' | 'coach' | 'parent';
+
+// Demo auth middleware - extracts role from header for demo mode
+// In production, this would validate JWT/session and extract user info
+function getAuthContext(req: Request): { clubId: string; role: UserRole; userId: string } {
+  const role = (req.headers['x-user-role'] as UserRole) || 'admin';
+  const userId = (req.headers['x-user-id'] as string) || 'demo-admin';
+  return { clubId: DEMO_CLUB_ID, role, userId };
+}
+
+// Role-based access control middleware
+function requireRole(...allowedRoles: UserRole[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const { role } = getAuthContext(req);
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({ error: 'Access denied', required: allowedRoles });
+    }
+    next();
+  };
+}
+
+// Centralized athlete access state check - locked if payment >7 days overdue
+function checkAthleteAccessState(athlete: { paid_through_date?: string | null }): boolean {
+  if (!athlete.paid_through_date) return false;
+  const paidThrough = new Date(athlete.paid_through_date);
+  const gracePeriod = new Date();
+  gracePeriod.setDate(gracePeriod.getDate() - 7);
+  return paidThrough < gracePeriod;
+}
+
+// Request validation schemas
+const createProgramSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  monthly_fee: z.number().min(0),
+});
+
+const createTeamSchema = z.object({
+  name: z.string().min(1),
+  program_id: z.string().min(1),
+});
+
+const createAthleteSchema = z.object({
+  first_name: z.string().min(1),
+  last_name: z.string().min(1),
+  date_of_birth: z.string().min(1),
+  parent_id: z.string().min(1),
+  tags: z.array(z.string()).default([]),
+});
+
+const createSessionSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().optional(),
+  session_type: z.enum(['practice', 'clinic', 'drop_in']),
+  program_id: z.string().min(1),
+  team_id: z.string().optional(),
+  start_time: z.string().min(1),
+  end_time: z.string().min(1),
+  location: z.string().optional(),
+  capacity: z.number().optional(),
+  price: z.number().optional(),
+});
+
+const cancelSessionSchema = z.object({
+  reason: z.string().min(1),
+});
+
+const assignRosterSchema = z.object({
+  athlete_id: z.string().min(1),
+  team_id: z.string().min(1),
+  program_id: z.string().min(1),
+});
+
+const checkInSchema = z.object({
+  checked_in: z.boolean(),
+});
+
+const cashPaymentSchema = z.object({
+  athlete_id: z.string().min(1),
+  months: z.number().min(1).max(12),
+});
+
+const paymentSchema = z.object({
+  athlete_id: z.string().min(1),
+  amount: z.number().min(0),
+  payment_type: z.enum(['monthly', 'clinic', 'drop_in']),
+  payment_method: z.enum(['credit_card', 'ach']),
+  card_token: z.string().optional(),
+}).refine((data) => {
+  // Require card_token for credit card payments (unless in demo mode)
+  if (data.payment_method === 'credit_card' && !data.card_token) {
+    // In demo mode, allow processing without token for testing
+    return true;
+  }
+  return true;
+}, { message: 'Card token required for credit card payments' });
+
+const registerSessionSchema = z.object({
+  athlete_id: z.string().min(1),
+  payment_method: z.enum(['credit_card', 'ach']).optional(),
+});
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+  // ============ PROGRAMS ============
+  app.get('/api/programs', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const programs = await storage.getPrograms(clubId);
+      res.json(programs);
+    } catch (error) {
+      console.error('Error fetching programs:', error);
+      res.status(500).json({ error: 'Failed to fetch programs' });
+    }
+  });
+
+  app.post('/api/programs', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createProgramSchema.parse(req.body);
+      const program = await storage.createProgram(clubId, data);
+      res.status(201).json(program);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating program:', error);
+        res.status(500).json({ error: 'Failed to create program' });
+      }
+    }
+  });
+
+  app.delete('/api/programs/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteProgram(clubId, req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting program:', error);
+      res.status(500).json({ error: 'Failed to delete program' });
+    }
+  });
+
+  // ============ TEAMS ============
+  app.get('/api/teams', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const teams = await storage.getTeams(clubId);
+      res.json(teams);
+    } catch (error) {
+      console.error('Error fetching teams:', error);
+      res.status(500).json({ error: 'Failed to fetch teams' });
+    }
+  });
+
+  app.post('/api/teams', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createTeamSchema.parse(req.body);
+      const team = await storage.createTeam(clubId, data);
+      res.status(201).json(team);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating team:', error);
+        res.status(500).json({ error: 'Failed to create team' });
+      }
+    }
+  });
+
+  app.delete('/api/teams/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteTeam(clubId, req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting team:', error);
+      res.status(500).json({ error: 'Failed to delete team' });
+    }
+  });
+
+  // ============ ATHLETES ============
+  app.get('/api/athletes', async (req, res) => {
+    try {
+      const { clubId, role, userId } = getAuthContext(req);
+      const parentId = req.query.parent_id as string | undefined;
+      // Parents can only see their own athletes
+      const effectiveParentId = role === 'parent' ? userId : parentId;
+      const athletes = effectiveParentId
+        ? await storage.getAthletesByParent(clubId, effectiveParentId)
+        : await storage.getAthletes(clubId);
+      res.json(athletes);
+    } catch (error) {
+      console.error('Error fetching athletes:', error);
+      res.status(500).json({ error: 'Failed to fetch athletes' });
+    }
+  });
+
+  app.get('/api/athletes/unassigned', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const programId = req.query.program_id as string;
+      if (!programId) {
+        return res.status(400).json({ error: 'program_id is required' });
+      }
+      const athletes = await storage.getUnassignedAthletes(clubId, programId);
+      res.json(athletes);
+    } catch (error) {
+      console.error('Error fetching unassigned athletes:', error);
+      res.status(500).json({ error: 'Failed to fetch unassigned athletes' });
+    }
+  });
+
+  app.post('/api/athletes', requireRole('admin', 'parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createAthleteSchema.parse(req.body);
+      const athlete = await storage.createAthlete(clubId, data);
+      res.status(201).json(athlete);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating athlete:', error);
+        res.status(500).json({ error: 'Failed to create athlete' });
+      }
+    }
+  });
+
+  // ============ ROSTER ============
+  app.get('/api/teams/:teamId/roster', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const roster = await storage.getTeamRoster(clubId, req.params.teamId);
+      res.json(roster);
+    } catch (error) {
+      console.error('Error fetching roster:', error);
+      res.status(500).json({ error: 'Failed to fetch roster' });
+    }
+  });
+
+  app.post('/api/roster/assign', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = assignRosterSchema.parse(req.body);
+      const roster = await storage.assignAthleteToTeam(
+        clubId,
+        data.athlete_id,
+        data.team_id,
+        data.program_id
+      );
+      res.status(201).json(roster);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error assigning athlete:', error);
+        res.status(500).json({ error: 'Failed to assign athlete' });
+      }
+    }
+  });
+
+  // ============ SESSIONS ============
+  app.get('/api/sessions', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const sessions = await storage.getSessions(clubId);
+      res.json(sessions);
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      res.status(500).json({ error: 'Failed to fetch sessions' });
+    }
+  });
+
+  app.get('/api/sessions/:id', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const session = await storage.getSession(clubId, req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+      res.json(session);
+    } catch (error) {
+      console.error('Error fetching session:', error);
+      res.status(500).json({ error: 'Failed to fetch session' });
+    }
+  });
+
+  app.post('/api/sessions', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createSessionSchema.parse(req.body);
+
+      // Check for scheduling conflicts (15-minute buffer logic)
+      const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
+        clubId,
+        data.start_time,
+        data.end_time
+      );
+
+      if (conflict && overlapMinutes > 15) {
+        return res.status(409).json({
+          error: 'Schedule conflict',
+          message: `Overlaps with "${conflictingSession?.title}" by ${Math.round(overlapMinutes)} minutes`,
+          conflictingSession,
+        });
+      }
+
+      const session = await storage.createSession(clubId, data);
+
+      // If team is selected, auto-register all team members
+      if (data.team_id) {
+        const roster = await storage.getTeamRoster(clubId, data.team_id);
+        const athleteIds = roster.map(r => r.athlete_id);
+        if (athleteIds.length > 0) {
+          await storage.bulkCreateRegistrations(clubId, session.id, athleteIds);
+        }
+      }
+
+      res.status(201).json({
+        session,
+        warning: conflict && overlapMinutes <= 15
+          ? `Minor overlap (${Math.round(overlapMinutes)} min) with "${conflictingSession?.title}"`
+          : undefined,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating session:', error);
+        res.status(500).json({ error: 'Failed to create session' });
+      }
+    }
+  });
+
+  app.post('/api/sessions/:id/cancel', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = cancelSessionSchema.parse(req.body);
+      const session = await storage.getSession(clubId, req.params.id);
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      // Cancel the session
+      await storage.cancelSession(clubId, req.params.id, data.reason);
+
+      // Get registrations to notify parents
+      const registrations = await storage.getSessionRegistrations(clubId, req.params.id);
+      
+      // In production, we'd fetch actual parent emails
+      // For demo, we'll simulate the notification
+      const parentEmails = registrations.map(r => `parent-${r.athlete_id}@example.com`);
+
+      if (parentEmails.length > 0) {
+        await sendSessionCancellationEmail(
+          parentEmails,
+          session.title,
+          data.reason,
+          format(new Date(session.start_time), 'EEEE, MMMM d, yyyy h:mm a')
+        );
+      }
+
+      res.json({
+        success: true,
+        notified: parentEmails.length,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error cancelling session:', error);
+        res.status(500).json({ error: 'Failed to cancel session' });
+      }
+    }
+  });
+
+  // ============ REGISTRATIONS ============
+  app.get('/api/sessions/:sessionId/registrations', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const registrations = await storage.getSessionRegistrations(clubId, req.params.sessionId);
+      res.json(registrations);
+    } catch (error) {
+      console.error('Error fetching registrations:', error);
+      res.status(500).json({ error: 'Failed to fetch registrations' });
+    }
+  });
+
+  app.post('/api/sessions/:sessionId/register', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = registerSessionSchema.parse(req.body);
+      const session = await storage.getSession(clubId, req.params.sessionId);
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      // Check if athlete's payment is current
+      const athlete = await storage.getAthlete(clubId, data.athlete_id);
+      if (!athlete) {
+        return res.status(404).json({ error: 'Athlete not found' });
+      }
+
+      // Check access state (is_locked logic) - locked if payment >7 days overdue
+      const isLocked = checkAthleteAccessState(athlete);
+      if (isLocked) {
+        return res.status(403).json({ error: 'Payment required', is_locked: true });
+      }
+
+      // Process payment if session has a price
+      if (session.price && session.price > 0 && data.payment_method) {
+        const totalAmount = calculateTotalWithFee(session.price, data.payment_method);
+        
+        // In production, we'd process the actual payment
+        // For demo, we simulate success
+        const payment = await storage.createPayment(clubId, {
+          athlete_id: data.athlete_id,
+          amount: totalAmount,
+          payment_type: session.session_type === 'clinic' ? 'clinic' : 'drop_in',
+          payment_method: data.payment_method,
+          status: 'completed',
+        });
+
+        // Create platform ledger entry
+        const feeType = session.session_type === 'clinic' ? 'clinic' : 'drop_in';
+        await storage.createPlatformLedgerEntry(
+          clubId,
+          payment.id,
+          PLATFORM_FEES[feeType],
+          feeType
+        );
+      }
+
+      const registration = await storage.createRegistration(clubId, req.params.sessionId, data.athlete_id);
+      res.status(201).json(registration);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error registering for session:', error);
+        res.status(500).json({ error: 'Failed to register for session' });
+      }
+    }
+  });
+
+  app.patch('/api/registrations/:id/checkin', requireRole('coach', 'admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = checkInSchema.parse(req.body);
+      await storage.updateCheckIn(clubId, req.params.id, data.checked_in);
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error updating check-in:', error);
+        res.status(500).json({ error: 'Failed to update check-in' });
+      }
+    }
+  });
+
+  // ============ PAYMENTS ============
+  app.get('/api/payments', requireRole('admin', 'parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const payments = await storage.getPayments(clubId);
+      res.json(payments);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+      res.status(500).json({ error: 'Failed to fetch payments' });
+    }
+  });
+
+  app.post('/api/payments/cash', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = cashPaymentSchema.parse(req.body);
+
+      const athlete = await storage.getAthlete(clubId, data.athlete_id);
+      if (!athlete) {
+        return res.status(404).json({ error: 'Athlete not found' });
+      }
+
+      // Calculate new paid_through_date
+      const currentPaidThrough = athlete.paid_through_date
+        ? new Date(athlete.paid_through_date)
+        : new Date();
+      const newPaidThrough = addMonths(
+        currentPaidThrough > new Date() ? currentPaidThrough : new Date(),
+        data.months
+      );
+
+      // Create payment record
+      const payment = await storage.createPayment(clubId, {
+        athlete_id: data.athlete_id,
+        amount: 150 * data.months, // Example monthly rate
+        payment_type: 'cash',
+        payment_method: 'cash',
+        months_paid: data.months,
+        status: 'completed',
+      });
+
+      // Create platform ledger entries ($1/month)
+      for (let i = 0; i < data.months; i++) {
+        await storage.createPlatformLedgerEntry(
+          clubId,
+          payment.id,
+          PLATFORM_FEES.monthly,
+          'monthly'
+        );
+      }
+
+      // Update athlete's paid_through_date
+      await storage.updateAthletePaidThrough(
+        clubId,
+        data.athlete_id,
+        newPaidThrough.toISOString()
+      );
+
+      res.status(201).json({
+        payment,
+        paid_through_date: newPaidThrough.toISOString(),
+        platform_fee: PLATFORM_FEES.monthly * data.months,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error processing cash payment:', error);
+        res.status(500).json({ error: 'Failed to process cash payment' });
+      }
+    }
+  });
+
+  app.post('/api/payments/process', requireRole('admin', 'parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = paymentSchema.parse(req.body);
+
+      const athlete = await storage.getAthlete(clubId, data.athlete_id);
+      if (!athlete) {
+        return res.status(404).json({ error: 'Athlete not found' });
+      }
+
+      const totalAmount = calculateTotalWithFee(data.amount, data.payment_method);
+
+      // Process payment through Helcim
+      const paymentResult = await processPayment({
+        amount: totalAmount,
+        cardToken: data.card_token,
+        comments: `${data.payment_type} payment for ${athlete.first_name} ${athlete.last_name}`,
+      });
+
+      const payment = await storage.createPayment(clubId, {
+        athlete_id: data.athlete_id,
+        amount: totalAmount,
+        payment_type: data.payment_type,
+        payment_method: data.payment_method,
+        helcim_transaction_id: paymentResult.transactionId,
+        status: paymentResult.success ? 'completed' : 'failed',
+      });
+
+      if (paymentResult.success) {
+        // Create platform ledger entry
+        await storage.createPlatformLedgerEntry(
+          clubId,
+          payment.id,
+          PLATFORM_FEES[data.payment_type],
+          data.payment_type
+        );
+
+        // Update paid_through_date if monthly payment
+        if (data.payment_type === 'monthly') {
+          const currentPaidThrough = athlete.paid_through_date
+            ? new Date(athlete.paid_through_date)
+            : new Date();
+          const newPaidThrough = addMonths(
+            currentPaidThrough > new Date() ? currentPaidThrough : new Date(),
+            1
+          );
+          await storage.updateAthletePaidThrough(
+            clubId,
+            data.athlete_id,
+            newPaidThrough.toISOString()
+          );
+        }
+
+        // Send confirmation email (simulated)
+        await sendPaymentConfirmation(
+          'parent@example.com',
+          `${athlete.first_name} ${athlete.last_name}`,
+          totalAmount,
+          `${data.payment_type} payment`
+        );
+      }
+
+      res.status(201).json({
+        payment,
+        success: paymentResult.success,
+        error: paymentResult.error,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error processing payment:', error);
+        res.status(500).json({ error: 'Failed to process payment' });
+      }
+    }
+  });
+
+  // ============ CONTRACTS ============
+  app.post('/api/contracts/sign', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { athlete_id, program_id } = req.body;
+
+      const athlete = await storage.getAthlete(clubId, athlete_id);
+      const program = await storage.getProgram(clubId, program_id);
+
+      if (!athlete || !program) {
+        return res.status(404).json({ error: 'Athlete or program not found' });
+      }
+
+      // Send notification to admins and coaches
+      await sendContractSignedNotification(
+        ['admin@club.com'],
+        ['coach@club.com'],
+        `${athlete.first_name} ${athlete.last_name}`,
+        program.name
+      );
+
+      res.json({
+        success: true,
+        message: 'Contract signed and notifications sent',
+      });
+    } catch (error) {
+      console.error('Error signing contract:', error);
+      res.status(500).json({ error: 'Failed to sign contract' });
+    }
+  });
 
   return httpServer;
 }

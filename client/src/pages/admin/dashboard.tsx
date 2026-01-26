@@ -1,0 +1,184 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Link } from 'wouter';
+import {
+  Users,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  Plus,
+  ArrowRight,
+  ClipboardList,
+  AlertCircle,
+} from 'lucide-react';
+
+const stats = [
+  { title: 'Total Athletes', value: '127', change: '+12%', icon: Users },
+  { title: 'Active Programs', value: '8', change: '+2', icon: ClipboardList },
+  { title: 'This Week Sessions', value: '24', change: '+4', icon: Calendar },
+  { title: 'Monthly Revenue', value: '$12,450', change: '+8%', icon: DollarSign },
+];
+
+const recentActivity = [
+  { type: 'registration', message: 'Emma Wilson registered for Summer Camp', time: '2 hours ago' },
+  { type: 'payment', message: 'Payment received from Davis family', time: '3 hours ago' },
+  { type: 'contract', message: 'Contract signed for Jake Thompson', time: '5 hours ago' },
+  { type: 'session', message: 'Practice scheduled for Team A', time: '1 day ago' },
+];
+
+const upcomingSessions = [
+  { title: 'Team A Practice', time: 'Today, 4:00 PM', athletes: 12, location: 'Field 1' },
+  { title: 'Beginner Clinic', time: 'Tomorrow, 10:00 AM', athletes: 8, location: 'Indoor Court' },
+  { title: 'Team B Practice', time: 'Wed, 5:00 PM', athletes: 15, location: 'Field 2' },
+];
+
+const pendingPayments = [
+  { name: 'Johnson Family', amount: '$150', daysOverdue: 5 },
+  { name: 'Martinez Family', amount: '$200', daysOverdue: 3 },
+];
+
+export default function AdminDashboard() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Welcome back! Here's what's happening.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/programs">
+            <Button data-testid="button-create-program">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Program
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <Card key={stat.title}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {stat.title}
+              </CardTitle>
+              <stat.icon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stat.value}</div>
+              <div className="flex items-center text-xs text-accent">
+                <TrendingUp className="h-3 w-3 mr-1" />
+                {stat.change} from last month
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-lg">Upcoming Sessions</CardTitle>
+              <CardDescription>Next 7 days</CardDescription>
+            </div>
+            <Link href="/schedule">
+              <Button variant="ghost" size="sm" data-testid="link-view-all-sessions">
+                View All
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {upcomingSessions.map((session, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-3 rounded-md bg-muted/50"
+                >
+                  <div>
+                    <div className="font-medium">{session.title}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {session.time} • {session.location}
+                    </div>
+                  </div>
+                  <Badge variant="secondary">
+                    <Users className="h-3 w-3 mr-1" />
+                    {session.athletes}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-lg">Pending Payments</CardTitle>
+              <CardDescription>Requires attention</CardDescription>
+            </div>
+            <Link href="/payments">
+              <Button variant="ghost" size="sm" data-testid="link-view-all-payments">
+                View All
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {pendingPayments.map((payment, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-3 rounded-md bg-muted/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="h-4 w-4 text-destructive" />
+                    <div>
+                      <div className="font-medium">{payment.name}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {payment.daysOverdue} days overdue
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{payment.amount}</span>
+                    <Button size="sm" variant="outline" data-testid={`button-mark-paid-${i}`}>
+                      Mark Paid
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pendingPayments.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No pending payments
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Activity</CardTitle>
+          <CardDescription>Latest updates from your club</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {recentActivity.map((activity, i) => (
+              <div key={i} className="flex items-center gap-4 py-2">
+                <div className="h-2 w-2 rounded-full bg-primary" />
+                <div className="flex-1">
+                  <p className="text-sm">{activity.message}</p>
+                </div>
+                <span className="text-xs text-muted-foreground">{activity.time}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

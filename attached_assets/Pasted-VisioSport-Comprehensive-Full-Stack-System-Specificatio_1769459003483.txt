@@ -1,0 +1,37 @@
+VisioSport: Comprehensive Full-Stack System Specification
+Role: Principal Full-Stack Engineer & Fintech Architect.
+Goal: Build VisioSport, a multi-tenant sports SaaS. Every functional requirement below must be fully wired and production-ready upon initial render.
+1. External Integrations & Secrets
+The app MUST use the following Replit Secrets: SUPABASE_URL, SUPABASE_ANON_KEY, HELCIM_API_TOKEN, HELCIM_ACCOUNT_ID, RESEND_API_KEY. No mock data—wire actual API calls using these variables.
+2. Database & State-Machine Logic (Supabase)
+The database is already partially initialized. You must wire all frontend forms to these tables:
+•	Tenant Isolation: Every query must filter by club_id.
+•	The "Access" State: * is_locked: Boolean. True if current_date > (last_payment_date + 7 days).
+o	Wiring: If is_locked is true, the Check-In button on the Coach's view for that athlete must be disabled and styled with a red "!" icon.
+3. Detailed Workflow Wiring (The "Buttons")
+A. Club Admin: Program & Team Orchestration
+•	Action: "Create Program" form.
+•	Wiring: On submit, create program and an associated contract_template.
+•	Action: "Roster Management" Screen.
+•	Wiring: Display a list of athletes where program_id matches but team_id is null ("Unassigned Pool"). Provide a "Move to Team" dropdown that inserts a record into athlete_team_roster.
+B. The Scheduling Engine (Conflict-Aware)
+•	Conflict Logic: On "Save Session," the backend MUST execute a check.
+*
+o	The 15-Minute Buffer: If overlap is $> 0$ and $\le 15$ minutes, show a "Soft Warning" toast but allow save. If $> 15$ minutes, block save and highlight the conflicting session on the UI.
+•	Team-Targeting: When a "Team" is selected for a practice, the system must automatically populate the registrations table for all athletes in that team_id.
+C. Payment & Platform Debt (Helcim & Ledger)
+•	Convenience Fee Calculation: In the checkout component:
+o	Credit Card: Price * 1.03.
+o	ACH: Price + 0.
+•	Platform Ledger Logic: Every successful transaction (Clinic, Monthly, Drop-in) MUST trigger a background insert into platform_ledger.
+o	Pricing: Athlete Monthly: $1.00; Clinic: $1.00; Drop-in: $0.75.
+•	The "Cash" Button: On the Admin dashboard, "Mark as Paid - Cash" must prompt for "Number of Months," update the athlete's paid_through_date, and create the $1.00/mo debt entry in the ledger.
+D. Coach Emergency Tool (The Kill-Switch)
+•	Wiring: A red "Cancel Practice" button on the Session Detail view.
+•	Logic: Prompt for reason $\rightarrow$ Update session status to 'cancelled' $\rightarrow$ Fetch all parent emails from the roster $\rightarrow$ Trigger Resend.send() with the cancellation reason.
+4. UI/UX "First-Render" Requirements
+•	Parent Family View: Implement a persistent "Athlete Switcher" (Tab bar or Dropdown) that filters the global "Available Sessions" view based on the selected athlete's tags.
+•	Coach Attendance: A "Check-In" toggle for every athlete on a roster. Saving attendance must update the registrations table in real-time.
+•	Automated Notifications: Wire a Resend trigger to alert Admins and Coaches the second an athlete signs a contract.
+5. Deployment Instruction
+"Build the backend API routes for Helcim and Resend first. Then build the React Context providers for Auth and ActiveAthlete. Finally, build the Dashboards. Ensure all 'Register' buttons are gated by the paid_through_date logic immediately."

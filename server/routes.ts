@@ -804,6 +804,7 @@ export async function registerRoutes(
       };
 
       const recurrenceGroupId = randomUUID();
+      const startDate = data.recurrence.startDate ? parseISO(data.recurrence.startDate) : new Date();
       const repeatUntil = parseISO(data.recurrence.repeatUntil);
       const createdSessions: any[] = [];
       const conflicts: any[] = [];
@@ -812,15 +813,15 @@ export async function registerRoutes(
       for (const timeBlock of data.recurrence.timeBlocks) {
         for (const day of timeBlock.days) {
           const targetDayNumber = dayMapping[day];
-          let currentDate = startOfDay(new Date());
+          let currentDate = startOfDay(startDate);
           
-          // Find first occurrence of this day
+          // Find first occurrence of this day on or after startDate
           while (getDay(currentDate) !== targetDayNumber) {
             currentDate = addDays(currentDate, 1);
           }
           
-          // Generate sessions for each occurrence until repeatUntil
-          while (isBefore(currentDate, repeatUntil)) {
+          // Generate sessions for each occurrence until repeatUntil (inclusive)
+          while (isBefore(currentDate, repeatUntil) || format(currentDate, 'yyyy-MM-dd') === format(repeatUntil, 'yyyy-MM-dd')) {
             const [startHour, startMin] = timeBlock.startTime.split(':').map(Number);
             const [endHour, endMin] = timeBlock.endTime.split(':').map(Number);
             

@@ -212,6 +212,7 @@ export const timeBlockSchema = z.object({
 });
 
 export const recurrencePatternSchema = z.object({
+  startDate: z.string().optional(),
   timeBlocks: z.array(timeBlockSchema).min(1, "At least one time block required"),
   repeatUntil: z.string().min(1, "End date is required"),
 });

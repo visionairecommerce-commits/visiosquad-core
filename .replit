@@ -37,3 +37,11 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzeW16cWRtZ3V3cmZ1dWpwaWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0NTI1MTUsImV4cCI6MjA4NTAyODUxNX0.M-hpau2KzK0jOLAjyWh8KjxtQRy3rNiCmk-jrvLzdhM"
+HELCIM_ACCOUNT_ID = "2500997759"
+HELCIM_API_TOKEN = "aeVQYktgK*vY*CgBnSzmO9aKwT@Ribu2AC1Z9-M09huSc2SggX2l*ihb*XXIkbcf"
+RESEND_API_KEY = "re_8WL2mXCZ_AmExAnB6YpYKVHJ2w7tn17q1"

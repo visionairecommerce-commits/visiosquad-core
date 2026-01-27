@@ -70,6 +70,12 @@ const createFacilitySchema = z.object({
   description: z.string().optional(),
 });
 
+const createCourtSchema = z.object({
+  facility_id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+
 const createSessionSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
@@ -878,6 +884,62 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error deleting facility:', error);
       res.status(500).json({ error: 'Failed to delete facility' });
+    }
+  });
+
+  // ============ COURTS ============
+  app.get('/api/courts', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const facilityId = req.query.facility_id as string | undefined;
+      const courts = await storage.getCourts(clubId, facilityId);
+      res.json(courts);
+    } catch (error) {
+      console.error('Error fetching courts:', error);
+      res.status(500).json({ error: 'Failed to fetch courts' });
+    }
+  });
+
+  app.post('/api/courts', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createCourtSchema.parse(req.body);
+      const court = await storage.createCourt(clubId, data);
+      res.status(201).json(court);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error creating court:', error);
+        res.status(500).json({ error: 'Failed to create court' });
+      }
+    }
+  });
+
+  app.put('/api/courts/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createCourtSchema.partial().parse(req.body);
+      const court = await storage.updateCourt(clubId, req.params.id as string, data);
+      res.json(court);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error updating court:', error);
+        res.status(500).json({ error: 'Failed to update court' });
+      }
+    }
+  });
+
+  app.delete('/api/courts/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteCourt(clubId, req.params.id as string);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting court:', error);
+      res.status(500).json({ error: 'Failed to delete court' });
     }
   });
 

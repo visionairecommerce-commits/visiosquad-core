@@ -1140,6 +1140,17 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Payment required', is_locked: true });
       }
 
+      // Check contract status - athlete must have signed contract for this program/team
+      const rosterEntries = await storage.getAthleteRosterEntries(clubId, data.athlete_id);
+      const hasSignedContract = rosterEntries.some(entry => {
+        const matchesProgram = entry.program_id === session.program_id;
+        const matchesTeam = !session.team_id || entry.team_id === session.team_id;
+        return matchesProgram && matchesTeam && entry.contract_signed;
+      });
+      if (!hasSignedContract) {
+        return res.status(403).json({ error: 'Contract signature required', contract_required: true });
+      }
+
       // Process payment if session has a price
       if (session.price && session.price > 0 && data.payment_method) {
         const totalAmount = calculateTotalWithFee(session.price, data.payment_method);

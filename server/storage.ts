@@ -784,8 +784,9 @@ export class MemStorage implements IStorage {
 
   async getSessionsForAthlete(clubId: string, athleteId: string): Promise<Session[]> {
     const rosterEntries = await this.getAthleteRosterEntries(clubId, athleteId);
-    const athleteTeamIds = new Set(rosterEntries.map(r => r.team_id));
-    const athleteProgramIds = new Set(rosterEntries.map(r => r.program_id));
+    const signedRosterEntries = rosterEntries.filter(r => r.contract_signed);
+    const athleteTeamIds = new Set(signedRosterEntries.map(r => r.team_id));
+    const athleteProgramIds = new Set(signedRosterEntries.map(r => r.program_id));
 
     return Array.from(this.sessions.values()).filter(session => {
       if (session.club_id !== clubId || session.status === 'cancelled') return false;

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
 import { processPayment, calculateTotalWithFee } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
+import { supabaseAdmin } from "./lib/supabase";
 import { z } from "zod";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
 
@@ -205,18 +206,29 @@ export async function registerRoutes(
     try {
       const data = createClubSchema.parse(req.body);
       
-      // Check if email already exists
-      const existingUser = await storage.getUserByEmail(data.director_email);
-      if (existingUser) {
-        return res.status(400).json({ error: 'Email already registered' });
+      // Create the club first to get the club_id
+      const club = await storage.createClubOnly(data.name);
+      
+      // Create user via Supabase Auth
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: data.director_email,
+        password: data.director_password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: data.director_name,
+          club_id: club.id,
+          role: 'admin'
+        }
+      });
+      
+      if (authError) {
+        // Rollback club creation
+        await storage.deleteClub(club.id);
+        return res.status(400).json({ error: authError.message });
       }
       
-      const { club, user } = await storage.createClub(
-        data.name,
-        data.director_email,
-        data.director_name,
-        data.director_password
-      );
+      // Get the profile created by the trigger
+      const user = await storage.getUserById(authData.user.id);
       
       res.status(201).json({ club, user });
     } catch (error) {
@@ -275,19 +287,24 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Club setup is not complete yet' });
       }
       
-      // Check if email already exists
-      const existingUser = await storage.getUserByEmail(data.email);
-      if (existingUser) {
-        return res.status(400).json({ error: 'Email already registered' });
+      // Create user via Supabase Auth
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: data.email,
+        password: data.password,
+        email_confirm: true,
+        user_metadata: {
+          full_name: data.full_name,
+          club_id: club.id,
+          role: data.role
+        }
+      });
+      
+      if (authError) {
+        return res.status(400).json({ error: authError.message });
       }
       
-      const user = await storage.createUser(
-        club.id,
-        data.email,
-        data.full_name,
-        data.password,
-        data.role
-      );
+      // Get the profile created by the trigger
+      const user = await storage.getUserById(authData.user.id);
       
       res.status(201).json({ 
         user,
@@ -312,10 +329,21 @@ export async function registerRoutes(
   app.post('/api/auth/login', async (req, res) => {
     try {
       const data = loginSchema.parse(req.body);
-      const user = await storage.validateUserPassword(data.email, data.password);
       
-      if (!user) {
+      // Authenticate via Supabase Auth
+      const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+        email: data.email,
+        password: data.password
+      });
+      
+      if (authError || !authData.user) {
         return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      
+      // Get user profile from database
+      const user = await storage.getUserById(authData.user.id);
+      if (!user) {
+        return res.status(401).json({ error: 'User profile not found' });
       }
       
       const club = await storage.getClub(user.club_id);
@@ -329,7 +357,8 @@ export async function registerRoutes(
           onboarding_complete: club.onboarding_complete,
           waiver_content: club.waiver_content,
           contract_pdf_url: club.contract_pdf_url
-        } : null
+        } : null,
+        session: authData.session
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

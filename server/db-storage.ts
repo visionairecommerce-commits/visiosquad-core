@@ -99,11 +99,28 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(club);
   }
 
+  async createClubOnly(name: string): Promise<Club> {
+    const [club] = await db.insert(clubsTable).values({
+      name,
+      join_code: this.generateClubCode(),
+      onboarding_complete: false,
+    }).returning();
+    return this.mapClub(club);
+  }
+
+  async deleteClub(clubId: string): Promise<void> {
+    await db.delete(clubsTable).where(eq(clubsTable.id, clubId));
+  }
+
   // User operations
   async getUser(userId: string): Promise<User | undefined> {
     const [user] = await db.select().from(profilesTable).where(eq(profilesTable.id, userId));
     if (!user) return undefined;
     return this.mapUser(user);
+  }
+
+  async getUserById(userId: string): Promise<User | undefined> {
+    return this.getUser(userId);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {

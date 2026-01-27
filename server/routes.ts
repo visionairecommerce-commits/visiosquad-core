@@ -763,6 +763,34 @@ export async function registerRoutes(
     }
   });
 
+  // Grant test access (extend paid_through_date for testing)
+  app.post('/api/athletes/:athleteId/grant-access', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      const { days = 30 } = req.body;
+      
+      // Set paid_through_date to specified days from now
+      const newPaidThrough = new Date();
+      newPaidThrough.setDate(newPaidThrough.getDate() + days);
+      
+      await storage.updateAthletePaidThrough(
+        clubId,
+        athleteId,
+        newPaidThrough.toISOString()
+      );
+      
+      res.json({ 
+        success: true, 
+        paid_through_date: newPaidThrough.toISOString(),
+        message: `Access granted for ${days} days`
+      });
+    } catch (error) {
+      console.error('Error granting test access:', error);
+      res.status(500).json({ error: 'Failed to grant access' });
+    }
+  });
+
   // ============ ROSTER ============
   app.get('/api/teams/:teamId/roster', async (req, res) => {
     try {

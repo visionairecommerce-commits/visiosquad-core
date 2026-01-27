@@ -35,7 +35,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users } from 'lucide-react';
+import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users, Unlock } from 'lucide-react';
 import { isAthleteAccessLocked } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -104,6 +104,19 @@ export default function RosterPage() {
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to remove athlete.', variant: 'destructive' });
+    },
+  });
+
+  const grantAccessMutation = useMutation({
+    mutationFn: async (athleteId: string) => {
+      return apiRequest('POST', `/api/athletes/${athleteId}/grant-access`, { days: 30 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+      toast({ title: 'Access Granted', description: 'Athlete now has 30 days of access for testing.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to grant access.', variant: 'destructive' });
     },
   });
 
@@ -395,6 +408,19 @@ export default function RosterPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
+                          {isLocked && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => grantAccessMutation.mutate(entry.athlete_id)}
+                              disabled={grantAccessMutation.isPending}
+                              className="gap-1 text-xs"
+                              data-testid={`button-grant-access-${entry.id}`}
+                            >
+                              <Unlock className="h-3 w-3" />
+                              Grant Access
+                            </Button>
+                          )}
                           <div className="flex items-center gap-2">
                             {entry.contract_signed ? (
                               <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20">

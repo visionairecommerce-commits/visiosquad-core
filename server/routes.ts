@@ -709,8 +709,8 @@ export async function registerRoutes(
   });
 
   // ============ ATHLETE CONTRACTS ============
-  // Get athlete contracts
-  app.get('/api/athlete-contracts', async (req, res) => {
+  // Get athlete contracts - admin only for listing all, parents can only see their own athletes
+  app.get('/api/athlete-contracts', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const athleteId = req.query.athlete_id as string | undefined;
@@ -722,11 +722,20 @@ export async function registerRoutes(
     }
   });
 
-  // Assign a contract to an athlete
+  // Assign a contract to an athlete - automatically cancels existing active contracts
   app.post('/api/athlete-contracts', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const data = insertAthleteContractSchema.parse(req.body);
+      
+      // First, cancel any existing active contracts for this athlete
+      const existingContracts = await storage.getAthleteContracts(clubId, data.athlete_id);
+      const activeContracts = existingContracts.filter(c => c.status === 'active');
+      for (const activeContract of activeContracts) {
+        await storage.updateAthleteContractStatus(clubId, activeContract.id, 'cancelled');
+      }
+      
+      // Create the new contract
       const contract = await storage.createAthleteContract(clubId, data);
       res.status(201).json(contract);
     } catch (error) {
@@ -1432,6 +1441,17 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching registrations:', error);
       res.status(500).json({ error: 'Failed to fetch registrations' });
+    }
+  });
+
+  app.get('/api/athletes/:athleteId/registrations', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const registrations = await storage.getAthleteRegistrations(clubId, req.params.athleteId);
+      res.json(registrations);
+    } catch (error) {
+      console.error('Error fetching athlete registrations:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete registrations' });
     }
   });
 

@@ -557,6 +557,20 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  async getAthleteRegistrations(clubId: string, athleteId: string): Promise<(Registration & { session: Session })[]> {
+    const registrations = await db.select().from(registrationsTable)
+      .where(and(eq(registrationsTable.club_id, clubId), eq(registrationsTable.athlete_id, athleteId)));
+    
+    const result: (Registration & { session: Session })[] = [];
+    for (const reg of registrations) {
+      const session = await this.getSession(clubId, reg.session_id);
+      if (session) {
+        result.push({ ...this.mapRegistration(reg), session });
+      }
+    }
+    return result;
+  }
+
   async createRegistration(clubId: string, sessionId: string, athleteId: string): Promise<Registration> {
     const [reg] = await db.insert(registrationsTable).values({
       club_id: clubId,

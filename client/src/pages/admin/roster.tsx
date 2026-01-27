@@ -40,8 +40,9 @@ import { isAthleteAccessLocked } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import type { Athlete, Team, Program, AthleteTeamRoster } from '@shared/schema';
+import type { Athlete, Team, Program, AthleteTeamRoster, ProgramContract, AthleteContract } from '@shared/schema';
 import { cn } from '@/lib/utils';
+import { DollarSign } from 'lucide-react';
 
 interface EnrichedRosterEntry extends AthleteTeamRoster {
   athlete_name: string;
@@ -64,6 +65,8 @@ export default function RosterPage() {
   const { data: teams = [] } = useQuery<Team[]>({ queryKey: ['/api/teams'] });
   const { data: programs = [] } = useQuery<Program[]>({ queryKey: ['/api/programs'] });
   const { data: roster = [] } = useQuery<EnrichedRosterEntry[]>({ queryKey: ['/api/roster'] });
+  const { data: programContracts = [] } = useQuery<ProgramContract[]>({ queryKey: ['/api/program-contracts'] });
+  const { data: athleteContracts = [] } = useQuery<AthleteContract[]>({ queryKey: ['/api/athlete-contracts'] });
 
   const assignMutation = useMutation({
     mutationFn: async (data: { athlete_id: string; team_id: string; program_id: string }) => {
@@ -119,6 +122,36 @@ export default function RosterPage() {
       toast({ title: 'Error', description: 'Failed to grant access.', variant: 'destructive' });
     },
   });
+
+  const assignContractMutation = useMutation({
+    mutationFn: async ({ athleteId, programContractId }: { athleteId: string; programContractId: string }) => {
+      const today = new Date().toISOString().split('T')[0];
+      return apiRequest('POST', '/api/athlete-contracts', {
+        athlete_id: athleteId,
+        program_contract_id: programContractId,
+        start_date: today,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athlete-contracts'] });
+      toast({ title: 'Contract Assigned', description: 'Pricing contract has been assigned to the athlete.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to assign contract.', variant: 'destructive' });
+    },
+  });
+
+  const athleteActiveContracts = useMemo(() => {
+    const map = new Map<string, AthleteContract>();
+    athleteContracts
+      .filter(c => c.status === 'active')
+      .forEach(c => map.set(c.athlete_id, c));
+    return map;
+  }, [athleteContracts]);
+
+  const getContractsForProgram = (programId: string) => {
+    return programContracts.filter(c => c.program_id === programId);
+  };
 
   const athleteRosterMap = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -407,7 +440,7 @@ export default function RosterPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
                           {isLocked && (
                             <Button
                               variant="outline"
@@ -421,6 +454,43 @@ export default function RosterPage() {
                               Grant Access
                             </Button>
                           )}
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                            <Select
+                              value={athleteActiveContracts.get(entry.athlete_id)?.program_contract_id || ''}
+                              onValueChange={(contractId) => {
+                                if (contractId) {
+                                  assignContractMutation.mutate({
+                                    athleteId: entry.athlete_id,
+                                    programContractId: contractId,
+                                  });
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-[160px] h-8 text-xs" data-testid={`select-pricing-${entry.id}`}>
+                                <SelectValue placeholder="No contract">
+                                  {(() => {
+                                    const activeContract = athleteActiveContracts.get(entry.athlete_id);
+                                    if (!activeContract) return 'No contract';
+                                    const pc = programContracts.find(c => c.id === activeContract.program_contract_id);
+                                    return pc ? `${pc.name} - $${pc.monthly_price}/mo` : 'No contract';
+                                  })()}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getContractsForProgram(entry.program_id).map(pc => (
+                                  <SelectItem key={pc.id} value={pc.id}>
+                                    {pc.name} - ${pc.monthly_price}/mo
+                                  </SelectItem>
+                                ))}
+                                {getContractsForProgram(entry.program_id).length === 0 && (
+                                  <div className="text-xs text-muted-foreground p-2">
+                                    No contracts for this program
+                                  </div>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
                           <div className="flex items-center gap-2">
                             {entry.contract_signed ? (
                               <Badge className="gap-1 bg-green-500/10 text-green-600 border-green-500/20">

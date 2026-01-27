@@ -274,6 +274,7 @@ export interface IStorage {
 
   // Registrations
   getSessionRegistrations(clubId: string, sessionId: string): Promise<(Registration & { athlete: Athlete })[]>;
+  getAthleteRegistrations(clubId: string, athleteId: string): Promise<(Registration & { session: Session })[]>;
   createRegistration(clubId: string, sessionId: string, athleteId: string): Promise<Registration>;
   bulkCreateRegistrations(clubId: string, sessionId: string, athleteIds: string[]): Promise<Registration[]>;
   updateCheckIn(clubId: string, registrationId: string, checkedIn: boolean): Promise<void>;
@@ -961,6 +962,16 @@ export class MemStorage implements IStorage {
       ...r,
       athlete: this.athletes.get(r.athlete_id)!,
     })).filter(r => r.athlete);
+  }
+
+  async getAthleteRegistrations(clubId: string, athleteId: string): Promise<(Registration & { session: Session })[]> {
+    const registrations = Array.from(this.registrations.values()).filter(
+      r => r.club_id === clubId && r.athlete_id === athleteId
+    );
+    return registrations.map(r => ({
+      ...r,
+      session: this.sessions.get(r.session_id)!,
+    })).filter(r => r.session);
   }
 
   async createRegistration(clubId: string, sessionId: string, athleteId: string): Promise<Registration> {

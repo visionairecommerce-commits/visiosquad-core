@@ -6,9 +6,12 @@ export interface Club {
   id: string;
   name: string;
   logo_url?: string;
+  address?: string;
   join_code: string;
   contract_pdf_url?: string;
   waiver_content?: string;
+  waiver_version?: number;
+  contract_version?: number;
   onboarding_complete: boolean;
   created_at: string;
 }
@@ -28,6 +31,7 @@ export interface ClubSignature {
   club_id: string;
   user_id: string;
   document_type: 'contract' | 'waiver';
+  document_version: number;
   signed_name: string;
   signed_at: string;
   ip_address?: string;
@@ -154,8 +158,10 @@ export interface IStorage {
   createClub(name: string, directorEmail: string, directorName: string, directorPassword: string): Promise<{ club: Club; user: User }>;
   getClubByJoinCode(joinCode: string): Promise<Club | undefined>;
   getClub(clubId: string): Promise<Club | undefined>;
+  updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club>;
   updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
   completeOnboarding(clubId: string): Promise<Club>;
+  regenerateClubCode(clubId: string): Promise<Club>;
   
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -163,8 +169,9 @@ export interface IStorage {
   updateUserSignedDocuments(userId: string): Promise<void>;
   
   // Signatures
-  createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', signedName: string, ipAddress?: string): Promise<ClubSignature>;
+  createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress?: string): Promise<ClubSignature>;
   getUserSignatures(clubId: string, userId: string): Promise<ClubSignature[]>;
+  hasSignedCurrentDocuments(clubId: string, userId: string): Promise<boolean>;
   
   // Auth validation
   validateUserPassword(email: string, password: string): Promise<User | null>;
@@ -185,6 +192,7 @@ export interface IStorage {
   getFacilities(clubId: string): Promise<Facility[]>;
   getFacility(clubId: string, facilityId: string): Promise<Facility | undefined>;
   createFacility(clubId: string, facility: Omit<Facility, 'id' | 'club_id' | 'created_at'>): Promise<Facility>;
+  updateFacility(clubId: string, facilityId: string, data: { name?: string; description?: string }): Promise<Facility>;
   deleteFacility(clubId: string, facilityId: string): Promise<void>;
 
   // Athletes
@@ -372,11 +380,33 @@ export class MemStorage implements IStorage {
     return this.clubs.get(clubId);
   }
 
+  async updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    if (settings.name !== undefined) club.name = settings.name;
+    if (settings.address !== undefined) club.address = settings.address;
+    if (settings.logo_url !== undefined) club.logo_url = settings.logo_url;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
   async updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club> {
     const club = this.clubs.get(clubId);
     if (!club) throw new Error('Club not found');
     club.contract_pdf_url = contractPdfUrl;
     club.waiver_content = waiverContent;
+    club.waiver_version = (club.waiver_version || 0) + 1;
+    if (contractPdfUrl) {
+      club.contract_version = (club.contract_version || 0) + 1;
+    }
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async regenerateClubCode(clubId: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.join_code = this.generateClubCode();
     this.clubs.set(clubId, club);
     return club;
   }
@@ -423,12 +453,13 @@ export class MemStorage implements IStorage {
   }
 
   // Signatures
-  async createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', signedName: string, ipAddress?: string): Promise<ClubSignature> {
+  async createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress?: string): Promise<ClubSignature> {
     const signature: ClubSignature = {
       id: randomUUID(),
       club_id: clubId,
       user_id: userId,
       document_type: documentType,
+      document_version: documentVersion,
       signed_name: signedName,
       signed_at: new Date().toISOString(),
       ip_address: ipAddress,
@@ -442,6 +473,24 @@ export class MemStorage implements IStorage {
     return Array.from(this.signatures.values()).filter(
       s => s.club_id === clubId && s.user_id === userId
     );
+  }
+
+  async hasSignedCurrentDocuments(clubId: string, userId: string): Promise<boolean> {
+    const club = await this.getClub(clubId);
+    if (!club) return false;
+    
+    const signatures = await this.getUserSignatures(clubId, userId);
+    const waiverVersion = club.waiver_version || 1;
+    const contractVersion = club.contract_version || 1;
+    
+    const hasSignedWaiver = signatures.some(
+      s => s.document_type === 'waiver' && s.document_version >= waiverVersion
+    );
+    const hasSignedContract = !club.contract_pdf_url || signatures.some(
+      s => s.document_type === 'contract' && s.document_version >= contractVersion
+    );
+    
+    return hasSignedWaiver && hasSignedContract;
   }
 
   // Validate user password (for login)
@@ -529,6 +578,17 @@ export class MemStorage implements IStorage {
     };
     this.facilities.set(newFacility.id, newFacility);
     return newFacility;
+  }
+
+  async updateFacility(clubId: string, facilityId: string, data: { name?: string; description?: string }): Promise<Facility> {
+    const facility = this.facilities.get(facilityId);
+    if (!facility || facility.club_id !== clubId) {
+      throw new Error('Facility not found');
+    }
+    if (data.name !== undefined) facility.name = data.name;
+    if (data.description !== undefined) facility.description = data.description;
+    this.facilities.set(facilityId, facility);
+    return facility;
   }
 
   async deleteFacility(clubId: string, facilityId: string): Promise<void> {
@@ -641,7 +701,8 @@ export class MemStorage implements IStorage {
     const newStart = new Date(startTime).getTime();
     const newEnd = new Date(endTime).getTime();
 
-    for (const session of this.sessions.values()) {
+    const sessions = Array.from(this.sessions.values());
+    for (const session of sessions) {
       if (session.club_id !== clubId || session.status === 'cancelled' || session.id === excludeId) {
         continue;
       }

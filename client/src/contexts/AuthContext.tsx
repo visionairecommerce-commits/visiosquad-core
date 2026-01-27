@@ -15,9 +15,13 @@ interface User {
 interface Club {
   id: string;
   name: string;
+  logo_url?: string;
+  address?: string;
   join_code: string;
   contract_pdf_url?: string;
   waiver_content?: string;
+  waiver_version?: number;
+  contract_version?: number;
   onboarding_complete: boolean;
   created_at: string;
 }

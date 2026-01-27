@@ -157,6 +157,17 @@ const updateDocumentsSchema = z.object({
   waiver_content: z.string().min(10),
 });
 
+const updateClubSettingsSchema = z.object({
+  name: z.string().min(2).optional(),
+  address: z.string().optional(),
+  logo_url: z.string().optional(),
+});
+
+const updateFacilitySchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+});
+
 const validateCodeSchema = z.object({
   join_code: z.string().length(6),
 });
@@ -337,27 +348,36 @@ export async function registerRoutes(
       
       const ipAddress = req.ip || req.socket.remoteAddress;
       
+      // Get club to determine document version
+      const club = await storage.getClub(clubId);
+      const documentVersion = data.document_type === 'waiver' 
+        ? (club?.waiver_version || 1) 
+        : (club?.contract_version || 1);
+      
       await storage.createSignature(
         clubId,
         userId,
         data.document_type,
+        documentVersion,
         data.signed_name,
         ipAddress
       );
       
-      // Check if both documents are signed
+      // Check if both documents are signed using version-aware check
+      const hasSignedAll = await storage.hasSignedCurrentDocuments(clubId, userId);
+      
+      // If all required documents are signed
+      if (hasSignedAll) {
+        await storage.updateUserSignedDocuments(userId);
+      }
+      
       const signatures = await storage.getUserSignatures(clubId, userId);
       const hasWaiverSig = signatures.some(s => s.document_type === 'waiver');
       const hasContractSig = signatures.some(s => s.document_type === 'contract');
       
-      // If club has waiver and it's signed (contract is optional)
-      if (hasWaiverSig) {
-        await storage.updateUserSignedDocuments(userId);
-      }
-      
       res.json({ 
         success: true,
-        all_signed: hasWaiverSig && hasContractSig,
+        all_signed: hasSignedAll,
         signatures: { waiver: hasWaiverSig, contract: hasContractSig }
       });
     } catch (error) {
@@ -413,6 +433,43 @@ export async function registerRoutes(
         console.error('Error updating documents:', error);
         res.status(500).json({ error: 'Failed to update documents' });
       }
+    }
+  });
+
+  // Update club settings (Director only)
+  app.put('/api/clubs/:clubId/settings', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const data = updateClubSettingsSchema.parse(req.body);
+      const club = await storage.updateClubSettings(clubId, data);
+      res.json(club);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error updating club settings:', error);
+        res.status(500).json({ error: 'Failed to update settings' });
+      }
+    }
+  });
+
+  // Regenerate club join code (Director only)
+  app.post('/api/clubs/:clubId/regenerate-code', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const club = await storage.regenerateClubCode(clubId);
+      res.json(club);
+    } catch (error) {
+      console.error('Error regenerating club code:', error);
+      res.status(500).json({ error: 'Failed to regenerate club code' });
     }
   });
 
@@ -630,6 +687,22 @@ export async function registerRoutes(
       } else {
         console.error('Error creating facility:', error);
         res.status(500).json({ error: 'Failed to create facility' });
+      }
+    }
+  });
+
+  app.put('/api/facilities/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = updateFacilitySchema.parse(req.body);
+      const facility = await storage.updateFacility(clubId, req.params.id, data);
+      res.json(facility);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error updating facility:', error);
+        res.status(500).json({ error: 'Failed to update facility' });
       }
     }
   });

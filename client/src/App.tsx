@@ -26,6 +26,7 @@ import ParentDashboard from "@/pages/parent/dashboard";
 import AthletesPage from "@/pages/parent/athletes";
 import ParentSchedulePage from "@/pages/parent/schedule";
 import ParentPaymentsPage from "@/pages/parent/payments";
+import SettingsPage from "@/pages/admin/settings";
 
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
@@ -53,12 +54,7 @@ function AdminRoutes() {
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />
       <Route path="/payments" component={AdminPaymentsPage} />
-      <Route path="/settings">
-        <div className="space-y-6">
-          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground">Club settings and configuration</p>
-        </div>
-      </Route>
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -8,10 +8,22 @@ export interface Club {
   id: string;
   name: string;
   logo_url?: string;
+  address?: string;
   join_code: string;
   contract_pdf_url?: string;
   waiver_content?: string;
+  waiver_version?: number;
+  contract_version?: number;
   onboarding_complete: boolean;
+  created_at: string;
+}
+
+export interface ClubDocument {
+  id: string;
+  club_id: string;
+  document_type: 'waiver' | 'contract';
+  file_url: string;
+  version: number;
   created_at: string;
 }
 
@@ -30,6 +42,7 @@ export interface ClubSignature {
   club_id: string;
   user_id: string;
   document_type: 'contract' | 'waiver';
+  document_version: number;
   signed_name: string;
   signed_at: string;
   ip_address?: string;
@@ -270,6 +283,19 @@ export const updateClubDocumentsSchema = z.object({
   waiver_content: z.string().min(10, "Waiver content is required"),
 });
 
+// Club settings schema
+export const updateClubSettingsSchema = z.object({
+  name: z.string().min(2, "Club name is required").optional(),
+  address: z.string().optional(),
+  logo_url: z.string().optional(),
+});
+
+// Update facility schema (for CRUD)
+export const updateFacilitySchema = z.object({
+  name: z.string().min(1, "Facility name is required").optional(),
+  description: z.string().optional(),
+});
+
 // Type exports
 export type InsertProgram = z.infer<typeof insertProgramSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
@@ -286,6 +312,8 @@ export type RegisterUser = z.infer<typeof registerUserSchema>;
 export type SignDocument = z.infer<typeof signDocumentSchema>;
 export type Login = z.infer<typeof loginSchema>;
 export type UpdateClubDocuments = z.infer<typeof updateClubDocumentsSchema>;
+export type UpdateClubSettings = z.infer<typeof updateClubSettingsSchema>;
+export type UpdateFacility = z.infer<typeof updateFacilitySchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

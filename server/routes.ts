@@ -546,8 +546,13 @@ export async function registerRoutes(
   // ============ TEAMS ============
   app.get('/api/teams', async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
-      const teams = await storage.getTeams(clubId);
+      const { clubId, role, userId } = getAuthContext(req);
+      let teams;
+      if (role === 'coach') {
+        teams = await storage.getTeamsByCoach(clubId, userId);
+      } else {
+        teams = await storage.getTeams(clubId);
+      }
       res.json(teams);
     } catch (error) {
       console.error('Error fetching teams:', error);
@@ -744,8 +749,13 @@ export async function registerRoutes(
   // ============ SESSIONS ============
   app.get('/api/sessions', async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
-      const sessions = await storage.getSessions(clubId);
+      const { clubId, role, userId } = getAuthContext(req);
+      let sessions = await storage.getSessions(clubId);
+      if (role === 'coach') {
+        const coachTeams = await storage.getTeamsByCoach(clubId, userId);
+        const coachTeamIds = coachTeams.map(t => t.id);
+        sessions = sessions.filter(s => s.team_id && coachTeamIds.includes(s.team_id));
+      }
       res.json(sessions);
     } catch (error) {
       console.error('Error fetching sessions:', error);

@@ -2,43 +2,71 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'wouter';
-import { Calendar, Users, Clock, ArrowRight, CheckCircle } from 'lucide-react';
-import { format, addDays } from 'date-fns';
+import { Calendar, Users, ArrowRight, CheckCircle, Clock } from 'lucide-react';
+import { format, isToday, isFuture, parseISO } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 
-const today = new Date();
+interface Session {
+  id: string;
+  title: string;
+  session_type: string;
+  program_id: string;
+  team_id: string | null;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+  status: string;
+}
 
-const todaysSessions = [
-  {
-    id: '1',
-    title: 'Team Alpha Practice',
-    time: '4:00 PM - 5:30 PM',
-    location: 'Field 1',
-    athletes_count: 12,
-    checked_in: 8,
-  },
-  {
-    id: '2',
-    title: 'Beginner Clinic',
-    time: '6:00 PM - 7:30 PM',
-    location: 'Indoor Court',
-    athletes_count: 10,
-    checked_in: 0,
-  },
-];
-
-const upcomingSessions = [
-  { id: '3', title: 'Team Beta Practice', date: format(addDays(today, 1), 'EEE, MMM d'), time: '4:00 PM', athletes: 14 },
-  { id: '4', title: 'Elite Training', date: format(addDays(today, 2), 'EEE, MMM d'), time: '5:00 PM', athletes: 10 },
-  { id: '5', title: 'Skills Workshop', date: format(addDays(today, 3), 'EEE, MMM d'), time: '3:00 PM', athletes: 8 },
-];
-
-const stats = [
-  { title: 'Sessions This Week', value: '8', icon: Calendar },
-  { title: 'Total Athletes', value: '47', icon: Users },
-  { title: 'Avg Attendance', value: '92%', icon: CheckCircle },
-];
+interface Team {
+  id: string;
+  name: string;
+  program_id: string;
+  coach_id: string | null;
+}
 
 export default function CoachDashboard() {
+  const { user } = useAuth();
+  const today = new Date();
+
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<Session[]>({
+    queryKey: ['/api/sessions'],
+  });
+
+  const { data: teams = [], isLoading: teamsLoading } = useQuery<Team[]>({
+    queryKey: ['/api/teams'],
+  });
+
+  const todaysSessions = sessions.filter(s => {
+    const sessionDate = parseISO(s.start_time);
+    return isToday(sessionDate) && s.status !== 'cancelled';
+  });
+
+  const upcomingSessions = sessions.filter(s => {
+    const sessionDate = parseISO(s.start_time);
+    return isFuture(sessionDate) && !isToday(sessionDate) && s.status !== 'cancelled';
+  }).slice(0, 5);
+
+  const stats = [
+    { title: 'Assigned Teams', value: String(teams.length), icon: Users },
+    { title: 'Today\'s Sessions', value: String(todaysSessions.length), icon: Calendar },
+    { title: 'Upcoming Sessions', value: String(upcomingSessions.length), icon: Clock },
+  ];
+
+  if (sessionsLoading || teamsLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Coach Dashboard</h1>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -81,16 +109,16 @@ export default function CoachDashboard() {
               <div className="space-y-3">
                 {todaysSessions.map((session) => (
                   <div key={session.id} className="p-4 rounded-md bg-muted/50 space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <div>
                         <div className="font-medium">{session.title}</div>
                         <div className="text-sm text-muted-foreground">
-                          {session.time} • {session.location}
+                          {format(parseISO(session.start_time), 'h:mm a')} - {format(parseISO(session.end_time), 'h:mm a')}
+                          {session.location && ` • ${session.location}`}
                         </div>
                       </div>
-                      <Badge variant="secondary" className="gap-1">
-                        <CheckCircle className="h-3 w-3" />
-                        {session.checked_in}/{session.athletes_count}
+                      <Badge variant="secondary" className="capitalize">
+                        {session.session_type.replace('_', ' ')}
                       </Badge>
                     </div>
                     <Link href={`/sessions/${session.id}`}>
@@ -107,35 +135,57 @@ export default function CoachDashboard() {
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-lg">Upcoming Sessions</CardTitle>
-              <CardDescription>Next 7 days</CardDescription>
-            </div>
-            <Link href="/sessions">
-              <Button variant="ghost" size="sm" data-testid="link-view-all-sessions">
-                View All
-                <ArrowRight className="h-4 w-4 ml-1" />
-              </Button>
-            </Link>
+          <CardHeader>
+            <CardTitle className="text-lg">Your Teams</CardTitle>
+            <CardDescription>Teams assigned to you</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {upcomingSessions.map((session) => (
-                <div key={session.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                  <div>
-                    <div className="font-medium">{session.title}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {session.date} at {session.time}
-                    </div>
+            {teams.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No teams assigned yet. Contact your club director to be assigned to teams.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {teams.map((team) => (
+                  <div key={team.id} className="p-3 rounded-md border">
+                    <div className="font-medium">{team.name}</div>
                   </div>
-                  <Badge variant="secondary" className="gap-1">
-                    <Users className="h-3 w-3" />
-                    {session.athletes}
-                  </Badge>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">Upcoming Sessions</CardTitle>
+            <CardDescription>Your next scheduled sessions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {upcomingSessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No upcoming sessions scheduled
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {upcomingSessions.map((session) => (
+                  <div key={session.id} className="flex items-center justify-between p-3 rounded-md border">
+                    <div>
+                      <div className="font-medium">{session.title}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {format(parseISO(session.start_time), 'EEE, MMM d')} at {format(parseISO(session.start_time), 'h:mm a')}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="capitalize">
+                      {session.session_type.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

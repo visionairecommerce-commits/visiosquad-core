@@ -817,6 +817,30 @@ export default function SchedulePage() {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={singleForm.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Price (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00 (leave empty for free)"
+                              {...field}
+                              value={field.value ?? ''}
+                              data-testid="input-session-price"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Leave empty or set to 0 for free sessions
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={handleDialogClose}>
                         Cancel
@@ -1113,6 +1137,31 @@ export default function SchedulePage() {
                           </FormControl>
                           <FormDescription>
                             Sessions will be created for each selected day until this date
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={recurringForm.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Price (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00 (leave empty for free)"
+                              {...field}
+                              value={field.value ?? ''}
+                              data-testid="input-recurring-price"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Leave empty or set to 0 for free sessions
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

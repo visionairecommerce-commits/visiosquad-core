@@ -87,8 +87,8 @@ const createSessionSchema = z.object({
   start_time: z.string().min(1),
   end_time: z.string().min(1),
   location: z.string().optional(),
+  price: z.coerce.number().optional(),
   capacity: z.number().optional(),
-  price: z.number().optional(),
   forceCreate: z.boolean().optional(),
 });
 

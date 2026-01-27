@@ -70,6 +70,13 @@ interface Facility {
   location: string | null;
 }
 
+interface Court {
+  id: string;
+  facility_id: string;
+  name: string;
+  description: string | null;
+}
+
 const singleSessionSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
@@ -77,6 +84,7 @@ const singleSessionSchema = z.object({
   program_id: z.string().min(1, 'Program is required'),
   team_id: z.string().optional(),
   facility_id: z.string().optional(),
+  court_id: z.string().optional(),
   start_time: z.string().min(1, 'Start time is required'),
   end_time: z.string().min(1, 'End time is required'),
   location: z.string().optional(),
@@ -98,6 +106,7 @@ const recurringSessionSchema = z.object({
   program_id: z.string().min(1, 'Program is required'),
   team_id: z.string().optional(),
   facility_id: z.string().optional(),
+  court_id: z.string().optional(),
   location: z.string().optional(),
   capacity: z.coerce.number().optional(),
   price: z.coerce.number().optional(),
@@ -148,6 +157,10 @@ export default function SchedulePage() {
     queryKey: ['/api/facilities'],
   });
 
+  const { data: courts = [] } = useQuery<Court[]>({
+    queryKey: ['/api/courts'],
+  });
+
   const singleForm = useForm<SingleSessionForm>({
     resolver: zodResolver(singleSessionSchema),
     defaultValues: {
@@ -157,6 +170,7 @@ export default function SchedulePage() {
       program_id: '',
       team_id: '',
       facility_id: '',
+      court_id: '',
       start_time: '',
       end_time: '',
       location: '',
@@ -173,6 +187,7 @@ export default function SchedulePage() {
       program_id: '',
       team_id: '',
       facility_id: '',
+      court_id: '',
       location: '',
       recurrence: {
         startDate: format(new Date(), 'yyyy-MM-dd'),
@@ -543,6 +558,37 @@ export default function SchedulePage() {
                           </FormItem>
                         )}
                       />
+                      {singleForm.watch('facility_id') && (
+                        <FormField
+                          control={singleForm.control}
+                          name="court_id"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Court/Field</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-session-court">
+                                    <SelectValue placeholder="Select court/field (optional)" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {courts
+                                    .filter((court) => court.facility_id === singleForm.watch('facility_id'))
+                                    .map((court) => (
+                                      <SelectItem key={court.id} value={court.id}>
+                                        {court.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Specific court or field within the facility
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
@@ -713,6 +759,37 @@ export default function SchedulePage() {
                           </FormItem>
                         )}
                       />
+                      {recurringForm.watch('facility_id') && (
+                        <FormField
+                          control={recurringForm.control}
+                          name="court_id"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Court/Field</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-recurring-court">
+                                    <SelectValue placeholder="Select court/field (optional)" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {courts
+                                    .filter((court) => court.facility_id === recurringForm.watch('facility_id'))
+                                    .map((court) => (
+                                      <SelectItem key={court.id} value={court.id}>
+                                        {court.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                Specific court or field within the facility
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
                     </div>
 
                     <FormField

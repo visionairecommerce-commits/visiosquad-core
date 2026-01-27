@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ export default function ParentDashboard() {
   const { activeAthlete, setActiveAthlete, setAthletes } = useAthlete();
   const { toast } = useToast();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [registeringSessionId, setRegisteringSessionId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -81,6 +82,39 @@ export default function ParentDashboard() {
     },
   });
 
+  const registerMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      if (!activeAthlete) throw new Error('No athlete selected');
+      setRegisteringSessionId(sessionId);
+      return apiRequest('POST', `/api/sessions/${sessionId}/register`, {
+        athlete_id: activeAthlete.id,
+      });
+    },
+    onSuccess: () => {
+      setRegisteringSessionId(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions'] });
+      toast({
+        title: 'Registered!',
+        description: `${activeAthlete?.first_name} has been registered for the session.`,
+      });
+    },
+    onError: (error: Error) => {
+      setRegisteringSessionId(null);
+      toast({
+        title: 'Registration Failed',
+        description: error.message || 'Could not register for session. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (athletes.length > 0 && !activeAthlete) {
+      setAthletes(athletes);
+      setActiveAthlete(athletes[0]);
+    }
+  }, [athletes, activeAthlete, setAthletes, setActiveAthlete]);
+
   const isLocked = activeAthlete ? isAthleteAccessLocked(activeAthlete.paid_through_date ?? undefined) : false;
 
   const upcomingSessions = sessions.slice(0, 3);
@@ -90,17 +124,24 @@ export default function ParentDashboard() {
     createAthleteMutation.mutate(formData);
   };
 
+  const handleRegister = (sessionId: string) => {
+    if (!activeAthlete) {
+      toast({
+        title: 'Select an Athlete',
+        description: 'Please select an athlete first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    registerMutation.mutate(sessionId);
+  };
+
   if (athletesLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
-  }
-
-  if (athletes.length > 0 && !activeAthlete) {
-    setAthletes(athletes);
-    setActiveAthlete(athletes[0]);
   }
 
   return (
@@ -323,7 +364,8 @@ export default function ParentDashboard() {
                       </div>
                       <Button
                         className="w-full"
-                        disabled={isLocked}
+                        disabled={isLocked || registeringSessionId === session.id}
+                        onClick={() => handleRegister(session.id)}
                         data-testid={`button-register-session-${session.id}`}
                       >
                         {isLocked ? (
@@ -331,6 +373,8 @@ export default function ParentDashboard() {
                             <AlertCircle className="h-4 w-4 mr-2" />
                             Payment Required
                           </>
+                        ) : registeringSessionId === session.id ? (
+                          'Registering...'
                         ) : (
                           'Register Now'
                         )}

@@ -19,6 +19,9 @@ export const clubsTable = pgTable("clubs", {
   billing_card_token: text("billing_card_token"),
   billing_card_last_four: text("billing_card_last_four"),
   billing_customer_code: text("billing_customer_code"),
+  billing_bank_token: text("billing_bank_token"),
+  billing_bank_last_four: text("billing_bank_last_four"),
+  billing_method: text("billing_method", { enum: ["card", "bank"] }),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -246,6 +249,9 @@ export interface Club {
   billing_card_token?: string;
   billing_card_last_four?: string;
   billing_customer_code?: string;
+  billing_bank_token?: string;
+  billing_bank_last_four?: string;
+  billing_method?: 'card' | 'bank';
   created_at: string;
 }
 

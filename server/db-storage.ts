@@ -90,6 +90,19 @@ export class DatabaseStorage implements IStorage {
         billing_card_token: cardToken,
         billing_card_last_four: lastFour,
         billing_customer_code: customerCode,
+        billing_method: 'card',
+      })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
+  async updateClubBillingBank(clubId: string, bankToken: string, lastFour: string): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({
+        billing_bank_token: bankToken,
+        billing_bank_last_four: lastFour,
+        billing_method: 'bank',
       })
       .where(eq(clubsTable.id, clubId))
       .returning();
@@ -656,6 +669,9 @@ export class DatabaseStorage implements IStorage {
       billing_card_token: c.billing_card_token ?? undefined,
       billing_card_last_four: c.billing_card_last_four ?? undefined,
       billing_customer_code: c.billing_customer_code ?? undefined,
+      billing_bank_token: c.billing_bank_token ?? undefined,
+      billing_bank_last_four: c.billing_bank_last_four ?? undefined,
+      billing_method: c.billing_method ?? undefined,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }

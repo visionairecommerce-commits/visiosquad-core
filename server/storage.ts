@@ -16,6 +16,9 @@ export interface Club {
   billing_card_token?: string;
   billing_card_last_four?: string;
   billing_customer_code?: string;
+  billing_bank_token?: string;
+  billing_bank_last_four?: string;
+  billing_method?: 'card' | 'bank';
   created_at: string;
 }
 
@@ -202,6 +205,7 @@ export interface IStorage {
   updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club>;
   updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
   updateClubBillingCard(clubId: string, cardToken: string, lastFour: string, customerCode?: string): Promise<Club>;
+  updateClubBillingBank(clubId: string, bankToken: string, lastFour: string): Promise<Club>;
   completeOnboarding(clubId: string): Promise<Club>;
   regenerateClubCode(clubId: string): Promise<Club>;
   
@@ -505,9 +509,20 @@ export class MemStorage implements IStorage {
     if (!club) throw new Error('Club not found');
     club.billing_card_token = cardToken;
     club.billing_card_last_four = lastFour;
+    club.billing_method = 'card';
     if (customerCode) {
       club.billing_customer_code = customerCode;
     }
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async updateClubBillingBank(clubId: string, bankToken: string, lastFour: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.billing_bank_token = bankToken;
+    club.billing_bank_last_four = lastFour;
+    club.billing_method = 'bank';
     this.clubs.set(clubId, club);
     return club;
   }

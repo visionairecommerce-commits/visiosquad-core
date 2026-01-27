@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2 } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Club, Facility } from '@shared/schema';
 
@@ -33,14 +35,28 @@ export default function SettingsPage() {
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
   const [billingDialogOpen, setBillingDialogOpen] = useState(false);
+  const [billingType, setBillingType] = useState<'card' | 'bank'>('card');
+
+  // Initialize billing type from current billing method when dialog opens
+  const handleOpenBillingDialog = (open: boolean) => {
+    if (open && billingStatus?.billing_method) {
+      setBillingType(billingStatus.billing_method);
+    }
+    setBillingDialogOpen(open);
+  };
+  const [routingNumber, setRoutingNumber] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountType, setAccountType] = useState<'checking' | 'savings'>('checking');
 
   const { data: facilities = [], isLoading: facilitiesLoading } = useQuery<Facility[]>({
     queryKey: ['/api/facilities'],
   });
 
   interface BillingStatus {
-    has_billing_card: boolean;
+    has_billing_method: boolean;
+    billing_method: 'card' | 'bank' | null;
     card_last_four: string | null;
+    bank_last_four: string | null;
   }
 
   const { data: billingStatus, isLoading: billingLoading } = useQuery<BillingStatus>({
@@ -80,6 +96,40 @@ export default function SettingsPage() {
       card_number: cleanCardNumber,
       expiry: cardExpiry.replace('/', ''),
       cvv: cardCvv,
+    });
+  };
+
+  const addBillingBankMutation = useMutation({
+    mutationFn: async (bankData: { routing_number: string; account_number: string; account_type: 'checking' | 'savings' }) => {
+      const response = await apiRequest('POST', `/api/clubs/${club?.id}/billing/bank`, bankData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clubs', club?.id, 'billing'] });
+      setBillingDialogOpen(false);
+      setRoutingNumber('');
+      setAccountNumber('');
+      setAccountType('checking');
+      toast({ title: 'Bank account added successfully!' });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Failed to add bank account', 
+        description: error?.message || 'Please check the account details and try again',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  const handleAddBillingBank = () => {
+    if (!routingNumber || !accountNumber) {
+      toast({ title: 'Please fill in all bank account fields', variant: 'destructive' });
+      return;
+    }
+    addBillingBankMutation.mutate({
+      routing_number: routingNumber,
+      account_number: accountNumber,
+      account_type: accountType,
     });
   };
 
@@ -359,10 +409,10 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
-              Billing Card
+              Billing
             </CardTitle>
             <CardDescription>
-              Credit card on file for platform fees ($1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in)
+              Payment method for platform fees ($1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -371,71 +421,139 @@ export default function SettingsPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading billing status...
               </div>
-            ) : billingStatus?.has_billing_card ? (
+            ) : billingStatus?.has_billing_method ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
-                  <CreditCard className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">Card ending in {billingStatus.card_last_four}</p>
-                    <p className="text-sm text-muted-foreground">Your billing card is active</p>
-                  </div>
+                  {billingStatus.billing_method === 'card' ? (
+                    <>
+                      <CreditCard className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">Card ending in {billingStatus.card_last_four}</p>
+                        <p className="text-sm text-muted-foreground">Credit card is active</p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Landmark className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">Bank account ending in {billingStatus.bank_last_four}</p>
+                        <p className="text-sm text-muted-foreground">Bank account is active</p>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+                <Dialog open={billingDialogOpen} onOpenChange={handleOpenBillingDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" data-testid="button-update-card">
-                      Update Card
+                    <Button variant="outline" size="sm" data-testid="button-update-billing">
+                      Update Payment Method
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Update Billing Card</DialogTitle>
+                      <DialogTitle>Update Payment Method</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="cardNumber">Card Number</Label>
-                        <Input
-                          id="cardNumber"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="1234 5678 9012 3456"
-                          data-testid="input-card-number"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
+                    <Tabs value={billingType} onValueChange={(v) => setBillingType(v as 'card' | 'bank')}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="card" data-testid="tab-card">
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Credit Card
+                        </TabsTrigger>
+                        <TabsTrigger value="bank" data-testid="tab-bank">
+                          <Landmark className="h-4 w-4 mr-2" />
+                          Bank Account
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="card" className="space-y-4 mt-4">
                         <div className="space-y-2">
-                          <Label htmlFor="cardExpiry">Expiry (MMYY)</Label>
+                          <Label htmlFor="cardNumber">Card Number</Label>
                           <Input
-                            id="cardExpiry"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            placeholder="1225"
-                            maxLength={4}
-                            data-testid="input-card-expiry"
+                            id="cardNumber"
+                            value={cardNumber}
+                            onChange={(e) => setCardNumber(e.target.value)}
+                            placeholder="1234 5678 9012 3456"
+                            data-testid="input-card-number"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="cardExpiry">Expiry (MMYY)</Label>
+                            <Input
+                              id="cardExpiry"
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(e.target.value)}
+                              placeholder="1225"
+                              maxLength={4}
+                              data-testid="input-card-expiry"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="cardCvv">CVV</Label>
+                            <Input
+                              id="cardCvv"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value)}
+                              placeholder="123"
+                              maxLength={4}
+                              type="password"
+                              data-testid="input-card-cvv"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleAddBillingCard}
+                          disabled={addBillingCardMutation.isPending}
+                          className="w-full"
+                          data-testid="button-submit-card"
+                        >
+                          {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Update Card
+                        </Button>
+                      </TabsContent>
+                      <TabsContent value="bank" className="space-y-4 mt-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="routingNumber">Routing Number</Label>
+                          <Input
+                            id="routingNumber"
+                            value={routingNumber}
+                            onChange={(e) => setRoutingNumber(e.target.value)}
+                            placeholder="123456789"
+                            maxLength={9}
+                            data-testid="input-routing-number"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="cardCvv">CVV</Label>
+                          <Label htmlFor="accountNumber">Account Number</Label>
                           <Input
-                            id="cardCvv"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value)}
-                            placeholder="123"
-                            maxLength={4}
-                            type="password"
-                            data-testid="input-card-cvv"
+                            id="accountNumber"
+                            value={accountNumber}
+                            onChange={(e) => setAccountNumber(e.target.value)}
+                            placeholder="1234567890"
+                            data-testid="input-account-number"
                           />
                         </div>
-                      </div>
-                      <Button
-                        onClick={handleAddBillingCard}
-                        disabled={addBillingCardMutation.isPending}
-                        className="w-full"
-                        data-testid="button-submit-card"
-                      >
-                        {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Update Card
-                      </Button>
-                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="accountType">Account Type</Label>
+                          <Select value={accountType} onValueChange={(v) => setAccountType(v as 'checking' | 'savings')}>
+                            <SelectTrigger data-testid="select-account-type">
+                              <SelectValue placeholder="Select account type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="checking">Checking</SelectItem>
+                              <SelectItem value="savings">Savings</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={handleAddBillingBank}
+                          disabled={addBillingBankMutation.isPending}
+                          className="w-full"
+                          data-testid="button-submit-bank"
+                        >
+                          {addBillingBankMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Update Bank Account
+                        </Button>
+                      </TabsContent>
+                    </Tabs>
                   </DialogContent>
                 </Dialog>
               </div>
@@ -444,69 +562,125 @@ export default function SettingsPage() {
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    You must add a billing card before you can charge clients. Platform fees will be billed to this card monthly.
+                    You must add a payment method before you can charge clients. Platform fees will be billed monthly.
                   </AlertDescription>
                 </Alert>
-                <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+                <Dialog open={billingDialogOpen} onOpenChange={handleOpenBillingDialog}>
                   <DialogTrigger asChild>
-                    <Button data-testid="button-add-card">
+                    <Button data-testid="button-add-billing">
                       <CreditCard className="mr-2 h-4 w-4" />
-                      Add Billing Card
+                      Add Payment Method
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                      <DialogTitle>Add Billing Card</DialogTitle>
+                      <DialogTitle>Add Payment Method</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">
-                        This card will be used to pay for platform fees: $1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in.
-                      </p>
-                      <div className="space-y-2">
-                        <Label htmlFor="cardNumber">Card Number</Label>
-                        <Input
-                          id="cardNumber"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="1234 5678 9012 3456"
-                          data-testid="input-card-number-new"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
+                    <p className="text-sm text-muted-foreground">
+                      This will be used to pay for platform fees: $1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in.
+                    </p>
+                    <Tabs value={billingType} onValueChange={(v) => setBillingType(v as 'card' | 'bank')}>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="card" data-testid="tab-card-new">
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Credit Card
+                        </TabsTrigger>
+                        <TabsTrigger value="bank" data-testid="tab-bank-new">
+                          <Landmark className="h-4 w-4 mr-2" />
+                          Bank Account
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="card" className="space-y-4 mt-4">
                         <div className="space-y-2">
-                          <Label htmlFor="cardExpiry">Expiry (MMYY)</Label>
+                          <Label htmlFor="cardNumberNew">Card Number</Label>
                           <Input
-                            id="cardExpiry"
-                            value={cardExpiry}
-                            onChange={(e) => setCardExpiry(e.target.value)}
-                            placeholder="1225"
-                            maxLength={4}
-                            data-testid="input-card-expiry-new"
+                            id="cardNumberNew"
+                            value={cardNumber}
+                            onChange={(e) => setCardNumber(e.target.value)}
+                            placeholder="1234 5678 9012 3456"
+                            data-testid="input-card-number-new"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="cardExpiryNew">Expiry (MMYY)</Label>
+                            <Input
+                              id="cardExpiryNew"
+                              value={cardExpiry}
+                              onChange={(e) => setCardExpiry(e.target.value)}
+                              placeholder="1225"
+                              maxLength={4}
+                              data-testid="input-card-expiry-new"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="cardCvvNew">CVV</Label>
+                            <Input
+                              id="cardCvvNew"
+                              value={cardCvv}
+                              onChange={(e) => setCardCvv(e.target.value)}
+                              placeholder="123"
+                              maxLength={4}
+                              type="password"
+                              data-testid="input-card-cvv-new"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleAddBillingCard}
+                          disabled={addBillingCardMutation.isPending}
+                          className="w-full"
+                          data-testid="button-submit-card-new"
+                        >
+                          {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Add Card
+                        </Button>
+                      </TabsContent>
+                      <TabsContent value="bank" className="space-y-4 mt-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="routingNumberNew">Routing Number</Label>
+                          <Input
+                            id="routingNumberNew"
+                            value={routingNumber}
+                            onChange={(e) => setRoutingNumber(e.target.value)}
+                            placeholder="123456789"
+                            maxLength={9}
+                            data-testid="input-routing-number-new"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="cardCvv">CVV</Label>
+                          <Label htmlFor="accountNumberNew">Account Number</Label>
                           <Input
-                            id="cardCvv"
-                            value={cardCvv}
-                            onChange={(e) => setCardCvv(e.target.value)}
-                            placeholder="123"
-                            maxLength={4}
-                            type="password"
-                            data-testid="input-card-cvv-new"
+                            id="accountNumberNew"
+                            value={accountNumber}
+                            onChange={(e) => setAccountNumber(e.target.value)}
+                            placeholder="1234567890"
+                            data-testid="input-account-number-new"
                           />
                         </div>
-                      </div>
-                      <Button
-                        onClick={handleAddBillingCard}
-                        disabled={addBillingCardMutation.isPending}
-                        className="w-full"
-                        data-testid="button-submit-card-new"
-                      >
-                        {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Add Card
-                      </Button>
-                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="accountTypeNew">Account Type</Label>
+                          <Select value={accountType} onValueChange={(v) => setAccountType(v as 'checking' | 'savings')}>
+                            <SelectTrigger data-testid="select-account-type-new">
+                              <SelectValue placeholder="Select account type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="checking">Checking</SelectItem>
+                              <SelectItem value="savings">Savings</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={handleAddBillingBank}
+                          disabled={addBillingBankMutation.isPending}
+                          className="w-full"
+                          data-testid="button-submit-bank-new"
+                        >
+                          {addBillingBankMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Add Bank Account
+                        </Button>
+                      </TabsContent>
+                    </Tabs>
                   </DialogContent>
                 </Dialog>
               </div>

@@ -102,6 +102,43 @@ export async function createCardToken(cardNumber: string, expiry: string, cvv: s
   }
 }
 
+export async function createBankToken(
+  routingNumber: string,
+  accountNumber: string,
+  accountType: 'checking' | 'savings'
+): Promise<{ token?: string; error?: string }> {
+  if (!HELCIM_API_TOKEN || !HELCIM_ACCOUNT_ID) {
+    return { error: 'Payment processing not configured' };
+  }
+
+  try {
+    const response = await fetch(`${HELCIM_BASE_URL}/bank-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-token': HELCIM_API_TOKEN,
+        'account-id': HELCIM_ACCOUNT_ID,
+      },
+      body: JSON.stringify({
+        routingNumber,
+        accountNumber,
+        accountType,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      return { token: data.bankToken };
+    } else {
+      return { error: data.errors?.[0]?.message || 'Failed to tokenize bank account' };
+    }
+  } catch (error) {
+    console.error('Helcim bank tokenization error:', error);
+    return { error: 'Bank account tokenization error' };
+  }
+}
+
 export const CONVENIENCE_FEES = {
   credit_card: 0.03,
   ach: 0,

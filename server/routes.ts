@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee, createCardToken } from "./lib/helcim";
+import { processPayment, calculateTotalWithFee, createCardToken, createBankToken } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
@@ -600,9 +600,12 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Club not found' });
       }
       
+      const hasBillingMethod = !!club.billing_card_token || !!club.billing_bank_token;
       res.json({
-        has_billing_card: !!club.billing_card_token,
+        has_billing_method: hasBillingMethod,
+        billing_method: club.billing_method || null,
         card_last_four: club.billing_card_last_four || null,
+        bank_last_four: club.billing_bank_last_four || null,
       });
     } catch (error) {
       console.error('Error fetching billing status:', error);
@@ -642,6 +645,7 @@ export async function registerRoutes(
       res.json({
         success: true,
         card_last_four: lastFour,
+        billing_method: 'card',
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -649,6 +653,50 @@ export async function registerRoutes(
       } else {
         console.error('Error adding billing card:', error);
         res.status(500).json({ error: 'Failed to add billing card' });
+      }
+    }
+  });
+
+  // Add/Update billing bank account (Director only)
+  const billingBankSchema = z.object({
+    routing_number: z.string().length(9, 'Routing number must be 9 digits'),
+    account_number: z.string().min(4).max(17),
+    account_type: z.enum(['checking', 'savings']),
+  });
+
+  app.post('/api/clubs/:clubId/billing/bank', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const data = billingBankSchema.parse(req.body);
+      
+      // Tokenize the bank account using Helcim
+      const tokenResult = await createBankToken(data.routing_number, data.account_number, data.account_type);
+      
+      if (tokenResult.error || !tokenResult.token) {
+        return res.status(400).json({ error: tokenResult.error || 'Failed to tokenize bank account' });
+      }
+      
+      // Get the last 4 digits of the account number
+      const lastFour = data.account_number.slice(-4);
+      
+      // Update the club with the billing bank info
+      const club = await storage.updateClubBillingBank(clubId, tokenResult.token, lastFour);
+      
+      res.json({
+        success: true,
+        bank_last_four: lastFour,
+        billing_method: 'bank',
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error adding billing bank:', error);
+        res.status(500).json({ error: 'Failed to add bank account' });
       }
     }
   });
@@ -1685,12 +1733,12 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = paymentSchema.parse(req.body);
 
-      // Check if the club has a billing card on file before allowing payments
+      // Check if the club has a billing method on file before allowing payments
       const club = await storage.getClub(clubId);
-      if (!club?.billing_card_token) {
+      if (!club?.billing_card_token && !club?.billing_bank_token) {
         return res.status(403).json({ 
-          error: 'Billing card required',
-          message: 'A billing card must be added before processing payments. Please add a credit card in Settings > Billing.' 
+          error: 'Billing method required',
+          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
         });
       }
 

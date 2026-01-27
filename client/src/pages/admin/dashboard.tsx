@@ -48,8 +48,10 @@ const pendingPayments = [
 ];
 
 interface BillingStatus {
-  has_billing_card: boolean;
+  has_billing_method: boolean;
+  billing_method: 'card' | 'bank' | null;
   card_last_four: string | null;
+  bank_last_four: string | null;
 }
 
 export default function AdminDashboard() {
@@ -101,15 +103,15 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {billingStatus && !billingStatus.has_billing_card && (
+      {billingStatus && !billingStatus.has_billing_method && (
         <Alert variant="destructive" data-testid="alert-billing-required">
           <CreditCard className="h-4 w-4" />
-          <AlertTitle>Billing Card Required</AlertTitle>
+          <AlertTitle>Payment Method Required</AlertTitle>
           <AlertDescription className="flex items-center justify-between">
-            <span>You must add a billing card before you can charge clients for sessions and contracts.</span>
+            <span>You must add a credit card or bank account before you can charge clients.</span>
             <Link href="/settings">
-              <Button variant="outline" size="sm" data-testid="button-add-billing-card">
-                Add Card in Settings
+              <Button variant="outline" size="sm" data-testid="button-add-billing-method">
+                Add Payment Method
               </Button>
             </Link>
           </AlertDescription>

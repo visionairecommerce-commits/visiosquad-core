@@ -133,7 +133,7 @@ export default function TeamsPage() {
 
   const handleEdit = (team: Team) => {
     setEditingTeam(team);
-    setSelectedCoachId(team.coach_id || '');
+    setSelectedCoachId(team.coach_id || '__none__');
     setEditDialogOpen(true);
   };
 
@@ -142,7 +142,7 @@ export default function TeamsPage() {
     updateTeamMutation.mutate({
       id: editingTeam.id,
       data: {
-        coach_id: selectedCoachId || null,
+        coach_id: selectedCoachId === '__none__' ? null : selectedCoachId,
       },
     });
   };
@@ -241,14 +241,17 @@ export default function TeamsPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Assign Coach (Optional)</FormLabel>
-                      <Select onValueChange={(val) => field.onChange(val || null)} value={field.value || ''}>
+                      <Select 
+                        onValueChange={(val) => field.onChange(val === '__none__' ? null : val)} 
+                        value={field.value || '__none__'}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-coach">
                             <SelectValue placeholder="Select a coach" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">No coach assigned</SelectItem>
+                          <SelectItem value="__none__">No coach assigned</SelectItem>
                           {coaches.map((coach) => (
                             <SelectItem key={coach.id} value={coach.id}>
                               {coach.full_name} ({coach.email})
@@ -293,12 +296,12 @@ export default function TeamsPage() {
             </div>
             <div className="space-y-2">
               <Label>Assign Coach</Label>
-              <Select value={selectedCoachId} onValueChange={setSelectedCoachId}>
+              <Select value={selectedCoachId || '__none__'} onValueChange={setSelectedCoachId}>
                 <SelectTrigger data-testid="select-edit-coach">
                   <SelectValue placeholder="Select a coach" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No coach assigned</SelectItem>
+                  <SelectItem value="__none__">No coach assigned</SelectItem>
                   {coaches.map((coach) => (
                     <SelectItem key={coach.id} value={coach.id}>
                       {coach.full_name} ({coach.email})

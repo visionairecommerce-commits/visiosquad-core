@@ -48,6 +48,9 @@ function AdminRoutes() {
   return (
     <Switch>
       <Route path="/" component={AdminDashboard} />
+      <Route path="/login" component={RedirectToDashboard} />
+      <Route path="/create-club" component={RedirectToDashboard} />
+      <Route path="/join" component={RedirectToDashboard} />
       <Route path="/onboarding" component={RedirectToDashboard} />
       <Route path="/programs" component={ProgramsPage} />
       <Route path="/teams" component={TeamsPage} />
@@ -64,6 +67,9 @@ function CoachRoutes() {
   return (
     <Switch>
       <Route path="/" component={CoachDashboard} />
+      <Route path="/login" component={RedirectToDashboard} />
+      <Route path="/create-club" component={RedirectToDashboard} />
+      <Route path="/join" component={RedirectToDashboard} />
       <Route path="/sessions" component={CoachSessionsPage} />
       <Route path="/sessions/:id" component={CoachSessionsPage} />
       <Route path="/attendance" component={CoachSessionsPage} />
@@ -76,6 +82,9 @@ function ParentRoutes() {
   return (
     <Switch>
       <Route path="/" component={ParentDashboard} />
+      <Route path="/login" component={RedirectToDashboard} />
+      <Route path="/create-club" component={RedirectToDashboard} />
+      <Route path="/join" component={RedirectToDashboard} />
       <Route path="/athletes" component={AthletesPage} />
       <Route path="/schedule" component={ParentSchedulePage} />
       <Route path="/payments" component={ParentPaymentsPage} />

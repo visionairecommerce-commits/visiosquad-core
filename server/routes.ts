@@ -228,7 +228,12 @@ export async function registerRoutes(
       if (authError) {
         // Rollback club creation
         await storage.deleteClub(club.id);
-        return res.status(400).json({ error: authError.message });
+        // Provide clearer error messages for common issues
+        let errorMessage = authError.message;
+        if (errorMessage.includes('already') || errorMessage.includes('Database error')) {
+          errorMessage = 'An account with this email already exists. Please use a different email or login instead.';
+        }
+        return res.status(400).json({ error: errorMessage });
       }
       
       // Get the profile created by the trigger - retry a few times for trigger timing
@@ -320,7 +325,12 @@ export async function registerRoutes(
       });
       
       if (authError) {
-        return res.status(400).json({ error: authError.message });
+        // Provide clearer error messages for common issues
+        let errorMessage = authError.message;
+        if (errorMessage.includes('already') || errorMessage.includes('Database error')) {
+          errorMessage = 'An account with this email already exists. Please use a different email or login instead.';
+        }
+        return res.status(400).json({ error: errorMessage });
       }
       
       // Get the profile created by the trigger - retry a few times for trigger timing

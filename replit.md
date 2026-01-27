@@ -63,6 +63,13 @@ Preferred communication style: Simple, everyday language.
 - User's `has_signed_documents` flag tracks signature status
 - Clubs can require waiver signature before granting access
 
+#### Settings Dashboard (Directors Only)
+- **Club Join Code**: Display, copy, and regenerate 6-character club codes with shareable join links
+- **Club Identity**: Manage club name, address, and logo URL with live preview
+- **Document Vault**: Version-tracked waiver content and contract PDF URLs with signature tracking
+- **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
+- Route: `/settings` (admin-only access)
+
 ### Business Logic Patterns
 - **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`
 - **Platform Ledger**: Automatic fee tracking ($1.00/month for athletes, $1.00 per clinic, $0.75 per drop-in)

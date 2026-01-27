@@ -412,7 +412,7 @@ export default function SettingsPage() {
               Billing
             </CardTitle>
             <CardDescription>
-              Payment method for platform fees ($1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in)
+              Payment method for platform fees ($1.00/month per athlete, $1.00 per player per clinic, $0.75 per drop-in)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -577,7 +577,7 @@ export default function SettingsPage() {
                       <DialogTitle>Add Payment Method</DialogTitle>
                     </DialogHeader>
                     <p className="text-sm text-muted-foreground">
-                      This will be used to pay for platform fees: $1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in.
+                      This will be used to pay for platform fees: $1.00/month per athlete, $1.00 per player per clinic, $0.75 per drop-in.
                     </p>
                     <Tabs value={billingType} onValueChange={(v) => setBillingType(v as 'card' | 'bank')}>
                       <TabsList className="grid w-full grid-cols-2">

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { Trophy, Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink } from 'lucide-react';
+import { Trophy, Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type OnboardingStep = 'documents' | 'complete';
@@ -15,7 +15,7 @@ export default function OnboardingPage() {
   const [waiverContent, setWaiverContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { club, updateClubDocuments, completeOnboarding } = useAuth();
+  const { club, updateClubDocuments, completeOnboarding, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -68,13 +68,25 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center gap-2">
+          <Trophy className="h-6 w-6 text-primary" />
+          <span className="font-semibold">VisioSport</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={logout}
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Sign Out
+        </Button>
+      </header>
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Trophy className="h-10 w-10 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">VisioSport</h1>
-          </div>
           <p className="text-muted-foreground">
             Setting up {club.name}
           </p>
@@ -186,6 +198,7 @@ Example: By signing this waiver, I acknowledge the inherent risks associated wit
             </CardContent>
           </Card>
         )}
+      </div>
       </div>
     </div>
   );

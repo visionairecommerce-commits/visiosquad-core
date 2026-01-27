@@ -431,9 +431,9 @@ export class DatabaseStorage implements IStorage {
   async createSession(clubId: string, session: Omit<Session, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Session> {
     const [s] = await db.insert(sessionsTable).values({
       club_id: clubId,
-      team_id: session.team_id,
+      team_id: session.team_id || null,
       program_id: session.program_id,
-      facility_id: session.facility_id,
+      facility_id: session.facility_id || null,
       title: session.title,
       description: session.description,
       session_type: session.session_type,
@@ -443,7 +443,7 @@ export class DatabaseStorage implements IStorage {
       capacity: session.capacity,
       price: session.price ? String(session.price) : null,
       status: 'scheduled',
-      recurrence_group_id: session.recurrence_group_id,
+      recurrence_group_id: session.recurrence_group_id || null,
     }).returning();
     return this.mapSession(s);
   }

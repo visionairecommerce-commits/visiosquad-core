@@ -1095,6 +1095,26 @@ export async function registerRoutes(
     }
   });
 
+  // Delete session
+  app.delete('/api/sessions/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const sessionId = req.params.id as string;
+      const session = await storage.getSession(clubId, sessionId);
+
+      if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+      }
+
+      await storage.deleteSession(clubId, sessionId);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      res.status(500).json({ error: 'Failed to delete session' });
+    }
+  });
+
   // Create recurring sessions
   app.post('/api/sessions/recurring', requireRole('admin', 'coach'), async (req, res) => {
     try {

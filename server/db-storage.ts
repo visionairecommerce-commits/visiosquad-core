@@ -500,6 +500,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(sessionsTable.club_id, clubId), eq(sessionsTable.id, sessionId)));
   }
 
+  async deleteSession(clubId: string, sessionId: string): Promise<void> {
+    await db.delete(sessionsTable)
+      .where(and(eq(sessionsTable.club_id, clubId), eq(sessionsTable.id, sessionId)));
+  }
+
   async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, courtId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
     const sessions = await this.getSessions(clubId);
     const start = new Date(startTime);

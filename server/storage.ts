@@ -242,6 +242,7 @@ export interface IStorage {
   getSessionsForAthlete(clubId: string, athleteId: string): Promise<Session[]>;
   createSession(clubId: string, session: Omit<Session, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Session>;
   cancelSession(clubId: string, sessionId: string, reason: string): Promise<void>;
+  deleteSession(clubId: string, sessionId: string): Promise<void>;
   checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, courtId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }>;
   
   // Athlete access checking
@@ -841,6 +842,13 @@ export class MemStorage implements IStorage {
       session.status = 'cancelled';
       session.cancellation_reason = reason;
       this.sessions.set(sessionId, session);
+    }
+  }
+
+  async deleteSession(clubId: string, sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (session?.club_id === clubId) {
+      this.sessions.delete(sessionId);
     }
   }
 

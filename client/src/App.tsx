@@ -19,10 +19,12 @@ import ProgramsPage from "@/pages/admin/programs";
 import TeamsPage from "@/pages/admin/teams";
 import RosterPage from "@/pages/admin/roster";
 import AdminSchedulePage from "@/pages/admin/schedule";
+import AdminCalendarPage from "@/pages/admin/calendar";
 import AdminPaymentsPage from "@/pages/admin/payments";
 import ContractsPage from "@/pages/admin/contracts";
 import CoachDashboard from "@/pages/coach/dashboard";
 import CoachSessionsPage from "@/pages/coach/sessions";
+import CoachCalendarPage from "@/pages/coach/calendar";
 import ParentDashboard from "@/pages/parent/dashboard";
 import AthletesPage from "@/pages/parent/athletes";
 import ParentSchedulePage from "@/pages/parent/schedule";
@@ -59,6 +61,7 @@ function AdminRoutes() {
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />
+      <Route path="/calendar" component={AdminCalendarPage} />
       <Route path="/payments" component={AdminPaymentsPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
@@ -75,6 +78,7 @@ function CoachRoutes() {
       <Route path="/join" component={RedirectToDashboard} />
       <Route path="/sessions" component={CoachSessionsPage} />
       <Route path="/sessions/:id" component={CoachSessionsPage} />
+      <Route path="/calendar" component={CoachCalendarPage} />
       <Route path="/attendance" component={CoachSessionsPage} />
       <Route component={NotFound} />
     </Switch>

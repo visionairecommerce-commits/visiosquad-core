@@ -35,14 +35,16 @@ const adminMenuItems = [
   { title: 'Contracts', url: '/contracts', icon: DollarSign },
   { title: 'Teams', url: '/teams', icon: Users },
   { title: 'Roster', url: '/roster', icon: UserCheck },
-  { title: 'Schedule', url: '/schedule', icon: Calendar },
+  { title: 'Schedule', url: '/schedule', icon: ClipboardList },
+  { title: 'Calendar', url: '/calendar', icon: Calendar },
   { title: 'Payments', url: '/payments', icon: CreditCard },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 
 const coachMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'My Sessions', url: '/sessions', icon: Calendar },
+  { title: 'Calendar', url: '/calendar', icon: Calendar },
+  { title: 'My Sessions', url: '/sessions', icon: ClipboardList },
   { title: 'Attendance', url: '/attendance', icon: UserCheck },
 ];
 

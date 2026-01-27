@@ -80,6 +80,19 @@ Preferred communication style: Simple, everyday language.
 - **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
 - Route: `/settings` (admin-only access)
 
+### Event Calendar & Attendance
+- **Calendar View** (`/calendar`): Directors and coaches see all scheduled sessions in a month calendar
+  - Month navigation with previous/next buttons
+  - Sessions shown as dots on calendar days
+  - Click day to see sessions scheduled for that date
+  - Filter by program (admin only)
+- **Session Details Modal**: Click a session card to see registered athletes
+  - Shows athlete name, check-in status, and payment status
+  - Check In/Check Out buttons for each athlete
+  - Athletes with overdue payments are flagged and blocked from check-in
+  - Attendance count displayed (e.g., "3/5 checked in")
+- **API**: Uses `GET /api/sessions/:id/registrations` and `PATCH /api/registrations/:id/checkin`
+
 ### Contract-Based Pricing Model
 - **Program Contracts**: Directors can create pricing tiers (contracts) for each program
   - Each contract defines: name, description, monthly price, and sessions per week allowed
@@ -88,6 +101,7 @@ Preferred communication style: Simple, everyday language.
 - **Athlete Contracts**: Athletes can subscribe to program contracts for recurring billing
   - Contract status: active, cancelled, expired
   - Stored in `athlete_contracts` table linking athlete_id to program_contract_id
+  - System automatically cancels previous active contracts when assigning a new one
 - **Drop-in Pricing**: Sessions have a `drop_in_price` field for non-contract attendees
 - **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`
 

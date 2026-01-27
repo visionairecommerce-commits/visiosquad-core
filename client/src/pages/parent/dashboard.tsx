@@ -319,7 +319,7 @@ export default function ParentDashboard() {
                             )}
                           </div>
                         </div>
-                        <Badge variant="secondary">{session.type}</Badge>
+                        <Badge variant="secondary">{session.session_type}</Badge>
                       </div>
                       <Button
                         className="w-full"

@@ -25,6 +25,7 @@ import {
   ClipboardList,
   UserCheck,
   Home,
+  FileText,
 } from 'lucide-react';
 
 const adminMenuItems = [
@@ -48,6 +49,7 @@ const parentMenuItems = [
   { title: 'My Athletes', url: '/athletes', icon: Users },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
   { title: 'Payments', url: '/payments', icon: CreditCard },
+  { title: 'Documents', url: '/documents', icon: FileText },
 ];
 
 export function AppSidebar() {

@@ -26,6 +26,7 @@ import ParentDashboard from "@/pages/parent/dashboard";
 import AthletesPage from "@/pages/parent/athletes";
 import ParentSchedulePage from "@/pages/parent/schedule";
 import ParentPaymentsPage from "@/pages/parent/payments";
+import ParentDocumentsPage from "@/pages/parent/documents";
 import SettingsPage from "@/pages/admin/settings";
 
 function RedirectToLogin() {
@@ -88,6 +89,7 @@ function ParentRoutes() {
       <Route path="/athletes" component={AthletesPage} />
       <Route path="/schedule" component={ParentSchedulePage} />
       <Route path="/payments" component={ParentPaymentsPage} />
+      <Route path="/documents" component={ParentDocumentsPage} />
       <Route component={NotFound} />
     </Switch>
   );

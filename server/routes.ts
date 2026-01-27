@@ -475,6 +475,18 @@ export async function registerRoutes(
     }
   });
 
+  // Get user's document signatures
+  app.get('/api/documents/signatures', async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const signatures = await storage.getUserSignatures(clubId, userId);
+      res.json(signatures);
+    } catch (error) {
+      console.error('Error fetching signatures:', error);
+      res.status(500).json({ error: 'Failed to fetch signatures' });
+    }
+  });
+
   // Get club info (for e-signing page)
   app.get('/api/clubs/:clubId', async (req, res) => {
     try {

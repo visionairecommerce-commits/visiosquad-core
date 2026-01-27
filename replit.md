@@ -67,6 +67,11 @@ Preferred communication style: Simple, everyday language.
 - Stored in `club_signatures` table with: signed name, document type, timestamp, IP address
 - User's `has_signed_documents` flag tracks signature status
 - Clubs can require waiver signature before granting access
+- **Parent Documents Page** (`/documents`): Parents can view and sign waivers and contracts at any time
+  - Shows signature status (Signed/Pending/Not Required) for both waiver and contract
+  - Displays waiver content inline with agreement checkbox and typed signature
+  - Links to contract PDF for review before signing
+  - Alerts shown when required documents are unsigned
 
 #### Settings Dashboard (Directors Only)
 - **Club Join Code**: Display, copy, and regenerate 6-character club codes with shareable join links

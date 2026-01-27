@@ -46,7 +46,7 @@ function checkAthleteAccessState(athlete: { paid_through_date?: string | null })
 const createProgramSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
-  monthly_fee: z.number().min(0),
+  monthly_fee: z.coerce.number().min(0),
 });
 
 const createTeamSchema = z.object({

@@ -31,7 +31,8 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { z } from 'zod';
-import { Plus, Calendar, MapPin, Users, Clock, AlertTriangle, Info, X, Repeat } from 'lucide-react';
+import { Plus, Calendar, MapPin, Users, Clock, AlertTriangle, Info, X, Repeat, Trash2, Ban } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { format, addDays } from 'date-fns';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -139,6 +140,10 @@ export default function SchedulePage() {
     message: string;
     requiresConfirmation?: boolean;
   } | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const { toast } = useToast();
 
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery<Session[]>({
@@ -327,6 +332,108 @@ export default function SchedulePage() {
           variant: 'destructive',
         });
       }
+    },
+  });
+
+  const cancelSessionMutation = useMutation({
+    mutationFn: async ({ sessionId, reason }: { sessionId: string; reason: string }) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const stored = localStorage.getItem('visiosport_session');
+      if (stored) {
+        try {
+          const session = JSON.parse(stored);
+          if (session.user) {
+            headers['X-User-Role'] = session.user.role || 'admin';
+            headers['X-User-Id'] = session.user.id || 'demo-user';
+          }
+          if (session.club) {
+            headers['X-Club-Id'] = session.club.id;
+          }
+        } catch {}
+      }
+      
+      const response = await fetch(`/api/sessions/${sessionId}/cancel`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reason }),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to cancel session');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions'] });
+      setCancelDialogOpen(false);
+      setSelectedSession(null);
+      setCancelReason('');
+      
+      toast({
+        title: 'Session Cancelled',
+        description: result.notified > 0 
+          ? `Session cancelled. ${result.notified} notification(s) sent.`
+          : 'Session has been cancelled.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const stored = localStorage.getItem('visiosport_session');
+      if (stored) {
+        try {
+          const session = JSON.parse(stored);
+          if (session.user) {
+            headers['X-User-Role'] = session.user.role || 'admin';
+            headers['X-User-Id'] = session.user.id || 'demo-user';
+          }
+          if (session.club) {
+            headers['X-Club-Id'] = session.club.id;
+          }
+        } catch {}
+      }
+      
+      const response = await fetch(`/api/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to delete session');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions'] });
+      setDeleteDialogOpen(false);
+      setSelectedSession(null);
+      
+      toast({
+        title: 'Session Deleted',
+        description: 'Session has been permanently removed.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
     },
   });
 
@@ -983,6 +1090,32 @@ export default function SchedulePage() {
                       </CardDescription>
                     </div>
                   </div>
+                  <div className="flex items-center gap-1">
+                    {session.status !== 'cancelled' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setSelectedSession(session);
+                          setCancelDialogOpen(true);
+                        }}
+                        data-testid={`button-cancel-session-${session.id}`}
+                      >
+                        <Ban className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedSession(session);
+                        setDeleteDialogOpen(true);
+                      }}
+                      data-testid={`button-delete-session-${session.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-6 text-sm text-muted-foreground flex-wrap">
@@ -1013,6 +1146,103 @@ export default function SchedulePage() {
           })}
         </div>
       )}
+
+      {/* Cancel Session Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={(open) => {
+        setCancelDialogOpen(open);
+        if (!open) {
+          setSelectedSession(null);
+          setCancelReason('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Session</DialogTitle>
+            <DialogDescription>
+              Cancel "{selectedSession?.title}"? This will notify registered participants via email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancel-reason">Cancellation Reason</Label>
+              <Textarea
+                id="cancel-reason"
+                placeholder="e.g., Weather conditions, instructor unavailable..."
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                data-testid="input-cancel-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setSelectedSession(null);
+                setCancelReason('');
+              }}
+              data-testid="button-cancel-dialog-cancel"
+            >
+              Keep Session
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (selectedSession) {
+                  cancelSessionMutation.mutate({
+                    sessionId: selectedSession.id,
+                    reason: cancelReason || 'Session cancelled',
+                  });
+                }
+              }}
+              disabled={cancelSessionMutation.isPending}
+              data-testid="button-confirm-cancel"
+            >
+              {cancelSessionMutation.isPending ? 'Cancelling...' : 'Cancel Session'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Session Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={(open) => {
+        setDeleteDialogOpen(open);
+        if (!open) setSelectedSession(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Session</DialogTitle>
+            <DialogDescription>
+              Permanently delete "{selectedSession?.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setSelectedSession(null);
+              }}
+              data-testid="button-delete-dialog-cancel"
+            >
+              Keep Session
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (selectedSession) {
+                  deleteSessionMutation.mutate(selectedSession.id);
+                }
+              }}
+              disabled={deleteSessionMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteSessionMutation.isPending ? 'Deleting...' : 'Delete Session'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

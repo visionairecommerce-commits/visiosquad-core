@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Link } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -104,18 +103,32 @@ export default function AdminDashboard() {
       </div>
 
       {billingStatus && !billingStatus.has_billing_method && (
-        <Alert variant="destructive" data-testid="alert-billing-required">
-          <CreditCard className="h-4 w-4" />
-          <AlertTitle>Payment Method Required</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>You must add a credit card or bank account before you can charge clients.</span>
+        <Card className="border-2 border-destructive bg-destructive/5" data-testid="card-billing-required">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-full bg-destructive/10">
+                <CreditCard className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <CardTitle className="text-destructive">Add Payment Method to Start Billing</CardTitle>
+                <CardDescription className="text-destructive/80">
+                  Required before you can charge clients for programs and sessions
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Add a credit card or bank account to cover platform fees ($1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in). This is required before you can process any client payments.
+            </p>
             <Link href="/settings">
-              <Button variant="outline" size="sm" data-testid="button-add-billing-method">
-                Add Payment Method
+              <Button size="lg" data-testid="button-add-billing-method">
+                <CreditCard className="h-5 w-5 mr-2" />
+                Add Payment Method Now
               </Button>
             </Link>
-          </AlertDescription>
-        </Alert>
+          </CardContent>
+        </Card>
       )}
 
       <Card className="bg-primary/5 border-primary/20">

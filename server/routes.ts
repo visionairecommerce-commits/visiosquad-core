@@ -58,7 +58,8 @@ const createAthleteSchema = z.object({
   first_name: z.string().min(1),
   last_name: z.string().min(1),
   date_of_birth: z.string().min(1),
-  parent_id: z.string().min(1),
+  graduation_year: z.number().min(2020).max(2040),
+  parent_id: z.string().optional(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -644,9 +645,17 @@ export async function registerRoutes(
 
   app.post('/api/athletes', requireRole('admin', 'parent'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
+      const { clubId, role, userId } = getAuthContext(req);
       const data = createAthleteSchema.parse(req.body);
-      const athlete = await storage.createAthlete(clubId, data);
+      const parentId = role === 'parent' ? userId : (data.parent_id || userId);
+      const athlete = await storage.createAthlete(clubId, {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        date_of_birth: data.date_of_birth,
+        graduation_year: data.graduation_year,
+        parent_id: parentId,
+        tags: [],
+      });
       res.status(201).json(athlete);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -670,7 +679,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post('/api/roster/assign', requireRole('admin'), async (req, res) => {
+  app.post('/api/roster/assign', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const data = assignRosterSchema.parse(req.body);
@@ -688,6 +697,56 @@ export async function registerRoutes(
         console.error('Error assigning athlete:', error);
         res.status(500).json({ error: 'Failed to assign athlete' });
       }
+    }
+  });
+
+  app.get('/api/roster', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const roster = await storage.getRoster(clubId);
+      const athletes = await storage.getAthletes(clubId);
+      const teams = await storage.getTeams(clubId);
+      
+      const enrichedRoster = roster.map(entry => {
+        const athlete = athletes.find(a => a.id === entry.athlete_id);
+        const team = teams.find(t => t.id === entry.team_id);
+        return {
+          ...entry,
+          athlete_name: athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Unknown',
+          graduation_year: athlete?.graduation_year || 0,
+          team_name: team?.name || 'Unknown',
+        };
+      });
+      res.json(enrichedRoster);
+    } catch (error) {
+      console.error('Error fetching master roster:', error);
+      res.status(500).json({ error: 'Failed to fetch roster' });
+    }
+  });
+
+  app.patch('/api/roster/:id/contract', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { contract_signed } = req.body;
+      if (typeof contract_signed !== 'boolean') {
+        return res.status(400).json({ error: 'contract_signed must be a boolean' });
+      }
+      const roster = await storage.updateRosterContractStatus(clubId, req.params.id, contract_signed);
+      res.json(roster);
+    } catch (error) {
+      console.error('Error updating contract status:', error);
+      res.status(500).json({ error: 'Failed to update contract status' });
+    }
+  });
+
+  app.delete('/api/roster/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.removeFromRoster(clubId, req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing from roster:', error);
+      res.status(500).json({ error: 'Failed to remove from roster' });
     }
   });
 

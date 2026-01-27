@@ -82,6 +82,7 @@ export interface Athlete {
   first_name: string;
   last_name: string;
   date_of_birth: string;
+  graduation_year: number;
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
@@ -94,6 +95,7 @@ export interface AthleteTeamRoster {
   team_id: string;
   program_id: string;
   club_id: string;
+  contract_signed: boolean;
   created_at: string;
 }
 
@@ -196,6 +198,7 @@ export const insertAthleteSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
   date_of_birth: z.string().min(1, "Date of birth is required"),
+  graduation_year: z.number().min(2020).max(2040, "Invalid graduation year"),
   tags: z.array(z.string()).default([]),
 });
 

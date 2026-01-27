@@ -209,6 +209,9 @@ export interface IStorage {
   // Roster
   assignAthleteToTeam(clubId: string, athleteId: string, teamId: string, programId: string): Promise<AthleteTeamRoster>;
   getTeamRoster(clubId: string, teamId: string): Promise<AthleteTeamRoster[]>;
+  getRoster(clubId: string): Promise<AthleteTeamRoster[]>;
+  updateRosterContractStatus(clubId: string, rosterId: string, contractSigned: boolean): Promise<AthleteTeamRoster>;
+  removeFromRoster(clubId: string, rosterId: string): Promise<void>;
 
   // Sessions
   getSessions(clubId: string): Promise<Session[]>;
@@ -329,19 +332,20 @@ export class MemStorage implements IStorage {
     ];
     teams.forEach(t => this.teams.set(t.id, t));
 
-    // Seed athletes
+    // Seed athletes with graduation years
     const athletes: Athlete[] = [
-      { id: 'ath-1', club_id: clubId, parent_id: 'demo-parent-1', first_name: 'Emma', last_name: 'Wilson', date_of_birth: '2015-03-15', tags: ['U10', 'Soccer'], paid_through_date: '2026-02-15', is_locked: false, created_at: new Date().toISOString() },
-      { id: 'ath-2', club_id: clubId, parent_id: 'demo-parent-1', first_name: 'Jake', last_name: 'Wilson', date_of_birth: '2017-07-22', tags: ['U8', 'Beginners'], paid_through_date: '2026-01-10', is_locked: false, created_at: new Date().toISOString() },
-      { id: 'ath-3', club_id: clubId, parent_id: 'demo-parent-2', first_name: 'Sophia', last_name: 'Garcia', date_of_birth: '2014-11-08', tags: ['U12', 'Soccer'], paid_through_date: '2026-02-20', is_locked: false, created_at: new Date().toISOString() },
-      { id: 'ath-4', club_id: clubId, parent_id: 'demo-parent-2', first_name: 'Liam', last_name: 'Martinez', date_of_birth: '2016-05-30', tags: ['U10', 'Soccer'], paid_through_date: '2026-01-05', is_locked: false, created_at: new Date().toISOString() },
+      { id: 'ath-1', club_id: clubId, parent_id: 'demo-parent-1', first_name: 'Emma', last_name: 'Wilson', date_of_birth: '2015-03-15', graduation_year: 2033, tags: ['U10', 'Soccer'], paid_through_date: '2026-02-15', is_locked: false, created_at: new Date().toISOString() },
+      { id: 'ath-2', club_id: clubId, parent_id: 'demo-parent-1', first_name: 'Jake', last_name: 'Wilson', date_of_birth: '2017-07-22', graduation_year: 2035, tags: ['U8', 'Beginners'], paid_through_date: '2026-01-10', is_locked: false, created_at: new Date().toISOString() },
+      { id: 'ath-3', club_id: clubId, parent_id: 'demo-parent-2', first_name: 'Sophia', last_name: 'Garcia', date_of_birth: '2014-11-08', graduation_year: 2032, tags: ['U12', 'Soccer'], paid_through_date: '2026-02-20', is_locked: false, created_at: new Date().toISOString() },
+      { id: 'ath-4', club_id: clubId, parent_id: 'demo-parent-2', first_name: 'Liam', last_name: 'Martinez', date_of_birth: '2016-05-30', graduation_year: 2034, tags: ['U10', 'Soccer'], paid_through_date: '2026-01-05', is_locked: false, created_at: new Date().toISOString() },
     ];
     athletes.forEach(a => this.athletes.set(a.id, a));
 
-    // Seed roster assignments
+    // Seed roster assignments with contract_signed
     const rosterItems: AthleteTeamRoster[] = [
-      { id: 'roster-1', athlete_id: 'ath-1', team_id: 'team-1', program_id: 'prog-1', club_id: clubId, created_at: new Date().toISOString() },
-      { id: 'roster-2', athlete_id: 'ath-3', team_id: 'team-1', program_id: 'prog-1', club_id: clubId, created_at: new Date().toISOString() },
+      { id: 'roster-1', athlete_id: 'ath-1', team_id: 'team-1', program_id: 'prog-1', club_id: clubId, contract_signed: true, created_at: new Date().toISOString() },
+      { id: 'roster-2', athlete_id: 'ath-3', team_id: 'team-1', program_id: 'prog-1', club_id: clubId, contract_signed: false, created_at: new Date().toISOString() },
+      { id: 'roster-3', athlete_id: 'ath-1', team_id: 'team-3', program_id: 'prog-2', club_id: clubId, contract_signed: true, created_at: new Date().toISOString() },
     ];
     rosterItems.forEach(r => this.roster.set(r.id, r));
   }
@@ -672,12 +676,19 @@ export class MemStorage implements IStorage {
 
   // Roster
   async assignAthleteToTeam(clubId: string, athleteId: string, teamId: string, programId: string): Promise<AthleteTeamRoster> {
+    const existing = Array.from(this.roster.values()).find(
+      r => r.club_id === clubId && r.athlete_id === athleteId && r.team_id === teamId
+    );
+    if (existing) {
+      return existing;
+    }
     const newRoster: AthleteTeamRoster = {
       id: randomUUID(),
       athlete_id: athleteId,
       team_id: teamId,
       program_id: programId,
       club_id: clubId,
+      contract_signed: false,
       created_at: new Date().toISOString(),
     };
     this.roster.set(newRoster.id, newRoster);
@@ -688,6 +699,27 @@ export class MemStorage implements IStorage {
     return Array.from(this.roster.values()).filter(
       r => r.club_id === clubId && r.team_id === teamId
     );
+  }
+
+  async getRoster(clubId: string): Promise<AthleteTeamRoster[]> {
+    return Array.from(this.roster.values()).filter(r => r.club_id === clubId);
+  }
+
+  async updateRosterContractStatus(clubId: string, rosterId: string, contractSigned: boolean): Promise<AthleteTeamRoster> {
+    const entry = this.roster.get(rosterId);
+    if (!entry || entry.club_id !== clubId) {
+      throw new Error('Roster entry not found');
+    }
+    entry.contract_signed = contractSigned;
+    this.roster.set(rosterId, entry);
+    return entry;
+  }
+
+  async removeFromRoster(clubId: string, rosterId: string): Promise<void> {
+    const entry = this.roster.get(rosterId);
+    if (entry?.club_id === clubId) {
+      this.roster.delete(rosterId);
+    }
   }
 
   // Sessions

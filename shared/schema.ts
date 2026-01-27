@@ -1,4 +1,192 @@
 import { z } from "zod";
+import { pgTable, text, integer, boolean, timestamp, decimal, uuid } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+
+// ============ DRIZZLE TABLE DEFINITIONS ============
+
+// Clubs table
+export const clubsTable = pgTable("clubs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  logo_url: text("logo_url"),
+  address: text("address"),
+  join_code: text("join_code").notNull().unique(),
+  contract_pdf_url: text("contract_pdf_url"),
+  waiver_content: text("waiver_content"),
+  waiver_version: integer("waiver_version").default(1),
+  contract_version: integer("contract_version").default(1),
+  onboarding_complete: boolean("onboarding_complete").default(false).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Profiles (users) table - linked to Supabase Auth
+export const profilesTable = pgTable("profiles", {
+  id: uuid("id").primaryKey(), // Links to Supabase auth.users.id
+  email: text("email").notNull().unique(),
+  full_name: text("full_name").notNull(),
+  role: text("role", { enum: ["admin", "coach", "parent"] }).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id),
+  has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Club documents table
+export const clubDocumentsTable = pgTable("club_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  document_type: text("document_type", { enum: ["waiver", "contract"] }).notNull(),
+  file_url: text("file_url").notNull(),
+  version: integer("version").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Club signatures table
+export const clubSignaturesTable = pgTable("club_signatures", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
+  document_type: text("document_type", { enum: ["contract", "waiver"] }).notNull(),
+  document_version: integer("document_version").notNull(),
+  signed_name: text("signed_name").notNull(),
+  signed_at: timestamp("signed_at").defaultNow().notNull(),
+  ip_address: text("ip_address"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Programs table
+export const programsTable = pgTable("programs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  monthly_fee: decimal("monthly_fee", { precision: 10, scale: 2 }).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Contract templates table
+export const contractTemplatesTable = pgTable("contract_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  content: text("content").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Teams table
+export const teamsTable = pgTable("teams", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  coach_id: uuid("coach_id").references(() => profilesTable.id),
+  name: text("name").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Athletes table
+export const athletesTable = pgTable("athletes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  parent_id: uuid("parent_id").references(() => profilesTable.id).notNull(),
+  first_name: text("first_name").notNull(),
+  last_name: text("last_name").notNull(),
+  date_of_birth: text("date_of_birth").notNull(),
+  graduation_year: integer("graduation_year").notNull(),
+  tags: text("tags").array().default([]),
+  paid_through_date: text("paid_through_date"),
+  is_locked: boolean("is_locked").default(false).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Athlete team roster (dual-rostering support)
+export const athleteTeamRostersTable = pgTable("athlete_team_rosters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  team_id: uuid("team_id").references(() => teamsTable.id).notNull(),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  contract_signed: boolean("contract_signed").default(false).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Facilities table
+export const facilitiesTable = pgTable("facilities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Sessions table
+export const sessionsTable = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  team_id: uuid("team_id").references(() => teamsTable.id),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  facility_id: uuid("facility_id").references(() => facilitiesTable.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  session_type: text("session_type", { enum: ["practice", "clinic", "drop_in"] }).notNull(),
+  start_time: timestamp("start_time").notNull(),
+  end_time: timestamp("end_time").notNull(),
+  location: text("location"),
+  capacity: integer("capacity"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  status: text("status", { enum: ["scheduled", "cancelled", "completed"] }).default("scheduled").notNull(),
+  cancellation_reason: text("cancellation_reason"),
+  recurrence_group_id: uuid("recurrence_group_id"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Registrations table
+export const registrationsTable = pgTable("registrations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  session_id: uuid("session_id").references(() => sessionsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  checked_in: boolean("checked_in").default(false).notNull(),
+  check_in_time: timestamp("check_in_time"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Contracts table
+export const contractsTable = pgTable("contracts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  template_id: uuid("template_id").references(() => contractTemplatesTable.id).notNull(),
+  signed_at: timestamp("signed_at"),
+  signature_data: text("signature_data"),
+  status: text("status", { enum: ["pending", "signed", "expired"] }).default("pending").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Payments table
+export const paymentsTable = pgTable("payments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  payment_type: text("payment_type", { enum: ["monthly", "clinic", "drop_in", "cash"] }).notNull(),
+  payment_method: text("payment_method", { enum: ["credit_card", "ach", "cash"] }).notNull(),
+  helcim_transaction_id: text("helcim_transaction_id"),
+  months_paid: integer("months_paid"),
+  status: text("status", { enum: ["pending", "completed", "failed"] }).default("pending").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Platform ledger table
+export const platformLedgerTable = pgTable("platform_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  payment_id: uuid("payment_id").references(() => paymentsTable.id).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  fee_type: text("fee_type", { enum: ["monthly", "clinic", "drop_in"] }).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ============ TYPE DEFINITIONS (for compatibility) ============
 
 // User roles
 export type UserRole = 'admin' | 'coach' | 'parent';
@@ -180,6 +368,8 @@ export interface PlatformLedger {
   fee_type: 'monthly' | 'clinic' | 'drop_in';
   created_at: string;
 }
+
+// ============ ZOD SCHEMAS ============
 
 // Insert schemas for forms
 export const insertProgramSchema = z.object({

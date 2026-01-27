@@ -59,6 +59,7 @@ export interface Team {
   id: string;
   club_id: string;
   program_id: string;
+  coach_id: string | null;
   name: string;
   created_at: string;
 }
@@ -70,6 +71,7 @@ export interface Athlete {
   first_name: string;
   last_name: string;
   date_of_birth: string;
+  graduation_year: number;
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
@@ -82,6 +84,7 @@ export interface AthleteTeamRoster {
   team_id: string;
   program_id: string;
   club_id: string;
+  contract_signed: boolean;
   created_at: string;
 }
 
@@ -882,4 +885,7 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { dbStorage } from './db-storage';
+
+// Use database storage instead of in-memory storage
+export const storage: IStorage = dbStorage;

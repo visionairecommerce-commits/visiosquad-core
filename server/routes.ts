@@ -83,6 +83,7 @@ const createSessionSchema = z.object({
   program_id: z.string().min(1),
   team_id: z.string().optional(),
   facility_id: z.string().optional(),
+  court_id: z.string().optional(),
   start_time: z.string().min(1),
   end_time: z.string().min(1),
   location: z.string().optional(),
@@ -106,6 +107,7 @@ const createRecurringSessionSchema = z.object({
   program_id: z.string().min(1),
   team_id: z.string().optional(),
   facility_id: z.string().optional(),
+  court_id: z.string().optional(),
   location: z.string().optional(),
   capacity: z.number().optional(),
   price: z.number().optional(),
@@ -1015,6 +1017,7 @@ export async function registerRoutes(
         program_id: data.program_id,
         team_id: data.team_id,
         facility_id: data.facility_id,
+        court_id: data.court_id,
         start_time: data.start_time,
         end_time: data.end_time,
         location: data.location,
@@ -1129,8 +1132,14 @@ export async function registerRoutes(
             const [startHour, startMin] = timeBlock.startTime.split(':').map(Number);
             const [endHour, endMin] = timeBlock.endTime.split(':').map(Number);
             
-            const startTime = setMinutes(setHours(currentDate, startHour), startMin);
-            const endTime = setMinutes(setHours(currentDate, endHour), endMin);
+            // Construct ISO string directly to avoid timezone issues
+            // Format: YYYY-MM-DDTHH:MM:SS.000Z - we use the date from currentDate and the time from the timeBlock
+            const dateStr = format(currentDate, 'yyyy-MM-dd');
+            const startTimeStr = `${dateStr}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00.000Z`;
+            const endTimeStr = `${dateStr}T${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00.000Z`;
+            
+            const startTime = new Date(startTimeStr);
+            const endTime = new Date(endTimeStr);
             
             // Check for conflicts
             const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
@@ -1159,6 +1168,7 @@ export async function registerRoutes(
                 program_id: data.program_id,
                 team_id: data.team_id,
                 facility_id: data.facility_id,
+                court_id: data.court_id,
                 start_time: startTime.toISOString(),
                 end_time: endTime.toISOString(),
                 location: data.location,

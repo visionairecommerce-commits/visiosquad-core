@@ -144,6 +144,9 @@ export default function SchedulePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [createCourtDialogOpen, setCreateCourtDialogOpen] = useState(false);
+  const [newCourtName, setNewCourtName] = useState('');
+  const [newCourtFacilityId, setNewCourtFacilityId] = useState('');
   const { toast } = useToast();
 
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery<Session[]>({
@@ -437,6 +440,57 @@ export default function SchedulePage() {
     },
   });
 
+  const createCourtMutation = useMutation({
+    mutationFn: async ({ facilityId, name }: { facilityId: string; name: string }) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const stored = localStorage.getItem('visiosport_session');
+      if (stored) {
+        try {
+          const session = JSON.parse(stored);
+          if (session.user) {
+            headers['X-User-Role'] = session.user.role || 'admin';
+            headers['X-User-Id'] = session.user.id || 'demo-user';
+          }
+          if (session.club) {
+            headers['X-Club-Id'] = session.club.id;
+          }
+        } catch {}
+      }
+      
+      const response = await fetch('/api/courts', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ facility_id: facilityId, name }),
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to create court');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/courts'] });
+      setCreateCourtDialogOpen(false);
+      setNewCourtName('');
+      setNewCourtFacilityId('');
+      
+      toast({
+        title: 'Court Created',
+        description: 'The court/field has been added.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   const onSingleSubmit = (data: SingleSessionForm) => {
     setConflictInfo(null);
     const submitData = {
@@ -671,7 +725,22 @@ export default function SchedulePage() {
                           name="court_id"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Court/Field</FormLabel>
+                              <div className="flex items-center justify-between">
+                                <FormLabel>Court/Field</FormLabel>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setNewCourtFacilityId(singleForm.watch('facility_id') || '');
+                                    setCreateCourtDialogOpen(true);
+                                  }}
+                                  data-testid="button-add-court-single"
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Add Court
+                                </Button>
+                              </div>
                               <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
                                   <SelectTrigger data-testid="select-session-court">
@@ -872,7 +941,22 @@ export default function SchedulePage() {
                           name="court_id"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Court/Field</FormLabel>
+                              <div className="flex items-center justify-between">
+                                <FormLabel>Court/Field</FormLabel>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setNewCourtFacilityId(recurringForm.watch('facility_id') || '');
+                                    setCreateCourtDialogOpen(true);
+                                  }}
+                                  data-testid="button-add-court-recurring"
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Add Court
+                                </Button>
+                              </div>
                               <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
                                   <SelectTrigger data-testid="select-recurring-court">
@@ -1239,6 +1323,63 @@ export default function SchedulePage() {
               data-testid="button-confirm-delete"
             >
               {deleteSessionMutation.isPending ? 'Deleting...' : 'Delete Session'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Court Dialog */}
+      <Dialog open={createCourtDialogOpen} onOpenChange={(open) => {
+        setCreateCourtDialogOpen(open);
+        if (!open) {
+          setNewCourtName('');
+          setNewCourtFacilityId('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Court/Field</DialogTitle>
+            <DialogDescription>
+              Add a new court or field to {facilities.find(f => f.id === newCourtFacilityId)?.name || 'the facility'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="court-name">Court/Field Name</Label>
+              <Input
+                id="court-name"
+                placeholder="e.g., Court 1, Field A, Main Gym..."
+                value={newCourtName}
+                onChange={(e) => setNewCourtName(e.target.value)}
+                data-testid="input-court-name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreateCourtDialogOpen(false);
+                setNewCourtName('');
+                setNewCourtFacilityId('');
+              }}
+              data-testid="button-cancel-create-court"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (newCourtFacilityId && newCourtName.trim()) {
+                  createCourtMutation.mutate({
+                    facilityId: newCourtFacilityId,
+                    name: newCourtName.trim(),
+                  });
+                }
+              }}
+              disabled={createCourtMutation.isPending || !newCourtName.trim()}
+              data-testid="button-confirm-create-court"
+            >
+              {createCourtMutation.isPending ? 'Creating...' : 'Add Court'}
             </Button>
           </DialogFooter>
         </DialogContent>

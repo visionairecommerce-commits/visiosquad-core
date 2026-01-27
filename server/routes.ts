@@ -902,7 +902,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post('/api/courts', requireRole('admin'), async (req, res) => {
+  app.post('/api/courts', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const data = createCourtSchema.parse(req.body);
@@ -918,7 +918,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put('/api/courts/:id', requireRole('admin'), async (req, res) => {
+  app.put('/api/courts/:id', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const data = createCourtSchema.partial().parse(req.body);

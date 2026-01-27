@@ -80,6 +80,17 @@ Preferred communication style: Simple, everyday language.
 - **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
 - Route: `/settings` (admin-only access)
 
+### Contract-Based Pricing Model
+- **Program Contracts**: Directors can create pricing tiers (contracts) for each program
+  - Each contract defines: name, description, monthly price, and sessions per week allowed
+  - Example: "4 Days/Week Premium" at $500/month, "3 Days/Week Standard" at $350/month
+  - Route: `/contracts` (admin-only access)
+- **Athlete Contracts**: Athletes can subscribe to program contracts for recurring billing
+  - Contract status: active, cancelled, expired
+  - Stored in `athlete_contracts` table linking athlete_id to program_contract_id
+- **Drop-in Pricing**: Sessions have a `drop_in_price` field for non-contract attendees
+- **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`
+
 ### Business Logic Patterns
 - **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`
 - **Platform Ledger**: Automatic fee tracking ($1.00/month for athletes, $1.00 per clinic, $0.75 per drop-in)

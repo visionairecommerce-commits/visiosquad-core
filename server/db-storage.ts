@@ -3,11 +3,13 @@ import { db } from './lib/db';
 import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
-  sessionsTable, registrationsTable, paymentsTable, platformLedgerTable
+  sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
+  programContractsTable, athleteContractsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
-  Facility, Court, Session, Registration, Payment, PlatformLedger
+  Facility, Court, Session, Registration, Payment, PlatformLedger,
+  ProgramContract, AthleteContract
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -487,7 +489,7 @@ export class DatabaseStorage implements IStorage {
       end_time: new Date(session.end_time),
       location: session.location,
       capacity: session.capacity,
-      price: session.price ? String(session.price) : null,
+      drop_in_price: session.drop_in_price ? String(session.drop_in_price) : null,
       status: 'scheduled',
       recurrence_group_id: session.recurrence_group_id || null,
     }).returning();
@@ -741,7 +743,7 @@ export class DatabaseStorage implements IStorage {
       end_time: s.end_time?.toISOString?.() ?? s.end_time,
       location: s.location ?? undefined,
       capacity: s.capacity ?? undefined,
-      price: s.price ? parseFloat(s.price) : undefined,
+      drop_in_price: s.drop_in_price ? parseFloat(s.drop_in_price) : undefined,
       status: s.status,
       cancellation_reason: s.cancellation_reason ?? undefined,
       recurrence_group_id: s.recurrence_group_id ?? undefined,
@@ -784,6 +786,124 @@ export class DatabaseStorage implements IStorage {
       amount: parseFloat(l.amount),
       fee_type: l.fee_type,
       created_at: l.created_at?.toISOString?.() ?? l.created_at,
+    };
+  }
+
+  // Program Contracts
+  async getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]> {
+    if (programId) {
+      const contracts = await db.select().from(programContractsTable)
+        .where(and(eq(programContractsTable.club_id, clubId), eq(programContractsTable.program_id, programId)));
+      return contracts.map(c => this.mapProgramContract(c));
+    }
+    const contracts = await db.select().from(programContractsTable)
+      .where(eq(programContractsTable.club_id, clubId));
+    return contracts.map(c => this.mapProgramContract(c));
+  }
+
+  async getProgramContract(clubId: string, contractId: string): Promise<ProgramContract | undefined> {
+    const [contract] = await db.select().from(programContractsTable)
+      .where(and(eq(programContractsTable.club_id, clubId), eq(programContractsTable.id, contractId)));
+    if (!contract) return undefined;
+    return this.mapProgramContract(contract);
+  }
+
+  async createProgramContract(clubId: string, contract: Omit<ProgramContract, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ProgramContract> {
+    const [c] = await db.insert(programContractsTable).values({
+      club_id: clubId,
+      program_id: contract.program_id,
+      name: contract.name,
+      description: contract.description,
+      monthly_price: String(contract.monthly_price),
+      sessions_per_week: contract.sessions_per_week,
+      is_active: true,
+    }).returning();
+    return this.mapProgramContract(c);
+  }
+
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; is_active?: boolean }): Promise<ProgramContract> {
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.monthly_price !== undefined) updateData.monthly_price = String(data.monthly_price);
+    if (data.sessions_per_week !== undefined) updateData.sessions_per_week = data.sessions_per_week;
+    if (data.is_active !== undefined) updateData.is_active = data.is_active;
+
+    const [c] = await db.update(programContractsTable)
+      .set(updateData)
+      .where(and(eq(programContractsTable.club_id, clubId), eq(programContractsTable.id, contractId)))
+      .returning();
+    return this.mapProgramContract(c);
+  }
+
+  async deleteProgramContract(clubId: string, contractId: string): Promise<void> {
+    await db.delete(programContractsTable)
+      .where(and(eq(programContractsTable.club_id, clubId), eq(programContractsTable.id, contractId)));
+  }
+
+  // Athlete Contracts
+  async getAthleteContracts(clubId: string, athleteId?: string): Promise<AthleteContract[]> {
+    if (athleteId) {
+      const contracts = await db.select().from(athleteContractsTable)
+        .where(and(eq(athleteContractsTable.club_id, clubId), eq(athleteContractsTable.athlete_id, athleteId)));
+      return contracts.map(c => this.mapAthleteContract(c));
+    }
+    const contracts = await db.select().from(athleteContractsTable)
+      .where(eq(athleteContractsTable.club_id, clubId));
+    return contracts.map(c => this.mapAthleteContract(c));
+  }
+
+  async getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined> {
+    const [contract] = await db.select().from(athleteContractsTable)
+      .where(and(eq(athleteContractsTable.club_id, clubId), eq(athleteContractsTable.id, contractId)));
+    if (!contract) return undefined;
+    return this.mapAthleteContract(contract);
+  }
+
+  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract> {
+    const [c] = await db.insert(athleteContractsTable).values({
+      club_id: clubId,
+      athlete_id: contract.athlete_id,
+      program_contract_id: contract.program_contract_id,
+      start_date: contract.start_date,
+      end_date: contract.end_date,
+      status: 'active',
+    }).returning();
+    return this.mapAthleteContract(c);
+  }
+
+  async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
+    const [c] = await db.update(athleteContractsTable)
+      .set({ status })
+      .where(and(eq(athleteContractsTable.club_id, clubId), eq(athleteContractsTable.id, contractId)))
+      .returning();
+    return this.mapAthleteContract(c);
+  }
+
+  private mapProgramContract(c: any): ProgramContract {
+    return {
+      id: c.id,
+      club_id: c.club_id,
+      program_id: c.program_id,
+      name: c.name,
+      description: c.description ?? undefined,
+      monthly_price: parseFloat(c.monthly_price),
+      sessions_per_week: c.sessions_per_week,
+      is_active: c.is_active,
+      created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
+  private mapAthleteContract(c: any): AthleteContract {
+    return {
+      id: c.id,
+      club_id: c.club_id,
+      athlete_id: c.athlete_id,
+      program_contract_id: c.program_contract_id,
+      start_date: c.start_date,
+      end_date: c.end_date ?? undefined,
+      status: c.status,
+      created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }
 }

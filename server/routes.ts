@@ -6,6 +6,7 @@ import { processPayment, calculateTotalWithFee } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
+import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
 
 // Demo club ID for tenant isolation
@@ -87,7 +88,7 @@ const createSessionSchema = z.object({
   start_time: z.string().min(1),
   end_time: z.string().min(1),
   location: z.string().optional(),
-  price: z.coerce.number().optional(),
+  drop_in_price: z.coerce.number().optional(),
   capacity: z.number().optional(),
   forceCreate: z.boolean().optional(),
 });
@@ -110,7 +111,7 @@ const createRecurringSessionSchema = z.object({
   court_id: z.string().optional(),
   location: z.string().optional(),
   capacity: z.number().optional(),
-  price: z.number().optional(),
+  drop_in_price: z.number().optional(),
   recurrence: z.object({
     timeBlocks: z.array(timeBlockSchema).min(1),
     repeatUntil: z.string().min(1),
@@ -640,6 +641,116 @@ export async function registerRoutes(
     }
   });
 
+  // ============ PROGRAM CONTRACTS ============
+  // Get all contracts for a program (or all program contracts)
+  app.get('/api/program-contracts', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const programId = req.query.program_id as string | undefined;
+      const contracts = await storage.getProgramContracts(clubId, programId);
+      res.json(contracts);
+    } catch (error) {
+      console.error('Error fetching program contracts:', error);
+      res.status(500).json({ error: 'Failed to fetch program contracts' });
+    }
+  });
+
+  // Get a specific program contract
+  app.get('/api/program-contracts/:id', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const contract = await storage.getProgramContract(clubId, req.params.id as string);
+      if (!contract) {
+        return res.status(404).json({ error: 'Contract not found' });
+      }
+      res.json(contract);
+    } catch (error) {
+      console.error('Error fetching program contract:', error);
+      res.status(500).json({ error: 'Failed to fetch program contract' });
+    }
+  });
+
+  // Create a new program contract
+  app.post('/api/program-contracts', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = insertProgramContractSchema.parse(req.body);
+      const contract = await storage.createProgramContract(clubId, data);
+      res.status(201).json(contract);
+    } catch (error) {
+      console.error('Error creating program contract:', error);
+      res.status(500).json({ error: 'Failed to create program contract' });
+    }
+  });
+
+  // Update a program contract
+  app.patch('/api/program-contracts/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = req.body;
+      const contract = await storage.updateProgramContract(clubId, req.params.id as string, data);
+      res.json(contract);
+    } catch (error) {
+      console.error('Error updating program contract:', error);
+      res.status(500).json({ error: 'Failed to update program contract' });
+    }
+  });
+
+  // Delete a program contract
+  app.delete('/api/program-contracts/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteProgramContract(clubId, req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting program contract:', error);
+      res.status(500).json({ error: 'Failed to delete program contract' });
+    }
+  });
+
+  // ============ ATHLETE CONTRACTS ============
+  // Get athlete contracts
+  app.get('/api/athlete-contracts', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const athleteId = req.query.athlete_id as string | undefined;
+      const contracts = await storage.getAthleteContracts(clubId, athleteId);
+      res.json(contracts);
+    } catch (error) {
+      console.error('Error fetching athlete contracts:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete contracts' });
+    }
+  });
+
+  // Assign a contract to an athlete
+  app.post('/api/athlete-contracts', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = insertAthleteContractSchema.parse(req.body);
+      const contract = await storage.createAthleteContract(clubId, data);
+      res.status(201).json(contract);
+    } catch (error) {
+      console.error('Error creating athlete contract:', error);
+      res.status(500).json({ error: 'Failed to assign contract to athlete' });
+    }
+  });
+
+  // Update athlete contract status (cancel/expire)
+  app.patch('/api/athlete-contracts/:id/status', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { status } = req.body;
+      if (!['active', 'cancelled', 'expired'].includes(status)) {
+        return res.status(400).json({ error: 'Invalid status' });
+      }
+      const contract = await storage.updateAthleteContractStatus(clubId, req.params.id as string, status);
+      res.json(contract);
+    } catch (error) {
+      console.error('Error updating athlete contract status:', error);
+      res.status(500).json({ error: 'Failed to update athlete contract status' });
+    }
+  });
+
   // ============ TEAMS ============
   app.get('/api/teams', async (req, res) => {
     try {
@@ -1063,7 +1174,7 @@ export async function registerRoutes(
         end_time: data.end_time,
         location: data.location,
         capacity: data.capacity,
-        price: data.price,
+        drop_in_price: data.drop_in_price,
       });
 
       // If team is selected, auto-register all team members
@@ -1230,7 +1341,7 @@ export async function registerRoutes(
                 end_time: endTime.toISOString(),
                 location: data.location,
                 capacity: data.capacity,
-                price: data.price,
+                drop_in_price: data.drop_in_price,
                 recurrence_group_id: recurrenceGroupId,
               });
               
@@ -1358,9 +1469,9 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Contract signature required', contract_required: true });
       }
 
-      // Process payment if session has a price
-      if (session.price && session.price > 0 && data.payment_method) {
-        const totalAmount = calculateTotalWithFee(session.price, data.payment_method);
+      // Process payment if session has a drop-in price (for non-contract attendees)
+      if (session.drop_in_price && session.drop_in_price > 0 && data.payment_method) {
+        const totalAmount = calculateTotalWithFee(session.drop_in_price, data.payment_method);
         
         // In production, we'd process the actual payment
         // For demo, we simulate success

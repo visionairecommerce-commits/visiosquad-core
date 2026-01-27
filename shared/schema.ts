@@ -63,7 +63,33 @@ export const programsTable = pgTable("programs", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Contract templates table
+// Program contracts table - defines pricing tiers for a program
+// e.g., "National Team - 4 days/week - $500/month" or "3 days/week - $350/month"
+export const programContractsTable = pgTable("program_contracts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  monthly_price: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
+  sessions_per_week: integer("sessions_per_week").notNull(),
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Athlete contracts table - tracks which athletes have which contracts
+export const athleteContractsTable = pgTable("athlete_contracts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  program_contract_id: uuid("program_contract_id").references(() => programContractsTable.id).notNull(),
+  start_date: text("start_date").notNull(),
+  end_date: text("end_date"),
+  status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Contract templates table (legacy - for document signing)
 export const contractTemplatesTable = pgTable("contract_templates", {
   id: uuid("id").primaryKey().defaultRandom(),
   program_id: uuid("program_id").references(() => programsTable.id).notNull(),
@@ -142,7 +168,7 @@ export const sessionsTable = pgTable("sessions", {
   end_time: timestamp("end_time").notNull(),
   location: text("location"),
   capacity: integer("capacity"),
-  price: decimal("price", { precision: 10, scale: 2 }),
+  drop_in_price: decimal("drop_in_price", { precision: 10, scale: 2 }),
   status: text("status", { enum: ["scheduled", "cancelled", "completed"] }).default("scheduled").notNull(),
   cancellation_reason: text("cancellation_reason"),
   recurrence_group_id: uuid("recurrence_group_id"),
@@ -257,6 +283,29 @@ export interface Program {
   created_at: string;
 }
 
+export interface ProgramContract {
+  id: string;
+  club_id: string;
+  program_id: string;
+  name: string;
+  description?: string;
+  monthly_price: number;
+  sessions_per_week: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AthleteContract {
+  id: string;
+  club_id: string;
+  athlete_id: string;
+  program_contract_id: string;
+  start_date: string;
+  end_date?: string;
+  status: 'active' | 'cancelled' | 'expired';
+  created_at: string;
+}
+
 export interface ContractTemplate {
   id: string;
   program_id: string;
@@ -329,7 +378,7 @@ export interface Session {
   end_time: string;
   location?: string;
   capacity?: number;
-  price?: number;
+  drop_in_price?: number;
   status: 'scheduled' | 'cancelled' | 'completed';
   cancellation_reason?: string;
   recurrence_group_id?: string;
@@ -436,7 +485,22 @@ export const insertSessionSchema = z.object({
   end_time: z.string().min(1, "End time is required"),
   location: z.string().optional(),
   capacity: z.number().optional(),
-  price: z.number().optional(),
+  drop_in_price: z.number().optional(),
+});
+
+export const insertProgramContractSchema = z.object({
+  program_id: z.string().min(1, "Program is required"),
+  name: z.string().min(1, "Contract name is required"),
+  description: z.string().optional(),
+  monthly_price: z.number().min(0, "Price must be positive"),
+  sessions_per_week: z.number().min(1, "At least 1 session per week required").max(7, "Maximum 7 sessions per week"),
+});
+
+export const insertAthleteContractSchema = z.object({
+  athlete_id: z.string().min(1, "Athlete is required"),
+  program_contract_id: z.string().min(1, "Contract is required"),
+  start_date: z.string().min(1, "Start date is required"),
+  end_date: z.string().optional(),
 });
 
 export const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
@@ -526,6 +590,8 @@ export type InsertAthlete = z.infer<typeof insertAthleteSchema>;
 export type InsertFacility = z.infer<typeof insertFacilitySchema>;
 export type InsertCourt = z.infer<typeof insertCourtSchema>;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type InsertProgramContract = z.infer<typeof insertProgramContractSchema>;
+export type InsertAthleteContract = z.infer<typeof insertAthleteContractSchema>;
 export type DayOfWeek = z.infer<typeof dayOfWeekSchema>;
 export type TimeBlock = z.infer<typeof timeBlockSchema>;
 export type CreateRecurringSession = z.infer<typeof createRecurringSessionSchema>;

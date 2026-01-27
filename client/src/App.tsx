@@ -20,6 +20,7 @@ import TeamsPage from "@/pages/admin/teams";
 import RosterPage from "@/pages/admin/roster";
 import AdminSchedulePage from "@/pages/admin/schedule";
 import AdminPaymentsPage from "@/pages/admin/payments";
+import ContractsPage from "@/pages/admin/contracts";
 import CoachDashboard from "@/pages/coach/dashboard";
 import CoachSessionsPage from "@/pages/coach/sessions";
 import ParentDashboard from "@/pages/parent/dashboard";
@@ -54,6 +55,7 @@ function AdminRoutes() {
       <Route path="/join" component={RedirectToDashboard} />
       <Route path="/onboarding" component={RedirectToDashboard} />
       <Route path="/programs" component={ProgramsPage} />
+      <Route path="/contracts" component={ContractsPage} />
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />

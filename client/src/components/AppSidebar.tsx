@@ -26,11 +26,13 @@ import {
   UserCheck,
   Home,
   FileText,
+  DollarSign,
 } from 'lucide-react';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Programs', url: '/programs', icon: ClipboardList },
+  { title: 'Contracts', url: '/contracts', icon: DollarSign },
   { title: 'Teams', url: '/teams', icon: Users },
   { title: 'Roster', url: '/roster', icon: UserCheck },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
@@ -62,7 +64,8 @@ export function AppSidebar() {
     ? coachMenuItems
     : parentMenuItems;
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | undefined | null) => {
+    if (!name) return 'U';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 

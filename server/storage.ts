@@ -119,10 +119,33 @@ export interface Session {
   end_time: string;
   location?: string;
   capacity?: number;
-  price?: number;
+  drop_in_price?: number;
   status: 'scheduled' | 'cancelled' | 'completed';
   cancellation_reason?: string;
   recurrence_group_id?: string;
+  created_at: string;
+}
+
+export interface ProgramContract {
+  id: string;
+  club_id: string;
+  program_id: string;
+  name: string;
+  description?: string;
+  monthly_price: number;
+  sessions_per_week: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AthleteContract {
+  id: string;
+  club_id: string;
+  athlete_id: string;
+  program_contract_id: string;
+  start_date: string;
+  end_date?: string;
+  status: 'active' | 'cancelled' | 'expired';
   created_at: string;
 }
 
@@ -259,6 +282,19 @@ export interface IStorage {
   getPayments(clubId: string): Promise<Payment[]>;
   createPayment(clubId: string, payment: Omit<Payment, 'id' | 'club_id' | 'created_at'>): Promise<Payment>;
   createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in'): Promise<PlatformLedger>;
+
+  // Program Contracts
+  getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
+  getProgramContract(clubId: string, contractId: string): Promise<ProgramContract | undefined>;
+  createProgramContract(clubId: string, contract: Omit<ProgramContract, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ProgramContract>;
+  updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; is_active?: boolean }): Promise<ProgramContract>;
+  deleteProgramContract(clubId: string, contractId: string): Promise<void>;
+
+  // Athlete Contracts
+  getAthleteContracts(clubId: string, athleteId?: string): Promise<AthleteContract[]>;
+  getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined>;
+  createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract>;
+  updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract>;
 }
 
 // In-memory storage implementation
@@ -985,6 +1021,44 @@ export class MemStorage implements IStorage {
     };
     this.ledger.set(entry.id, entry);
     return entry;
+  }
+
+  // Program Contracts (stub implementations - using database storage)
+  async getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]> {
+    return [];
+  }
+
+  async getProgramContract(clubId: string, contractId: string): Promise<ProgramContract | undefined> {
+    return undefined;
+  }
+
+  async createProgramContract(clubId: string, contract: Omit<ProgramContract, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ProgramContract> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; is_active?: boolean }): Promise<ProgramContract> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async deleteProgramContract(clubId: string, contractId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // Athlete Contracts (stub implementations - using database storage)
+  async getAthleteContracts(clubId: string, athleteId?: string): Promise<AthleteContract[]> {
+    return [];
+  }
+
+  async getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined> {
+    return undefined;
+  }
+
+  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
+    throw new Error('Not implemented in MemStorage');
   }
 }
 

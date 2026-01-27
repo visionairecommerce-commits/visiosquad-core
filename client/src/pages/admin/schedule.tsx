@@ -49,7 +49,7 @@ interface Session {
   end_time: string;
   location: string | null;
   capacity: number | null;
-  price: string | null;
+  drop_in_price: string | null;
   status: 'scheduled' | 'cancelled' | 'completed';
   recurrence_group_id: string | null;
 }
@@ -90,7 +90,7 @@ const singleSessionSchema = z.object({
   end_time: z.string().min(1, 'End time is required'),
   location: z.string().optional(),
   capacity: z.coerce.number().optional(),
-  price: z.coerce.number().optional(),
+  drop_in_price: z.coerce.number().optional(),
   forceCreate: z.boolean().optional(),
 });
 
@@ -110,7 +110,7 @@ const recurringSessionSchema = z.object({
   court_id: z.string().optional(),
   location: z.string().optional(),
   capacity: z.coerce.number().optional(),
-  price: z.coerce.number().optional(),
+  drop_in_price: z.coerce.number().optional(),
   recurrence: z.object({
     startDate: z.string().min(1, 'Start date is required'),
     timeBlocks: z.array(timeBlockSchema).min(1, 'Add at least one time block'),
@@ -819,23 +819,23 @@ export default function SchedulePage() {
                     />
                     <FormField
                       control={singleForm.control}
-                      name="price"
+                      name="drop_in_price"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Price (Optional)</FormLabel>
+                          <FormLabel>Drop-in Price (Optional)</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step="0.01"
                               min="0"
-                              placeholder="0.00 (leave empty for free)"
+                              placeholder="0.00 (for contract-only sessions)"
                               {...field}
                               value={field.value ?? ''}
-                              data-testid="input-session-price"
+                              data-testid="input-session-drop-in-price"
                             />
                           </FormControl>
                           <FormDescription>
-                            Leave empty or set to 0 for free sessions
+                            Price for non-contract attendees. Leave empty for contract-only sessions.
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -1145,23 +1145,23 @@ export default function SchedulePage() {
 
                     <FormField
                       control={recurringForm.control}
-                      name="price"
+                      name="drop_in_price"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Price (Optional)</FormLabel>
+                          <FormLabel>Drop-in Price (Optional)</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step="0.01"
                               min="0"
-                              placeholder="0.00 (leave empty for free)"
+                              placeholder="0.00 (for contract-only sessions)"
                               {...field}
                               value={field.value ?? ''}
-                              data-testid="input-recurring-price"
+                              data-testid="input-recurring-drop-in-price"
                             />
                           </FormControl>
                           <FormDescription>
-                            Leave empty or set to 0 for free sessions
+                            Price for non-contract attendees. Leave empty for contract-only sessions.
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

@@ -16,6 +16,9 @@ export const clubsTable = pgTable("clubs", {
   waiver_version: integer("waiver_version").default(1),
   contract_version: integer("contract_version").default(1),
   onboarding_complete: boolean("onboarding_complete").default(false).notNull(),
+  billing_card_token: text("billing_card_token"),
+  billing_card_last_four: text("billing_card_last_four"),
+  billing_customer_code: text("billing_customer_code"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -240,6 +243,9 @@ export interface Club {
   waiver_version?: number;
   contract_version?: number;
   onboarding_complete: boolean;
+  billing_card_token?: string;
+  billing_card_last_four?: string;
+  billing_customer_code?: string;
   created_at: string;
 }
 

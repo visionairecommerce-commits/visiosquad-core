@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Club, Facility } from '@shared/schema';
 
 export default function SettingsPage() {
@@ -27,10 +28,60 @@ export default function SettingsPage() {
   const [clubLogoUrl, setClubLogoUrl] = useState(club?.logo_url || '');
   const [waiverContent, setWaiverContent] = useState(club?.waiver_content || '');
   const [contractUrl, setContractUrl] = useState(club?.contract_pdf_url || '');
+  
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [billingDialogOpen, setBillingDialogOpen] = useState(false);
 
   const { data: facilities = [], isLoading: facilitiesLoading } = useQuery<Facility[]>({
     queryKey: ['/api/facilities'],
   });
+
+  interface BillingStatus {
+    has_billing_card: boolean;
+    card_last_four: string | null;
+  }
+
+  const { data: billingStatus, isLoading: billingLoading } = useQuery<BillingStatus>({
+    queryKey: ['/api/clubs', club?.id, 'billing'],
+    enabled: !!club?.id,
+  });
+
+  const addBillingCardMutation = useMutation({
+    mutationFn: async (cardData: { card_number: string; expiry: string; cvv: string }) => {
+      const response = await apiRequest('POST', `/api/clubs/${club?.id}/billing/card`, cardData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clubs', club?.id, 'billing'] });
+      setBillingDialogOpen(false);
+      setCardNumber('');
+      setCardExpiry('');
+      setCardCvv('');
+      toast({ title: 'Billing card added successfully!' });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Failed to add card', 
+        description: error?.message || 'Please check the card details and try again',
+        variant: 'destructive' 
+      });
+    },
+  });
+
+  const handleAddBillingCard = () => {
+    if (!cardNumber || !cardExpiry || !cardCvv) {
+      toast({ title: 'Please fill in all card fields', variant: 'destructive' });
+      return;
+    }
+    const cleanCardNumber = cardNumber.replace(/\s/g, '');
+    addBillingCardMutation.mutate({
+      card_number: cleanCardNumber,
+      expiry: cardExpiry.replace('/', ''),
+      cvv: cardCvv,
+    });
+  };
 
   const copyCodeMutation = useMutation({
     mutationFn: async () => {
@@ -301,6 +352,165 @@ export default function SettingsPage() {
             >
               Save Identity
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Billing Card
+            </CardTitle>
+            <CardDescription>
+              Credit card on file for platform fees ($1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {billingLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading billing status...
+              </div>
+            ) : billingStatus?.has_billing_card ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/50">
+                  <CreditCard className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">Card ending in {billingStatus.card_last_four}</p>
+                    <p className="text-sm text-muted-foreground">Your billing card is active</p>
+                  </div>
+                </div>
+                <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" data-testid="button-update-card">
+                      Update Card
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Update Billing Card</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="cardNumber">Card Number</Label>
+                        <Input
+                          id="cardNumber"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          placeholder="1234 5678 9012 3456"
+                          data-testid="input-card-number"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="cardExpiry">Expiry (MMYY)</Label>
+                          <Input
+                            id="cardExpiry"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(e.target.value)}
+                            placeholder="1225"
+                            maxLength={4}
+                            data-testid="input-card-expiry"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="cardCvv">CVV</Label>
+                          <Input
+                            id="cardCvv"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value)}
+                            placeholder="123"
+                            maxLength={4}
+                            type="password"
+                            data-testid="input-card-cvv"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        onClick={handleAddBillingCard}
+                        disabled={addBillingCardMutation.isPending}
+                        className="w-full"
+                        data-testid="button-submit-card"
+                      >
+                        {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Update Card
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    You must add a billing card before you can charge clients. Platform fees will be billed to this card monthly.
+                  </AlertDescription>
+                </Alert>
+                <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button data-testid="button-add-card">
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Add Billing Card
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Billing Card</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        This card will be used to pay for platform fees: $1.00/month per athlete, $1.00 per clinic, $0.75 per drop-in.
+                      </p>
+                      <div className="space-y-2">
+                        <Label htmlFor="cardNumber">Card Number</Label>
+                        <Input
+                          id="cardNumber"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          placeholder="1234 5678 9012 3456"
+                          data-testid="input-card-number-new"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="cardExpiry">Expiry (MMYY)</Label>
+                          <Input
+                            id="cardExpiry"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(e.target.value)}
+                            placeholder="1225"
+                            maxLength={4}
+                            data-testid="input-card-expiry-new"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="cardCvv">CVV</Label>
+                          <Input
+                            id="cardCvv"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value)}
+                            placeholder="123"
+                            maxLength={4}
+                            type="password"
+                            data-testid="input-card-cvv-new"
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        onClick={handleAddBillingCard}
+                        disabled={addBillingCardMutation.isPending}
+                        className="w-full"
+                        data-testid="button-submit-card-new"
+                      >
+                        {addBillingCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Add Card
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
           </CardContent>
         </Card>
 

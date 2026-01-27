@@ -13,6 +13,9 @@ export interface Club {
   waiver_version?: number;
   contract_version?: number;
   onboarding_complete: boolean;
+  billing_card_token?: string;
+  billing_card_last_four?: string;
+  billing_customer_code?: string;
   created_at: string;
 }
 
@@ -198,6 +201,7 @@ export interface IStorage {
   getClub(clubId: string): Promise<Club | undefined>;
   updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club>;
   updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
+  updateClubBillingCard(clubId: string, cardToken: string, lastFour: string, customerCode?: string): Promise<Club>;
   completeOnboarding(clubId: string): Promise<Club>;
   regenerateClubCode(clubId: string): Promise<Club>;
   
@@ -491,6 +495,18 @@ export class MemStorage implements IStorage {
     club.waiver_version = (club.waiver_version || 0) + 1;
     if (contractPdfUrl) {
       club.contract_version = (club.contract_version || 0) + 1;
+    }
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async updateClubBillingCard(clubId: string, cardToken: string, lastFour: string, customerCode?: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.billing_card_token = cardToken;
+    club.billing_card_last_four = lastFour;
+    if (customerCode) {
+      club.billing_customer_code = customerCode;
     }
     this.clubs.set(clubId, club);
     return club;

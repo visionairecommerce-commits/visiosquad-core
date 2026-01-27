@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee } from "./lib/helcim";
+import { processPayment, calculateTotalWithFee, createCardToken } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
@@ -584,6 +584,72 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error completing onboarding:', error);
       res.status(500).json({ error: 'Failed to complete onboarding' });
+    }
+  });
+
+  // Get billing status (Director only)
+  app.get('/api/clubs/:clubId/billing', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const club = await storage.getClub(clubId);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      
+      res.json({
+        has_billing_card: !!club.billing_card_token,
+        card_last_four: club.billing_card_last_four || null,
+      });
+    } catch (error) {
+      console.error('Error fetching billing status:', error);
+      res.status(500).json({ error: 'Failed to fetch billing status' });
+    }
+  });
+
+  // Add/Update billing card (Director only)
+  const billingCardSchema = z.object({
+    card_number: z.string().min(13).max(19),
+    expiry: z.string().regex(/^\d{4}$/, 'Expiry must be in MMYY format'),
+    cvv: z.string().min(3).max(4),
+  });
+
+  app.post('/api/clubs/:clubId/billing/card', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      if (clubId !== req.params.clubId) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const data = billingCardSchema.parse(req.body);
+      
+      // Tokenize the card using Helcim
+      const tokenResult = await createCardToken(data.card_number, data.expiry, data.cvv);
+      
+      if (tokenResult.error || !tokenResult.token) {
+        return res.status(400).json({ error: tokenResult.error || 'Failed to tokenize card' });
+      }
+      
+      // Get the last 4 digits of the card
+      const lastFour = data.card_number.slice(-4);
+      
+      // Update the club with the billing card info
+      const club = await storage.updateClubBillingCard(clubId, tokenResult.token, lastFour);
+      
+      res.json({
+        success: true,
+        card_last_four: lastFour,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: error.errors });
+      } else {
+        console.error('Error adding billing card:', error);
+        res.status(500).json({ error: 'Failed to add billing card' });
+      }
     }
   });
 
@@ -1618,6 +1684,15 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = paymentSchema.parse(req.body);
+
+      // Check if the club has a billing card on file before allowing payments
+      const club = await storage.getClub(clubId);
+      if (!club?.billing_card_token) {
+        return res.status(403).json({ 
+          error: 'Billing card required',
+          message: 'A billing card must be added before processing payments. Please add a credit card in Settings > Billing.' 
+        });
+      }
 
       const athlete = await storage.getAthlete(clubId, data.athlete_id);
       if (!athlete) {

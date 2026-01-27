@@ -84,6 +84,18 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(updated);
   }
 
+  async updateClubBillingCard(clubId: string, cardToken: string, lastFour: string, customerCode?: string): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({
+        billing_card_token: cardToken,
+        billing_card_last_four: lastFour,
+        billing_customer_code: customerCode,
+      })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
   async completeOnboarding(clubId: string): Promise<Club> {
     const [club] = await db.update(clubsTable)
       .set({ onboarding_complete: true })
@@ -641,6 +653,9 @@ export class DatabaseStorage implements IStorage {
       waiver_version: c.waiver_version ?? undefined,
       contract_version: c.contract_version ?? undefined,
       onboarding_complete: c.onboarding_complete,
+      billing_card_token: c.billing_card_token ?? undefined,
+      billing_card_last_four: c.billing_card_last_four ?? undefined,
+      billing_customer_code: c.billing_customer_code ?? undefined,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }

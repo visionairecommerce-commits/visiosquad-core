@@ -1,9 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Link } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
 import {
   Users,
   Calendar,
@@ -17,6 +19,7 @@ import {
   MessageSquare,
   Share2,
   ExternalLink,
+  CreditCard,
 } from 'lucide-react';
 
 const stats = [
@@ -44,9 +47,19 @@ const pendingPayments = [
   { name: 'Martinez Family', amount: '$200', daysOverdue: 3 },
 ];
 
+interface BillingStatus {
+  has_billing_card: boolean;
+  card_last_four: string | null;
+}
+
 export default function AdminDashboard() {
   const { club } = useAuth();
   const { toast } = useToast();
+
+  const { data: billingStatus } = useQuery<BillingStatus>({
+    queryKey: ['/api/clubs', club?.id, 'billing'],
+    enabled: !!club?.id,
+  });
 
   const getInviteLink = () => {
     const baseUrl = window.location.origin;
@@ -87,6 +100,21 @@ export default function AdminDashboard() {
           </Link>
         </div>
       </div>
+
+      {billingStatus && !billingStatus.has_billing_card && (
+        <Alert variant="destructive" data-testid="alert-billing-required">
+          <CreditCard className="h-4 w-4" />
+          <AlertTitle>Billing Card Required</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>You must add a billing card before you can charge clients for sessions and contracts.</span>
+            <Link href="/settings">
+              <Button variant="outline" size="sm" data-testid="button-add-billing-card">
+                Add Card in Settings
+              </Button>
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card className="bg-primary/5 border-primary/20">
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

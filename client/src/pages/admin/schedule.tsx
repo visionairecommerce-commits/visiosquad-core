@@ -532,9 +532,19 @@ export default function SchedulePage() {
     }
   };
 
-  const formatDateTime = (dateString: string) => {
+  const toUtcDisplay = (dateString: string) => {
+    // Parse the ISO string and display as UTC to preserve the intended time
+    // This prevents timezone conversion which would shift the displayed time
     const date = new Date(dateString);
-    return format(date, 'EEE, MMM d • h:mm a');
+    return new Date(date.getTime() + date.getTimezoneOffset() * 60000);
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return format(toUtcDisplay(dateString), 'EEE, MMM d • h:mm a');
+  };
+
+  const formatTime = (dateString: string) => {
+    return format(toUtcDisplay(dateString), 'h:mm a');
   };
 
   const handleDialogClose = () => {
@@ -1209,7 +1219,7 @@ export default function SchedulePage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
-                      {format(new Date(session.end_time), 'h:mm a')}
+                      {formatTime(session.end_time)}
                     </div>
                     {facility && (
                       <div className="flex items-center gap-1">

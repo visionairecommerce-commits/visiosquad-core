@@ -242,7 +242,7 @@ export interface IStorage {
   getSessionsForAthlete(clubId: string, athleteId: string): Promise<Session[]>;
   createSession(clubId: string, session: Omit<Session, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Session>;
   cancelSession(clubId: string, sessionId: string, reason: string): Promise<void>;
-  checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }>;
+  checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, courtId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }>;
   
   // Athlete access checking
   getAthleteRosterEntries(clubId: string, athleteId: string): Promise<AthleteTeamRoster[]>;
@@ -844,7 +844,7 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
+  async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, courtId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
     const newStart = new Date(startTime).getTime();
     const newEnd = new Date(endTime).getTime();
 
@@ -854,7 +854,14 @@ export class MemStorage implements IStorage {
         continue;
       }
 
-      if (facilityId && session.facility_id !== facilityId) {
+      // If court_id is specified, only check conflicts with sessions on the same court
+      if (courtId) {
+        if (session.court_id !== courtId) continue;
+      } else if (facilityId) {
+        // If only facility_id is specified, check conflicts with sessions at the same facility
+        if (session.facility_id !== facilityId) continue;
+      } else {
+        // No facility or court specified - skip conflict check
         continue;
       }
 

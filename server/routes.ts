@@ -981,12 +981,13 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = createSessionSchema.parse(req.body);
 
-      // Check for scheduling conflicts (15-minute buffer logic) - facility-specific
+      // Check for scheduling conflicts (15-minute buffer logic) - court or facility-specific
       const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
         clubId,
         data.start_time,
         data.end_time,
-        data.facility_id
+        data.facility_id,
+        data.court_id
       );
 
       // Hard block for >15 minute overlaps
@@ -1132,21 +1133,17 @@ export async function registerRoutes(
             const [startHour, startMin] = timeBlock.startTime.split(':').map(Number);
             const [endHour, endMin] = timeBlock.endTime.split(':').map(Number);
             
-            // Construct ISO string directly to avoid timezone issues
-            // Format: YYYY-MM-DDTHH:MM:SS.000Z - we use the date from currentDate and the time from the timeBlock
-            const dateStr = format(currentDate, 'yyyy-MM-dd');
-            const startTimeStr = `${dateStr}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00.000Z`;
-            const endTimeStr = `${dateStr}T${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}:00.000Z`;
-            
-            const startTime = new Date(startTimeStr);
-            const endTime = new Date(endTimeStr);
+            // Apply time to the current date using local time, then convert to ISO
+            const startTime = setMinutes(setHours(currentDate, startHour), startMin);
+            const endTime = setMinutes(setHours(currentDate, endHour), endMin);
             
             // Check for conflicts
             const { conflict, overlapMinutes, conflictingSession } = await storage.checkSessionConflict(
               clubId,
               startTime.toISOString(),
               endTime.toISOString(),
-              data.facility_id
+              data.facility_id,
+              data.court_id
             );
             
             if (conflict && overlapMinutes > 15 && !data.forceCreate) {

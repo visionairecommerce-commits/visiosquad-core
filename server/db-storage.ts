@@ -500,7 +500,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(sessionsTable.club_id, clubId), eq(sessionsTable.id, sessionId)));
   }
 
-  async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
+  async checkSessionConflict(clubId: string, startTime: string, endTime: string, facilityId?: string, courtId?: string, excludeId?: string): Promise<{ conflict: boolean; overlapMinutes: number; conflictingSession?: Session }> {
     const sessions = await this.getSessions(clubId);
     const start = new Date(startTime);
     const end = new Date(endTime);
@@ -508,7 +508,17 @@ export class DatabaseStorage implements IStorage {
     for (const session of sessions) {
       if (excludeId && session.id === excludeId) continue;
       if (session.status === 'cancelled') continue;
-      if (facilityId && session.facility_id !== facilityId) continue;
+      
+      // If court_id is specified, only check conflicts with sessions on the same court
+      if (courtId) {
+        if (session.court_id !== courtId) continue;
+      } else if (facilityId) {
+        // If only facility_id is specified, check conflicts with sessions at the same facility (any court or no court)
+        if (session.facility_id !== facilityId) continue;
+      } else {
+        // No facility or court specified - skip conflict check
+        continue;
+      }
 
       const sessionStart = new Date(session.start_time);
       const sessionEnd = new Date(session.end_time);

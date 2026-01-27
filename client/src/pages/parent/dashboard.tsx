@@ -56,10 +56,7 @@ export default function ParentDashboard() {
 
   const createAthleteMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      return apiRequest('/api/athletes', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      return apiRequest('POST', '/api/athletes', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });

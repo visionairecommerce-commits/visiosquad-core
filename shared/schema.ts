@@ -117,6 +117,16 @@ export const facilitiesTable = pgTable("facilities", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Courts/Fields table (belongs to facilities)
+export const courtsTable = pgTable("courts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  facility_id: uuid("facility_id").references(() => facilitiesTable.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Sessions table
 export const sessionsTable = pgTable("sessions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -124,6 +134,7 @@ export const sessionsTable = pgTable("sessions", {
   team_id: uuid("team_id").references(() => teamsTable.id),
   program_id: uuid("program_id").references(() => programsTable.id).notNull(),
   facility_id: uuid("facility_id").references(() => facilitiesTable.id),
+  court_id: uuid("court_id").references(() => courtsTable.id),
   title: text("title").notNull(),
   description: text("description"),
   session_type: text("session_type", { enum: ["practice", "clinic", "drop_in"] }).notNull(),
@@ -295,12 +306,22 @@ export interface Facility {
   created_at: string;
 }
 
+export interface Court {
+  id: string;
+  club_id: string;
+  facility_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   club_id: string;
   team_id?: string;
   program_id: string;
   facility_id?: string;
+  court_id?: string;
   title: string;
   description?: string;
   session_type: 'practice' | 'clinic' | 'drop_in';
@@ -397,6 +418,12 @@ export const insertFacilitySchema = z.object({
   description: z.string().optional(),
 });
 
+export const insertCourtSchema = z.object({
+  facility_id: z.string().min(1, "Facility is required"),
+  name: z.string().min(1, "Court/Field name is required"),
+  description: z.string().optional(),
+});
+
 export const insertSessionSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
@@ -404,6 +431,7 @@ export const insertSessionSchema = z.object({
   team_id: z.string().optional(),
   program_id: z.string().min(1, "Program is required"),
   facility_id: z.string().optional(),
+  court_id: z.string().optional(),
   start_time: z.string().min(1, "Start time is required"),
   end_time: z.string().min(1, "End time is required"),
   location: z.string().optional(),
@@ -496,6 +524,7 @@ export type InsertProgram = z.infer<typeof insertProgramSchema>;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type InsertAthlete = z.infer<typeof insertAthleteSchema>;
 export type InsertFacility = z.infer<typeof insertFacilitySchema>;
+export type InsertCourt = z.infer<typeof insertCourtSchema>;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type DayOfWeek = z.infer<typeof dayOfWeekSchema>;
 export type TimeBlock = z.infer<typeof timeBlockSchema>;

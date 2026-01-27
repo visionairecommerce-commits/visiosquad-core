@@ -53,6 +53,7 @@ const createProgramSchema = z.object({
 const createTeamSchema = z.object({
   name: z.string().min(1),
   program_id: z.string().min(1),
+  coach_id: z.string().nullable().optional().default(null),
 });
 
 const createAthleteSchema = z.object({
@@ -105,6 +106,7 @@ const createRecurringSessionSchema = z.object({
   recurrence: z.object({
     timeBlocks: z.array(timeBlockSchema).min(1),
     repeatUntil: z.string().min(1),
+    startDate: z.string().optional(),
   }),
   forceCreate: z.boolean().optional(),
 });
@@ -610,7 +612,7 @@ export async function registerRoutes(
   app.delete('/api/programs/:id', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
-      await storage.deleteProgram(clubId, req.params.id);
+      await storage.deleteProgram(clubId, req.params.id as string);
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting program:', error);
@@ -655,7 +657,7 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = req.body;
-      const team = await storage.updateTeam(clubId, req.params.id, data);
+      const team = await storage.updateTeam(clubId, req.params.id as string, data);
       res.json(team);
     } catch (error) {
       console.error('Error updating team:', error);
@@ -666,7 +668,7 @@ export async function registerRoutes(
   app.delete('/api/teams/:id', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
-      await storage.deleteTeam(clubId, req.params.id);
+      await storage.deleteTeam(clubId, req.params.id as string);
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting team:', error);
@@ -805,7 +807,7 @@ export async function registerRoutes(
       if (typeof contract_signed !== 'boolean') {
         return res.status(400).json({ error: 'contract_signed must be a boolean' });
       }
-      const roster = await storage.updateRosterContractStatus(clubId, req.params.id, contract_signed);
+      const roster = await storage.updateRosterContractStatus(clubId, req.params.id as string, contract_signed);
       res.json(roster);
     } catch (error) {
       console.error('Error updating contract status:', error);
@@ -816,7 +818,7 @@ export async function registerRoutes(
   app.delete('/api/roster/:id', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
-      await storage.removeFromRoster(clubId, req.params.id);
+      await storage.removeFromRoster(clubId, req.params.id as string);
       res.status(204).send();
     } catch (error) {
       console.error('Error removing from roster:', error);
@@ -856,7 +858,7 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = updateFacilitySchema.parse(req.body);
-      const facility = await storage.updateFacility(clubId, req.params.id, data);
+      const facility = await storage.updateFacility(clubId, req.params.id as string, data);
       res.json(facility);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -871,7 +873,7 @@ export async function registerRoutes(
   app.delete('/api/facilities/:id', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
-      await storage.deleteFacility(clubId, req.params.id);
+      await storage.deleteFacility(clubId, req.params.id as string);
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting facility:', error);
@@ -987,17 +989,18 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = cancelSessionSchema.parse(req.body);
-      const session = await storage.getSession(clubId, req.params.id);
+      const sessionId = req.params.id as string;
+      const session = await storage.getSession(clubId, sessionId);
 
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
       }
 
       // Cancel the session
-      await storage.cancelSession(clubId, req.params.id, data.reason);
+      await storage.cancelSession(clubId, sessionId, data.reason);
 
       // Get registrations to notify parents
-      const registrations = await storage.getSessionRegistrations(clubId, req.params.id);
+      const registrations = await storage.getSessionRegistrations(clubId, sessionId);
       
       // In production, we'd fetch actual parent emails
       // For demo, we'll simulate the notification
@@ -1196,7 +1199,8 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = registerSessionSchema.parse(req.body);
-      const session = await storage.getSession(clubId, req.params.sessionId);
+      const sessionId = req.params.sessionId as string;
+      const session = await storage.getSession(clubId, sessionId);
 
       if (!session) {
         return res.status(404).json({ error: 'Session not found' });
@@ -1249,7 +1253,7 @@ export async function registerRoutes(
         );
       }
 
-      const registration = await storage.createRegistration(clubId, req.params.sessionId, data.athlete_id);
+      const registration = await storage.createRegistration(clubId, sessionId, data.athlete_id);
       res.status(201).json(registration);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1265,7 +1269,7 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = checkInSchema.parse(req.body);
-      await storage.updateCheckIn(clubId, req.params.id, data.checked_in);
+      await storage.updateCheckIn(clubId, req.params.id as string, data.checked_in);
       res.json({ success: true });
     } catch (error) {
       if (error instanceof z.ZodError) {

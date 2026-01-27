@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -18,7 +17,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { insertProgramSchema, type InsertProgram } from '@shared/schema';
-import { Plus, Users, DollarSign, MoreVertical, Edit, Trash2 } from 'lucide-react';
+import { Plus, Users, DollarSign, MoreVertical, Edit, Trash2, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,27 +25,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface Program {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   monthly_fee: number;
-  athletes_count: number;
-  teams_count: number;
+  created_at: string;
 }
 
-const initialPrograms: Program[] = [
-  { id: '1', name: 'Youth Soccer', description: 'Ages 6-12 soccer training program', monthly_fee: 150, athletes_count: 45, teams_count: 4 },
-  { id: '2', name: 'Elite Training', description: 'Advanced competitive training', monthly_fee: 250, athletes_count: 24, teams_count: 2 },
-  { id: '3', name: 'Summer Camp', description: 'Intensive summer training sessions', monthly_fee: 400, athletes_count: 32, teams_count: 3 },
-  { id: '4', name: 'Beginners', description: 'Introduction to sports fundamentals', monthly_fee: 100, athletes_count: 26, teams_count: 2 },
-];
-
 export default function ProgramsPage() {
-  const [programs, setPrograms] = useState<Program[]>(initialPrograms);
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
+
+  const { data: programs = [], isLoading } = useQuery<Program[]>({
+    queryKey: ['/api/programs'],
+  });
 
   const form = useForm<InsertProgram>({
     resolver: zodResolver(insertProgramSchema),
@@ -57,31 +53,64 @@ export default function ProgramsPage() {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (data: InsertProgram) => {
+      const res = await apiRequest('POST', '/api/programs', data);
+      return res.json();
+    },
+    onSuccess: (newProgram) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      setDialogOpen(false);
+      form.reset();
+      toast({
+        title: 'Program Created',
+        description: `${newProgram.name} has been created.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create program',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/programs/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      toast({
+        title: 'Program Deleted',
+        description: 'The program has been removed.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete program',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const onSubmit = (data: InsertProgram) => {
-    const newProgram: Program = {
-      id: String(programs.length + 1),
-      name: data.name,
-      description: data.description || '',
-      monthly_fee: data.monthly_fee,
-      athletes_count: 0,
-      teams_count: 0,
-    };
-    setPrograms([...programs, newProgram]);
-    setDialogOpen(false);
-    form.reset();
-    toast({
-      title: 'Program Created',
-      description: `${data.name} has been created with a contract template.`,
-    });
+    createMutation.mutate(data);
   };
 
   const handleDelete = (id: string) => {
-    setPrograms(programs.filter(p => p.id !== id));
-    toast({
-      title: 'Program Deleted',
-      description: 'The program has been removed.',
-    });
+    deleteMutation.mutate(id);
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -160,7 +189,12 @@ export default function ProgramsPage() {
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" data-testid="button-submit-program">
+                  <Button 
+                    type="submit" 
+                    data-testid="button-submit-program"
+                    disabled={createMutation.isPending}
+                  >
+                    {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     Create Program
                   </Button>
                 </DialogFooter>
@@ -170,53 +204,63 @@ export default function ProgramsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {programs.map((program) => (
-          <Card key={program.id} className="hover-elevate">
-            <CardHeader className="flex flex-row items-start justify-between gap-2">
-              <div>
-                <CardTitle className="text-lg">{program.name}</CardTitle>
-                <CardDescription className="line-clamp-2">{program.description}</CardDescription>
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" data-testid={`button-menu-${program.id}`}>
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => handleDelete(program.id)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4 mb-4">
-                <Badge variant="secondary" className="gap-1">
-                  <DollarSign className="h-3 w-3" />
-                  ${program.monthly_fee}/mo
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Users className="h-4 w-4" />
-                  {program.athletes_count} athletes
+      {programs.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Users className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No programs yet</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              Create your first program to start organizing teams and athletes.
+            </p>
+            <Button onClick={() => setDialogOpen(true)} data-testid="button-create-first-program">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Program
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {programs.map((program) => (
+            <Card key={program.id} className="hover-elevate">
+              <CardHeader className="flex flex-row items-start justify-between gap-2">
+                <div>
+                  <CardTitle className="text-lg">{program.name}</CardTitle>
+                  <CardDescription className="line-clamp-2">{program.description || 'No description'}</CardDescription>
                 </div>
-                <div>{program.teams_count} teams</div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" data-testid={`button-menu-${program.id}`}>
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => handleDelete(program.id)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <Badge variant="secondary" className="gap-1">
+                    <DollarSign className="h-3 w-3" />
+                    ${program.monthly_fee}/mo
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

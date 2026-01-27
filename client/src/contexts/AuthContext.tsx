@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@shared/schema';
 
 interface User {
@@ -89,7 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
     setClub(null);
     localStorage.removeItem('visiosport_session');

@@ -8,6 +8,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found. Database operations will fail.');
 }
 
+if (!supabaseServiceKey) {
+  console.warn('SUPABASE_SERVICE_ROLE_KEY not found. Auth admin operations will fail.');
+}
+
 export const supabase = createClient(
   supabaseUrl || '',
   supabaseAnonKey || ''
@@ -23,3 +27,7 @@ export const supabaseAdmin = createClient(
     }
   }
 );
+
+export const isSupabaseAdminConfigured = (): boolean => {
+  return !!(supabaseUrl && supabaseServiceKey);
+};

@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
 import { processPayment, calculateTotalWithFee } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
-import { supabaseAdmin } from "./lib/supabase";
+import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
 
@@ -204,6 +204,10 @@ export async function registerRoutes(
   // Create new club (Director signup)
   app.post('/api/auth/create-club', async (req, res) => {
     try {
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Authentication service not configured' });
+      }
+      
       const data = createClubSchema.parse(req.body);
       
       // Create the club first to get the club_id
@@ -227,8 +231,20 @@ export async function registerRoutes(
         return res.status(400).json({ error: authError.message });
       }
       
-      // Get the profile created by the trigger
-      const user = await storage.getUserById(authData.user.id);
+      // Get the profile created by the trigger - retry a few times for trigger timing
+      let user = null;
+      for (let i = 0; i < 3; i++) {
+        user = await storage.getUserById(authData.user.id);
+        if (user) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (!user) {
+        // Rollback: delete auth user and club
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        await storage.deleteClub(club.id);
+        return res.status(500).json({ error: 'Failed to create user profile' });
+      }
       
       res.status(201).json({ club, user });
     } catch (error) {
@@ -275,6 +291,10 @@ export async function registerRoutes(
   // Register new user (Parent/Coach)
   app.post('/api/auth/register', async (req, res) => {
     try {
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Authentication service not configured' });
+      }
+      
       const data = registerUserSchema.parse(req.body);
       
       // Validate club code
@@ -303,8 +323,19 @@ export async function registerRoutes(
         return res.status(400).json({ error: authError.message });
       }
       
-      // Get the profile created by the trigger
-      const user = await storage.getUserById(authData.user.id);
+      // Get the profile created by the trigger - retry a few times for trigger timing
+      let user = null;
+      for (let i = 0; i < 3; i++) {
+        user = await storage.getUserById(authData.user.id);
+        if (user) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (!user) {
+        // Rollback: delete auth user
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return res.status(500).json({ error: 'Failed to create user profile' });
+      }
       
       res.status(201).json({ 
         user,
@@ -328,6 +359,10 @@ export async function registerRoutes(
   // Login
   app.post('/api/auth/login', async (req, res) => {
     try {
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Authentication service not configured' });
+      }
+      
       const data = loginSchema.parse(req.body);
       
       // Authenticate via Supabase Auth

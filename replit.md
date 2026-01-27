@@ -38,8 +38,13 @@ Preferred communication style: Simple, everyday language.
 - **Primary Database**: Supabase for data persistence and real-time features
 
 ### Authentication & Authorization
+- **Supabase Auth**: User authentication via Supabase Auth (users visible in Supabase Dashboard > Authentication)
+  - Users created via `supabaseAdmin.auth.admin.createUser()` with service role key
+  - Login via `supabaseAdmin.auth.signInWithPassword()` returning JWT session tokens
+  - Database trigger `handle_new_user()` auto-creates profile record on signup
+  - Environment variables: `SUPABASE_SERVICE_ROLE_KEY` for admin operations
 - **Multi-tenant onboarding system** with club code-based registration
-- Session-based auth context with persistent login state via localStorage
+- Session-based auth context with persistent login state via localStorage + Supabase session
 - Role-based UI rendering and route protection (Admin/Director, Coach, Parent)
 - Backend role-based access control via `X-User-Role`, `X-User-Id`, and `X-Club-Id` headers
 - Role middleware pattern: `requireRole('admin', 'coach')` applied to protected endpoints
@@ -91,7 +96,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Third-Party Services
 - **Supabase**: Primary database and authentication backend
-  - Environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+  - Environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+  - Uses database trigger `handle_new_user()` to sync auth.users → profiles table
   
 - **Helcim**: Payment processing for credit card and ACH transactions
   - Environment variables: `HELCIM_API_TOKEN`, `HELCIM_ACCOUNT_ID`

@@ -571,6 +571,18 @@ export async function registerRoutes(
     }
   });
 
+  app.put('/api/teams/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = req.body;
+      const team = await storage.updateTeam(clubId, req.params.id, data);
+      res.json(team);
+    } catch (error) {
+      console.error('Error updating team:', error);
+      res.status(500).json({ error: 'Failed to update team' });
+    }
+  });
+
   app.delete('/api/teams/:id', requireRole('admin'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
@@ -579,6 +591,17 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error deleting team:', error);
       res.status(500).json({ error: 'Failed to delete team' });
+    }
+  });
+
+  app.get('/api/coaches', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const coaches = await storage.getCoaches(clubId);
+      res.json(coaches);
+    } catch (error) {
+      console.error('Error fetching coaches:', error);
+      res.status(500).json({ error: 'Failed to fetch coaches' });
     }
   });
 

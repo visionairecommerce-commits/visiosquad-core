@@ -70,6 +70,7 @@ export interface Team {
   id: string;
   club_id: string;
   program_id: string;
+  coach_id: string | null;
   name: string;
   created_at: string;
 }
@@ -188,6 +189,7 @@ export const insertProgramSchema = z.object({
 export const insertTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
   program_id: z.string().min(1, "Program is required"),
+  coach_id: z.string().optional().nullable(),
 });
 
 export const insertAthleteSchema = z.object({

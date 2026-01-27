@@ -165,6 +165,7 @@ export interface IStorage {
   
   // Users
   getUserByEmail(email: string): Promise<User | undefined>;
+  getCoaches(clubId: string): Promise<User[]>;
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
   updateUserSignedDocuments(userId: string): Promise<void>;
   
@@ -184,8 +185,10 @@ export interface IStorage {
 
   // Teams
   getTeams(clubId: string): Promise<Team[]>;
+  getTeamsByCoach(clubId: string, coachId: string): Promise<Team[]>;
   getTeam(clubId: string, teamId: string): Promise<Team | undefined>;
   createTeam(clubId: string, team: Omit<Team, 'id' | 'club_id' | 'created_at'>): Promise<Team>;
+  updateTeam(clubId: string, teamId: string, data: { name?: string; coach_id?: string | null }): Promise<Team>;
   deleteTeam(clubId: string, teamId: string): Promise<void>;
 
   // Facilities
@@ -320,9 +323,9 @@ export class MemStorage implements IStorage {
 
     // Seed teams
     const teams: Team[] = [
-      { id: 'team-1', club_id: clubId, program_id: 'prog-1', name: 'Team Alpha', created_at: new Date().toISOString() },
-      { id: 'team-2', club_id: clubId, program_id: 'prog-1', name: 'Team Beta', created_at: new Date().toISOString() },
-      { id: 'team-3', club_id: clubId, program_id: 'prog-2', name: 'Elite Squad', created_at: new Date().toISOString() },
+      { id: 'team-1', club_id: clubId, program_id: 'prog-1', coach_id: 'demo-coach-1', name: 'Team Alpha', created_at: new Date().toISOString() },
+      { id: 'team-2', club_id: clubId, program_id: 'prog-1', coach_id: null, name: 'Team Beta', created_at: new Date().toISOString() },
+      { id: 'team-3', club_id: clubId, program_id: 'prog-2', coach_id: 'demo-coach-1', name: 'Elite Squad', created_at: new Date().toISOString() },
     ];
     teams.forEach(t => this.teams.set(t.id, t));
 
@@ -425,6 +428,12 @@ export class MemStorage implements IStorage {
     if (!user) return undefined;
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
+  }
+
+  async getCoaches(clubId: string): Promise<User[]> {
+    return Array.from(this.users.values())
+      .filter(u => u.club_id === clubId && u.role === 'coach')
+      .map(({ password, ...user }) => user);
   }
 
   async createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User> {
@@ -536,6 +545,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.teams.values()).filter(t => t.club_id === clubId);
   }
 
+  async getTeamsByCoach(clubId: string, coachId: string): Promise<Team[]> {
+    return Array.from(this.teams.values()).filter(t => t.club_id === clubId && t.coach_id === coachId);
+  }
+
   async getTeam(clubId: string, teamId: string): Promise<Team | undefined> {
     const team = this.teams.get(teamId);
     return team?.club_id === clubId ? team : undefined;
@@ -550,6 +563,17 @@ export class MemStorage implements IStorage {
     };
     this.teams.set(newTeam.id, newTeam);
     return newTeam;
+  }
+
+  async updateTeam(clubId: string, teamId: string, data: { name?: string; coach_id?: string | null }): Promise<Team> {
+    const team = this.teams.get(teamId);
+    if (!team || team.club_id !== clubId) {
+      throw new Error('Team not found');
+    }
+    if (data.name !== undefined) team.name = data.name;
+    if (data.coach_id !== undefined) team.coach_id = data.coach_id;
+    this.teams.set(teamId, team);
+    return team;
   }
 
   async deleteTeam(clubId: string, teamId: string): Promise<void> {

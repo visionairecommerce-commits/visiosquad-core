@@ -2,12 +2,12 @@ import { eq, and } from 'drizzle-orm';
 import { db } from './lib/db';
 import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
-  teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable,
+  teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
   sessionsTable, registrationsTable, paymentsTable, platformLedgerTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
-  Facility, Session, Registration, Payment, PlatformLedger
+  Facility, Court, Session, Registration, Payment, PlatformLedger
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -301,6 +301,51 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(facilitiesTable.club_id, clubId), eq(facilitiesTable.id, facilityId)));
   }
 
+  // Courts
+  async getCourts(clubId: string, facilityId?: string): Promise<Court[]> {
+    if (facilityId) {
+      const courts = await db.select().from(courtsTable)
+        .where(and(eq(courtsTable.club_id, clubId), eq(courtsTable.facility_id, facilityId)));
+      return courts.map(c => this.mapCourt(c));
+    }
+    const courts = await db.select().from(courtsTable).where(eq(courtsTable.club_id, clubId));
+    return courts.map(c => this.mapCourt(c));
+  }
+
+  async getCourt(clubId: string, courtId: string): Promise<Court | undefined> {
+    const [court] = await db.select().from(courtsTable)
+      .where(and(eq(courtsTable.club_id, clubId), eq(courtsTable.id, courtId)));
+    if (!court) return undefined;
+    return this.mapCourt(court);
+  }
+
+  async createCourt(clubId: string, court: Omit<Court, 'id' | 'club_id' | 'created_at'>): Promise<Court> {
+    const [c] = await db.insert(courtsTable).values({
+      club_id: clubId,
+      facility_id: court.facility_id,
+      name: court.name,
+      description: court.description,
+    }).returning();
+    return this.mapCourt(c);
+  }
+
+  async updateCourt(clubId: string, courtId: string, data: { name?: string; description?: string }): Promise<Court> {
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+
+    const [court] = await db.update(courtsTable)
+      .set(updateData)
+      .where(and(eq(courtsTable.club_id, clubId), eq(courtsTable.id, courtId)))
+      .returning();
+    return this.mapCourt(court);
+  }
+
+  async deleteCourt(clubId: string, courtId: string): Promise<void> {
+    await db.delete(courtsTable)
+      .where(and(eq(courtsTable.club_id, clubId), eq(courtsTable.id, courtId)));
+  }
+
   // Athletes
   async getAthletes(clubId: string): Promise<Athlete[]> {
     const athletes = await db.select().from(athletesTable).where(eq(athletesTable.club_id, clubId));
@@ -434,6 +479,7 @@ export class DatabaseStorage implements IStorage {
       team_id: session.team_id || null,
       program_id: session.program_id,
       facility_id: session.facility_id || null,
+      court_id: session.court_id || null,
       title: session.title,
       description: session.description,
       session_type: session.session_type,
@@ -654,6 +700,17 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  private mapCourt(c: any): Court {
+    return {
+      id: c.id,
+      club_id: c.club_id,
+      facility_id: c.facility_id,
+      name: c.name,
+      description: c.description ?? undefined,
+      created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
   private mapSession(s: any): Session {
     return {
       id: s.id,
@@ -661,6 +718,7 @@ export class DatabaseStorage implements IStorage {
       team_id: s.team_id ?? undefined,
       program_id: s.program_id,
       facility_id: s.facility_id ?? undefined,
+      court_id: s.court_id ?? undefined,
       title: s.title,
       description: s.description ?? undefined,
       session_type: s.session_type,

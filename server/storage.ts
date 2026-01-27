@@ -96,12 +96,22 @@ export interface Facility {
   created_at: string;
 }
 
+export interface Court {
+  id: string;
+  club_id: string;
+  facility_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+}
+
 export interface Session {
   id: string;
   club_id: string;
   team_id?: string;
   program_id: string;
   facility_id?: string;
+  court_id?: string;
   title: string;
   description?: string;
   session_type: 'practice' | 'clinic' | 'drop_in';
@@ -204,6 +214,13 @@ export interface IStorage {
   updateFacility(clubId: string, facilityId: string, data: { name?: string; description?: string }): Promise<Facility>;
   deleteFacility(clubId: string, facilityId: string): Promise<void>;
 
+  // Courts
+  getCourts(clubId: string, facilityId?: string): Promise<Court[]>;
+  getCourt(clubId: string, courtId: string): Promise<Court | undefined>;
+  createCourt(clubId: string, court: Omit<Court, 'id' | 'club_id' | 'created_at'>): Promise<Court>;
+  updateCourt(clubId: string, courtId: string, data: { name?: string; description?: string }): Promise<Court>;
+  deleteCourt(clubId: string, courtId: string): Promise<void>;
+
   // Athletes
   getAthletes(clubId: string): Promise<Athlete[]>;
   getAthlete(clubId: string, athleteId: string): Promise<Athlete | undefined>;
@@ -251,6 +268,7 @@ export class MemStorage implements IStorage {
   private programs: Map<string, Program> = new Map();
   private teams: Map<string, Team> = new Map();
   private facilities: Map<string, Facility> = new Map();
+  private courts: Map<string, Court> = new Map();
   private athletes: Map<string, Athlete> = new Map();
   private roster: Map<string, AthleteTeamRoster> = new Map();
   private sessions: Map<string, Session> = new Map();
@@ -653,6 +671,49 @@ export class MemStorage implements IStorage {
     const facility = this.facilities.get(facilityId);
     if (facility?.club_id === clubId) {
       this.facilities.delete(facilityId);
+    }
+  }
+
+  // Courts
+  async getCourts(clubId: string, facilityId?: string): Promise<Court[]> {
+    const courts = Array.from(this.courts.values()).filter(c => c.club_id === clubId);
+    if (facilityId) {
+      return courts.filter(c => c.facility_id === facilityId);
+    }
+    return courts;
+  }
+
+  async getCourt(clubId: string, courtId: string): Promise<Court | undefined> {
+    const court = this.courts.get(courtId);
+    return court?.club_id === clubId ? court : undefined;
+  }
+
+  async createCourt(clubId: string, court: Omit<Court, 'id' | 'club_id' | 'created_at'>): Promise<Court> {
+    const newCourt: Court = {
+      ...court,
+      id: randomUUID(),
+      club_id: clubId,
+      created_at: new Date().toISOString(),
+    };
+    this.courts.set(newCourt.id, newCourt);
+    return newCourt;
+  }
+
+  async updateCourt(clubId: string, courtId: string, data: { name?: string; description?: string }): Promise<Court> {
+    const court = this.courts.get(courtId);
+    if (!court || court.club_id !== clubId) {
+      throw new Error('Court not found');
+    }
+    if (data.name !== undefined) court.name = data.name;
+    if (data.description !== undefined) court.description = data.description;
+    this.courts.set(courtId, court);
+    return court;
+  }
+
+  async deleteCourt(clubId: string, courtId: string): Promise<void> {
+    const court = this.courts.get(courtId);
+    if (court?.club_id === clubId) {
+      this.courts.delete(courtId);
     }
   }
 

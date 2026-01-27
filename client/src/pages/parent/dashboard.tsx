@@ -1,11 +1,24 @@
-import { useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Link } from 'wouter';
 import { useAthlete } from '@/contexts/AthleteContext';
 import { AthleteSwitcher } from '@/components/AthleteSwitcher';
 import { isAthleteAccessLocked } from '@shared/schema';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import type { Athlete, Session } from '@shared/schema';
 import {
   Calendar,
   CreditCard,
@@ -14,78 +27,84 @@ import {
   Clock,
   MapPin,
   CheckCircle,
+  Plus,
+  UserPlus,
+  GraduationCap,
+  Users,
 } from 'lucide-react';
-import { format, addDays } from 'date-fns';
-
-const today = new Date();
-
-const mockAthletes = [
-  {
-    id: '1',
-    club_id: 'demo-club-1',
-    parent_id: 'demo-parent-1',
-    first_name: 'Emma',
-    last_name: 'Wilson',
-    date_of_birth: '2015-03-15',
-    tags: ['U10', 'Soccer'],
-    paid_through_date: '2026-02-15',
-    is_locked: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    club_id: 'demo-club-1',
-    parent_id: 'demo-parent-1',
-    first_name: 'Jake',
-    last_name: 'Wilson',
-    date_of_birth: '2017-07-22',
-    tags: ['U8', 'Beginners'],
-    paid_through_date: '2026-01-10',
-    is_locked: false,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const upcomingSessions = [
-  {
-    id: '1',
-    title: 'Team Alpha Practice',
-    date: format(today, 'EEE, MMM d'),
-    time: '4:00 PM - 5:30 PM',
-    location: 'Field 1',
-    registered: true,
-  },
-  {
-    id: '2',
-    title: 'Skills Clinic',
-    date: format(addDays(today, 2), 'EEE, MMM d'),
-    time: '10:00 AM - 12:00 PM',
-    location: 'Indoor Court',
-    registered: false,
-    price: 25,
-  },
-  {
-    id: '3',
-    title: 'Drop-in Session',
-    date: format(addDays(today, 4), 'EEE, MMM d'),
-    time: '3:00 PM - 4:00 PM',
-    location: 'Field 2',
-    registered: false,
-    price: 15,
-  },
-];
+import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ParentDashboard() {
-  const { athletes, activeAthlete, setAthletes, setActiveAthlete } = useAthlete();
+  const { activeAthlete, setActiveAthlete, setAthletes } = useAthlete();
+  const { toast } = useToast();
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    date_of_birth: '',
+    graduation_year: new Date().getFullYear() + 10,
+  });
 
-  useEffect(() => {
-    if (athletes.length === 0) {
-      setAthletes(mockAthletes);
-      setActiveAthlete(mockAthletes[0]);
-    }
-  }, [athletes.length, setAthletes, setActiveAthlete]);
+  const { data: athletes = [], isLoading: athletesLoading } = useQuery<Athlete[]>({
+    queryKey: ['/api/athletes'],
+  });
+
+  const { data: sessions = [] } = useQuery<Session[]>({
+    queryKey: ['/api/sessions'],
+  });
+
+  const createAthleteMutation = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      return apiRequest('/api/athletes', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+      setAddDialogOpen(false);
+      setFormData({
+        first_name: '',
+        last_name: '',
+        date_of_birth: '',
+        graduation_year: new Date().getFullYear() + 10,
+      });
+      toast({
+        title: 'Athlete Added',
+        description: 'Your athlete has been added to your family.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to add athlete. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const isLocked = activeAthlete ? isAthleteAccessLocked(activeAthlete.paid_through_date ?? undefined) : false;
+
+  const upcomingSessions = sessions.slice(0, 3);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createAthleteMutation.mutate(formData);
+  };
+
+  if (athletesLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (athletes.length > 0 && !activeAthlete) {
+    setAthletes(athletes);
+    setActiveAthlete(athletes[0]);
+  }
 
   return (
     <div className="space-y-6">
@@ -96,7 +115,7 @@ export default function ParentDashboard() {
             Manage your athletes' schedules and registrations
           </p>
         </div>
-        <AthleteSwitcher />
+        {athletes.length > 0 && <AthleteSwitcher />}
       </div>
 
       {isLocked && activeAthlete && (
@@ -119,130 +138,244 @@ export default function ParentDashboard() {
         </div>
       )}
 
-      {activeAthlete && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle className="text-lg">
-                  {activeAthlete.first_name} {activeAthlete.last_name}
-                </CardTitle>
-                <CardDescription>
-                  {activeAthlete.tags?.join(' • ')}
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                {activeAthlete.paid_through_date && (
-                  <Badge variant={isLocked ? 'destructive' : 'secondary'} className="gap-1">
-                    {isLocked ? <AlertCircle className="h-3 w-3" /> : <CheckCircle className="h-3 w-3" />}
-                    Paid through {format(new Date(activeAthlete.paid_through_date), 'MMM yyyy')}
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-lg">Upcoming Sessions</CardTitle>
-              <CardDescription>Sessions for {activeAthlete?.first_name || 'your athlete'}</CardDescription>
-            </div>
-            <Link href="/schedule">
-              <Button variant="ghost" size="sm" data-testid="link-view-schedule">
-                View All
-                <ArrowRight className="h-4 w-4 ml-1" />
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              My Family
+            </CardTitle>
+            <CardDescription>
+              {athletes.length} athlete{athletes.length !== 1 ? 's' : ''} registered
+            </CardDescription>
+          </div>
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-athlete">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Athlete
               </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {upcomingSessions.map((session) => (
-                <div key={session.id} className="p-4 rounded-md bg-muted/50 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-medium">{session.title}</div>
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {session.date}
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Athlete</DialogTitle>
+                <DialogDescription>
+                  Add a new athlete to your family account.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="first_name">First Name</Label>
+                    <Input
+                      id="first_name"
+                      value={formData.first_name}
+                      onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                      required
+                      data-testid="input-first-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      value={formData.last_name}
+                      onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                      required
+                      data-testid="input-last-name"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date_of_birth">Date of Birth</Label>
+                    <Input
+                      id="date_of_birth"
+                      type="date"
+                      value={formData.date_of_birth}
+                      onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                      required
+                      data-testid="input-dob"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="graduation_year">Graduation Year</Label>
+                    <Input
+                      id="graduation_year"
+                      type="number"
+                      min={2020}
+                      max={2040}
+                      value={formData.graduation_year}
+                      onChange={(e) => setFormData({ ...formData, graduation_year: parseInt(e.target.value) })}
+                      required
+                      data-testid="input-graduation-year"
+                    />
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" disabled={createAthleteMutation.isPending} data-testid="button-submit-athlete">
+                  {createAthleteMutation.isPending ? 'Adding...' : 'Add Athlete'}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {athletes.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <UserPlus className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No athletes registered yet.</p>
+              <p className="text-sm">Click "Add Athlete" to get started.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {athletes.map((athlete) => {
+                const athleteLocked = isAthleteAccessLocked(athlete.paid_through_date ?? undefined);
+                const isActive = activeAthlete?.id === athlete.id;
+                return (
+                  <div
+                    key={athlete.id}
+                    className={`p-4 rounded-md border cursor-pointer transition-colors ${
+                      isActive ? 'border-primary bg-primary/5' : 'hover-elevate'
+                    }`}
+                    onClick={() => {
+                      setActiveAthlete(athlete);
+                    }}
+                    data-testid={`card-athlete-${athlete.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium">
+                          {athlete.first_name} {athlete.last_name}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-3.5 w-3.5" />
-                          {session.time}
+                        <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                          <GraduationCap className="h-3.5 w-3.5" />
+                          Class of {athlete.graduation_year || 'N/A'}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-3.5 w-3.5" />
-                          {session.location}
-                        </div>
+                        {athlete.date_of_birth && (
+                          <div className="text-sm text-muted-foreground mt-0.5">
+                            Born {format(new Date(athlete.date_of_birth), 'MMM d, yyyy')}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      {session.registered ? (
-                        <Badge className="bg-accent/10 text-accent gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          Registered
+                      {athleteLocked ? (
+                        <Badge variant="destructive" className="gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Past Due
                         </Badge>
-                      ) : session.price ? (
-                        <div className="text-lg font-semibold">${session.price}</div>
+                      ) : athlete.paid_through_date ? (
+                        <Badge variant="secondary" className="gap-1">
+                          <CheckCircle className="h-3 w-3" />
+                          Active
+                        </Badge>
                       ) : null}
                     </div>
                   </div>
-                  {!session.registered && (
-                    <Button
-                      className="w-full"
-                      disabled={isLocked}
-                      data-testid={`button-register-session-${session.id}`}
-                    >
-                      {isLocked ? (
-                        <>
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          Payment Required
-                        </>
-                      ) : (
-                        'Register Now'
-                      )}
-                    </Button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Quick Actions</CardTitle>
-            <CardDescription>Common tasks and actions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Link href="/athletes">
-              <Button variant="outline" className="w-full justify-start" data-testid="link-manage-athletes">
-                <Calendar className="h-4 w-4 mr-3" />
-                Manage Athletes
-                <ArrowRight className="h-4 w-4 ml-auto" />
-              </Button>
-            </Link>
-            <Link href="/schedule">
-              <Button variant="outline" className="w-full justify-start" data-testid="link-view-full-schedule">
-                <Calendar className="h-4 w-4 mr-3" />
-                View Full Schedule
-                <ArrowRight className="h-4 w-4 ml-auto" />
-              </Button>
-            </Link>
-            <Link href="/payments">
-              <Button variant="outline" className="w-full justify-start" data-testid="link-payment-history">
-                <CreditCard className="h-4 w-4 mr-3" />
-                Payment History
-                <ArrowRight className="h-4 w-4 ml-auto" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      {activeAthlete && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-lg">Upcoming Sessions</CardTitle>
+                <CardDescription>Sessions for {activeAthlete.first_name}</CardDescription>
+              </div>
+              <Link href="/schedule">
+                <Button variant="ghost" size="sm" data-testid="link-view-schedule">
+                  View All
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {upcomingSessions.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Calendar className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p>No upcoming sessions</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingSessions.map((session) => (
+                    <div key={session.id} className="p-4 rounded-md bg-muted/50 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-medium">{session.title}</div>
+                          <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-3.5 w-3.5" />
+                              {format(new Date(session.start_time), 'EEE, MMM d')}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3.5 w-3.5" />
+                              {format(new Date(session.start_time), 'h:mm a')} - {format(new Date(session.end_time), 'h:mm a')}
+                            </div>
+                            {session.facility_id && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-3.5 w-3.5" />
+                                {session.facility_id}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <Badge variant="secondary">{session.type}</Badge>
+                      </div>
+                      <Button
+                        className="w-full"
+                        disabled={isLocked}
+                        data-testid={`button-register-session-${session.id}`}
+                      >
+                        {isLocked ? (
+                          <>
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            Payment Required
+                          </>
+                        ) : (
+                          'Register Now'
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Actions</CardTitle>
+              <CardDescription>Common tasks and actions</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Link href="/athletes">
+                <Button variant="outline" className="w-full justify-start" data-testid="link-manage-athletes">
+                  <Users className="h-4 w-4 mr-3" />
+                  Manage Athletes
+                  <ArrowRight className="h-4 w-4 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/schedule">
+                <Button variant="outline" className="w-full justify-start" data-testid="link-view-full-schedule">
+                  <Calendar className="h-4 w-4 mr-3" />
+                  View Full Schedule
+                  <ArrowRight className="h-4 w-4 ml-auto" />
+                </Button>
+              </Link>
+              <Link href="/payments">
+                <Button variant="outline" className="w-full justify-start" data-testid="link-payment-history">
+                  <CreditCard className="h-4 w-4 mr-3" />
+                  Payment History
+                  <ArrowRight className="h-4 w-4 ml-auto" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

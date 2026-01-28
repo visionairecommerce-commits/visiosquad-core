@@ -1229,10 +1229,13 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Event not found' });
       }
       
+      // Calculate total with convenience fee (3% for credit card)
+      const totalAmount = calculateTotalWithFee(event.price, 'credit_card');
+      
       // Create payment record
       const payment = await storage.createPayment(clubId, {
         athlete_id: roster.athlete_id,
-        amount: event.price,
+        amount: totalAmount,
         payment_type: 'event',
         payment_method: 'credit_card', // Default, actual processing would use stored card
         status: 'completed', // For now, mark as completed (actual implementation would process payment)

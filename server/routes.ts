@@ -1054,9 +1054,9 @@ export async function registerRoutes(
   });
 
   // Bill athlete for event
-  app.post('/api/events/rosters/:rosterId/bill', requireRole('admin'), async (req, res) => {
+  app.post('/api/events/rosters/:rosterId/bill', requireRole('admin', 'coach'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
+      const { clubId, role } = getAuthContext(req);
       
       // Check if club has billing method
       const club = await storage.getClub(clubId);
@@ -1064,6 +1064,14 @@ export async function registerRoutes(
         return res.status(403).json({ 
           error: 'Billing method required',
           message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
+        });
+      }
+      
+      // Check billing permission for coaches
+      if (role === 'coach' && !club.coaches_can_bill) {
+        return res.status(403).json({ 
+          error: 'Billing not authorized',
+          message: 'You do not have permission to bill athletes. Please contact your club director.' 
         });
       }
       

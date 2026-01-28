@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -232,6 +233,28 @@ export default function SettingsPage() {
     },
     onError: () => {
       toast({ title: 'Failed to delete facility', variant: 'destructive' });
+    },
+  });
+
+  const updateCoachBillingMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const response = await apiRequest('PATCH', `/api/clubs/${club?.id}`, { 
+        coaches_can_bill: enabled 
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (setClub && data) {
+        setClub(data);
+      }
+      toast({ 
+        title: data?.coaches_can_bill 
+          ? 'Coaches can now bill athletes' 
+          : 'Coach billing disabled' 
+      });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update permission', variant: 'destructive' });
     },
   });
 
@@ -685,6 +708,37 @@ export default function SettingsPage() {
                 </Dialog>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Staff Permissions
+            </CardTitle>
+            <CardDescription>
+              Control what coaches can do in your club
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-md border p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="coaches-can-bill" className="text-base font-medium">
+                  Allow Coaches to Bill Athletes
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  When enabled, coaches can process payments for event registrations
+                </p>
+              </div>
+              <Switch
+                id="coaches-can-bill"
+                checked={club?.coaches_can_bill || false}
+                onCheckedChange={(checked) => updateCoachBillingMutation.mutate(checked)}
+                disabled={updateCoachBillingMutation.isPending}
+                data-testid="switch-coaches-can-bill"
+              />
+            </div>
           </CardContent>
         </Card>
 

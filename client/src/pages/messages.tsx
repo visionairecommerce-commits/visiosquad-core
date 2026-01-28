@@ -88,6 +88,8 @@ export default function MessagesPage() {
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [selectedRecipient, setSelectedRecipient] = useState<string>('');
   const [audienceType, setAudienceType] = useState<'individual' | 'roster' | 'team' | 'program'>('individual');
+  const [selectionMode, setSelectionMode] = useState<'person' | 'athlete'>('athlete');
+  const [selectedAthlete, setSelectedAthlete] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [selectedProgram, setSelectedProgram] = useState<string>('');
   const [chatName, setChatName] = useState<string>('');
@@ -182,6 +184,8 @@ export default function MessagesPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/chat/channels'] });
       setNewChatOpen(false);
       setSelectedRecipient('');
+      setSelectedAthlete('');
+      setSelectionMode('athlete');
       setAudienceType('individual');
       setSelectedTeam('');
       setSelectedProgram('');
@@ -225,11 +229,22 @@ export default function MessagesPage() {
   };
 
   const handleCreateChat = () => {
-    if (audienceType === 'individual' && selectedRecipient) {
-      createChannelMutation.mutate({
-        audienceType: 'individual',
-        participantIds: [selectedRecipient],
-      });
+    if (audienceType === 'individual') {
+      // When selecting by athlete, find the parent_id and use that
+      if (selectionMode === 'athlete' && selectedAthlete) {
+        const athlete = athletes.find(a => a.id === selectedAthlete);
+        if (athlete?.parent_id) {
+          createChannelMutation.mutate({
+            audienceType: 'individual',
+            participantIds: [athlete.parent_id],
+          });
+        }
+      } else if (selectionMode === 'person' && selectedRecipient) {
+        createChannelMutation.mutate({
+          audienceType: 'individual',
+          participantIds: [selectedRecipient],
+        });
+      }
     } else if (audienceType === 'team' && selectedTeam) {
       const team = teams.find(t => t.id === selectedTeam);
       createChannelMutation.mutate({
@@ -254,14 +269,19 @@ export default function MessagesPage() {
     }
   };
 
+  const isStaff = user?.role === 'admin' || user?.role === 'coach';
+
   const canCreateChat = () => {
-    if (audienceType === 'individual') return !!selectedRecipient;
+    if (audienceType === 'individual') {
+      // Staff can select by athlete or person
+      if (isStaff && selectionMode === 'athlete') return !!selectedAthlete;
+      // Non-staff always use person mode
+      if (!isStaff || selectionMode === 'person') return !!selectedRecipient;
+    }
     if (audienceType === 'team' || audienceType === 'roster') return !!selectedTeam;
     if (audienceType === 'program') return !!selectedProgram;
     return false;
   };
-
-  const isStaff = user?.role === 'admin' || user?.role === 'coach';
 
   const getChannelDisplayName = (channel: ChatChannel) => {
     if (channel.name) return channel.name;
@@ -342,7 +362,84 @@ export default function MessagesPage() {
                   </div>
                 )}
 
-                {audienceType === 'individual' && (
+                {audienceType === 'individual' && isStaff && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Select By</Label>
+                      <Select 
+                        value={selectionMode} 
+                        onValueChange={(value) => {
+                          setSelectionMode(value as 'person' | 'athlete');
+                          setSelectedRecipient('');
+                          setSelectedAthlete('');
+                        }}
+                      >
+                        <SelectTrigger data-testid="select-selection-mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="athlete">
+                            <div className="flex items-center gap-2">
+                              <UserSquare2 className="h-4 w-4" />
+                              Athlete (auto-adds parent)
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="person">
+                            <div className="flex items-center gap-2">
+                              <UserIcon className="h-4 w-4" />
+                              Person (Parent/Coach)
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {selectionMode === 'athlete' && (
+                      <div className="space-y-2">
+                        <Label>Select Athlete</Label>
+                        <Select value={selectedAthlete} onValueChange={setSelectedAthlete}>
+                          <SelectTrigger data-testid="select-athlete">
+                            <SelectValue placeholder="Select an athlete..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {athletes
+                              .filter(a => a.parent_id)
+                              .map((athlete) => (
+                                <SelectItem key={athlete.id} value={athlete.id}>
+                                  {athlete.first_name} {athlete.last_name}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Their parent will be automatically added to the conversation.
+                        </p>
+                      </div>
+                    )}
+
+                    {selectionMode === 'person' && (
+                      <div className="space-y-2">
+                        <Label>Select Person</Label>
+                        <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>
+                          <SelectTrigger data-testid="select-recipient">
+                            <SelectValue placeholder="Select a person..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clubUsers
+                              .filter(u => u.id !== user?.id)
+                              .map((u) => (
+                                <SelectItem key={u.id} value={u.id}>
+                                  {u.full_name} ({u.role})
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {audienceType === 'individual' && !isStaff && (
                   <div className="space-y-2">
                     <Label>Select Person</Label>
                     <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>

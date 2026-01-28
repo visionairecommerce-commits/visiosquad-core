@@ -95,8 +95,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Contract-Based Pricing Model
 - **Program Contracts**: Directors can create pricing tiers (contracts) for each program
-  - Each contract defines: name, description, monthly price, and sessions per week allowed
-  - Example: "4 Days/Week Premium" at $500/month, "3 Days/Week Standard" at $350/month
+  - Each contract defines: name, description, sessions per week allowed, and three pricing components:
+    - `monthly_price` (required): Recurring monthly billing amount
+    - `paid_in_full_price` (optional): Discounted price for upfront annual/full payment
+    - `initiation_fee` (optional): One-time fee charged at contract signup
+  - Example: "4 Days/Week Premium" at $500/month or $5,500 paid-in-full with $100 initiation fee
+  - `contract_document_id` can link to a contract template/PDF for signing
   - **Team-Specific Contracts**: Contracts can optionally be tied to a specific team within a program
     - If team_id is set, contract only applies to athletes on that team
     - If team_id is null, contract applies to all teams in the program
@@ -104,12 +108,20 @@ Preferred communication style: Simple, everyday language.
 - **Athlete Contracts**: Athletes can subscribe to program contracts for recurring billing
   - Contract status: active, cancelled, expired
   - Stored in `athlete_contracts` table linking athlete_id to program_contract_id
+  - **Payment Plan Selection**: `payment_plan` field tracks whether parent chose 'monthly' or 'paid_in_full'
+  - **Signature Tracking**: `signed_name` and `signed_at` record parent's contract signature
+  - **Initiation Fee Status**: `initiation_fee_paid` boolean tracks whether one-time fee has been collected
   - **Custom Price Override**: Individual athletes can have a custom monthly price that overrides the base contract price
     - Stored as `custom_price` on athlete_contracts table
     - When set, billing uses custom_price instead of program_contract.monthly_price
   - System automatically cancels previous active contracts when assigning a new one
+- **Parent Contract Enrollment** (`/contracts` for parents):
+  - Parents can view available contracts based on their athlete's roster memberships
+  - Select payment plan (monthly vs paid-in-full with discount if available)
+  - E-sign contract with typed signature
+  - API validates contract eligibility against athlete's program/team enrollment
 - **Drop-in Pricing**: Sessions have a `drop_in_price` field for non-contract attendees
-- **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`
+- **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`, parent enrollment at `/api/athletes/:id/enroll-contract`
 
 ### Business Logic Patterns
 - **Billing Card Requirement**: Directors must add a credit card in Settings > Billing before processing any client payments

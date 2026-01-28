@@ -35,6 +35,8 @@ import ParentContractsPage from "@/pages/parent/contracts";
 import ParentFormsPage from "@/pages/parent/forms";
 import SettingsPage from "@/pages/admin/settings";
 import EventsPage from "@/pages/admin/events";
+import MessagesPage from "@/pages/messages";
+import BulletinPage from "@/pages/bulletin";
 
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
@@ -70,6 +72,8 @@ function AdminRoutes() {
       <Route path="/calendar" component={AdminCalendarPage} />
       <Route path="/payments" component={AdminPaymentsPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/messages" component={MessagesPage} />
+      <Route path="/bulletin" component={BulletinPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -87,6 +91,8 @@ function CoachRoutes() {
       <Route path="/calendar" component={CoachCalendarPage} />
       <Route path="/attendance" component={CoachSessionsPage} />
       <Route path="/contract-compliance" component={ContractCompliancePage} />
+      <Route path="/messages" component={MessagesPage} />
+      <Route path="/bulletin" component={BulletinPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -105,6 +111,8 @@ function ParentRoutes() {
       <Route path="/payments" component={ParentPaymentsPage} />
       <Route path="/documents" component={ParentDocumentsPage} />
       <Route path="/forms" component={ParentFormsPage} />
+      <Route path="/messages" component={MessagesPage} />
+      <Route path="/bulletin" component={BulletinPage} />
       <Route component={NotFound} />
     </Switch>
   );

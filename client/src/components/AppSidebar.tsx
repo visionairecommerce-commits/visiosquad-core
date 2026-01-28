@@ -30,10 +30,14 @@ import {
   CalendarDays,
   Link2,
   Shield,
+  MessageSquare,
+  Megaphone,
 } from 'lucide-react';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Messages', url: '/messages', icon: MessageSquare },
+  { title: 'Bulletin', url: '/bulletin', icon: Megaphone },
   { title: 'Programs', url: '/programs', icon: ClipboardList },
   { title: 'Contracts', url: '/contracts', icon: DollarSign },
   { title: 'Contract Compliance', url: '/contract-compliance', icon: Shield },
@@ -48,6 +52,8 @@ const adminMenuItems = [
 
 const coachMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Messages', url: '/messages', icon: MessageSquare },
+  { title: 'Bulletin', url: '/bulletin', icon: Megaphone },
   { title: 'Calendar', url: '/calendar', icon: Calendar },
   { title: 'My Sessions', url: '/sessions', icon: ClipboardList },
   { title: 'Attendance', url: '/attendance', icon: UserCheck },
@@ -56,6 +62,8 @@ const coachMenuItems = [
 
 const parentMenuItems = [
   { title: 'Home', url: '/', icon: Home },
+  { title: 'Messages', url: '/messages', icon: MessageSquare },
+  { title: 'Bulletin', url: '/bulletin', icon: Megaphone },
   { title: 'My Athletes', url: '/athletes', icon: Users },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Schedule', url: '/schedule', icon: Calendar },

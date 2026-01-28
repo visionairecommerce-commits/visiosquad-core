@@ -253,6 +253,76 @@ export interface PlatformLedger {
   created_at: string;
 }
 
+// ============ MESSAGING TYPES ============
+
+export interface ChatChannel {
+  id: string;
+  club_id: string;
+  name?: string;
+  channel_type: 'direct' | 'team' | 'program' | 'group';
+  team_id?: string;
+  program_id?: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ChannelParticipant {
+  id: string;
+  channel_id: string;
+  user_id: string;
+  role: string;
+  athlete_id?: string;
+  is_director_auto_added: boolean;
+  last_read_at?: string;
+  joined_at: string;
+}
+
+export interface Message {
+  id: string;
+  channel_id: string;
+  sender_id: string;
+  content: string;
+  message_type: 'text' | 'system';
+  created_at: string;
+  updated_at?: string;
+  deleted_at?: string;
+}
+
+// ============ BULLETIN BOARD TYPES ============
+
+export interface BulletinPost {
+  id: string;
+  club_id: string;
+  team_id?: string;
+  program_id?: string;
+  author_id: string;
+  title: string;
+  content: string;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface BulletinRead {
+  id: string;
+  post_id: string;
+  user_id: string;
+  is_hidden: boolean;
+  read_at: string;
+}
+
+// ============ PUSH NOTIFICATION TYPES ============
+
+export interface PushSubscription {
+  id: string;
+  user_id: string;
+  fcm_token: string;
+  device_type: 'web' | 'ios' | 'android';
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
 // Platform fee constants
 export const PLATFORM_FEES = {
   monthly: 2.00,
@@ -411,6 +481,50 @@ export interface IStorage {
   // Event Coaches
   getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]>;
   setEventCoaches(clubId: string, eventId: string, coachIds: string[]): Promise<void>;
+
+  // ============ MESSAGING SYSTEM ============
+  
+  // Communication Settings
+  updateCommunicationSettings(clubId: string, settings: { include_director_in_chats: boolean }): Promise<Club>;
+  getCommunicationSettings(clubId: string): Promise<{ include_director_in_chats: boolean }>;
+  
+  // Chat Channels
+  createChatChannel(
+    clubId: string, 
+    createdBy: string, 
+    channelType: 'direct' | 'team' | 'program' | 'group',
+    participantIds: string[],
+    options?: { name?: string; teamId?: string; programId?: string }
+  ): Promise<ChatChannel>;
+  getChatChannels(clubId: string, userId: string): Promise<ChatChannel[]>;
+  getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined>;
+  getChannelParticipants(channelId: string): Promise<ChannelParticipant[]>;
+  addChannelParticipant(channelId: string, userId: string, role: string, athleteId?: string, isDirectorAutoAdded?: boolean): Promise<ChannelParticipant>;
+  
+  // Messages
+  sendMessage(channelId: string, senderId: string, content: string, messageType?: 'text' | 'system'): Promise<Message>;
+  getMessages(channelId: string, limit?: number, before?: Date): Promise<Message[]>;
+  updateLastReadAt(channelId: string, userId: string): Promise<void>;
+  
+  // SafeSport validation
+  validateChatParticipants(clubId: string, participantIds: string[], initiatorId: string): Promise<{ valid: boolean; error?: string; autoAddParentIds?: string[] }>;
+  getDirectorId(clubId: string): Promise<string | undefined>;
+
+  // ============ BULLETIN BOARD ============
+  
+  createBulletinPost(clubId: string, authorId: string, post: { title: string; content: string; teamId?: string; programId?: string; isPinned?: boolean }): Promise<BulletinPost>;
+  getBulletinPosts(clubId: string, userId: string, filters?: { teamId?: string; programId?: string }): Promise<(BulletinPost & { isRead: boolean; isHidden: boolean; author: User })[]>;
+  getBulletinPost(clubId: string, postId: string): Promise<BulletinPost | undefined>;
+  updateBulletinPost(clubId: string, postId: string, data: { title?: string; content?: string; isPinned?: boolean }): Promise<BulletinPost>;
+  deleteBulletinPost(clubId: string, postId: string): Promise<void>;
+  markBulletinRead(clubId: string, postId: string, userId: string, isHidden?: boolean): Promise<BulletinRead>;
+  updateBulletinHidden(clubId: string, postId: string, userId: string, isHidden: boolean): Promise<BulletinRead>;
+  
+  // ============ PUSH NOTIFICATIONS ============
+  
+  registerPushToken(userId: string, fcmToken: string, deviceType?: 'web' | 'ios' | 'android'): Promise<PushSubscription>;
+  getPushTokensForUsers(userIds: string[]): Promise<string[]>;
+  deactivatePushToken(fcmToken: string): Promise<void>;
 }
 
 // In-memory storage implementation

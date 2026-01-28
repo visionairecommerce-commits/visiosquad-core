@@ -1,8 +1,13 @@
 import { z } from "zod";
-import { pgTable, text, integer, boolean, timestamp, decimal, uuid } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, decimal, uuid, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // ============ DRIZZLE TABLE DEFINITIONS ============
+
+// Communication settings type for clubs
+export type CommunicationSettings = {
+  include_director_in_chats: boolean;
+};
 
 // Clubs table
 export const clubsTable = pgTable("clubs", {
@@ -25,6 +30,7 @@ export const clubsTable = pgTable("clubs", {
   billing_bank_last_four: text("billing_bank_last_four"),
   billing_method: text("billing_method", { enum: ["card", "bank"] }),
   coaches_can_bill: boolean("coaches_can_bill").default(false).notNull(),
+  communication_settings: jsonb("communication_settings").$type<CommunicationSettings>().default({ include_director_in_chats: false }),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -73,6 +79,103 @@ export const clubFormViewsTable = pgTable("club_form_views", {
   user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
   viewed_at: timestamp("viewed_at").defaultNow().notNull(),
 });
+
+// ============ MESSAGING SYSTEM (SafeSport Compliant) ============
+
+// Chat channels table
+export const chatChannelsTable = pgTable("chat_channels", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  name: text("name"), // Optional name for group chats
+  channel_type: text("channel_type", { enum: ["direct", "team", "program", "group"] }).notNull(),
+  team_id: uuid("team_id"), // Optional - for team channels
+  program_id: uuid("program_id"), // Optional - for program channels
+  created_by: uuid("created_by").references(() => profilesTable.id).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  clubIdIdx: index("chat_channels_club_id_idx").on(table.club_id),
+  teamIdIdx: index("chat_channels_team_id_idx").on(table.team_id),
+}));
+
+// Channel participants table
+export const channelParticipantsTable = pgTable("channel_participants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  channel_id: uuid("channel_id").references(() => chatChannelsTable.id).notNull(),
+  user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
+  role: text("role", { enum: ["admin", "coach", "parent", "athlete"] }).notNull(),
+  athlete_id: uuid("athlete_id"), // If participant is an athlete (for SafeSport tracking)
+  is_director_auto_added: boolean("is_director_auto_added").default(false).notNull(), // Track if director was auto-added
+  last_read_at: timestamp("last_read_at"),
+  joined_at: timestamp("joined_at").defaultNow().notNull(),
+}, (table) => ({
+  channelIdIdx: index("channel_participants_channel_id_idx").on(table.channel_id),
+  userIdIdx: index("channel_participants_user_id_idx").on(table.user_id),
+}));
+
+// Messages table (indexed for 1M+ scaling)
+export const messagesTable = pgTable("messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  channel_id: uuid("channel_id").references(() => chatChannelsTable.id).notNull(),
+  sender_id: uuid("sender_id").references(() => profilesTable.id).notNull(),
+  content: text("content").notNull(),
+  message_type: text("message_type", { enum: ["text", "system"] }).default("text").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at"),
+  deleted_at: timestamp("deleted_at"), // Soft delete
+}, (table) => ({
+  channelIdIdx: index("messages_channel_id_idx").on(table.channel_id),
+  channelCreatedIdx: index("messages_channel_created_idx").on(table.channel_id, table.created_at),
+  senderIdIdx: index("messages_sender_id_idx").on(table.sender_id),
+}));
+
+// ============ BULLETIN BOARD SYSTEM ============
+
+// Bulletin posts table
+export const bulletinPostsTable = pgTable("bulletin_posts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  team_id: uuid("team_id"), // Optional - for team-specific posts
+  program_id: uuid("program_id"), // Optional - for program-specific posts
+  author_id: uuid("author_id").references(() => profilesTable.id).notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  is_pinned: boolean("is_pinned").default(false).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at"),
+}, (table) => ({
+  clubIdIdx: index("bulletin_posts_club_id_idx").on(table.club_id),
+  teamIdIdx: index("bulletin_posts_team_id_idx").on(table.team_id),
+  createdAtIdx: index("bulletin_posts_created_at_idx").on(table.created_at),
+}));
+
+// Bulletin reads table - tracks who has read each post
+export const bulletinReadsTable = pgTable("bulletin_reads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  post_id: uuid("post_id").references(() => bulletinPostsTable.id).notNull(),
+  user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
+  is_hidden: boolean("is_hidden").default(false).notNull(), // User can hide from their board
+  read_at: timestamp("read_at").defaultNow().notNull(),
+}, (table) => ({
+  postIdIdx: index("bulletin_reads_post_id_idx").on(table.post_id),
+  userIdIdx: index("bulletin_reads_user_id_idx").on(table.user_id),
+  postUserIdx: index("bulletin_reads_post_user_idx").on(table.post_id, table.user_id),
+}));
+
+// ============ PUSH NOTIFICATIONS ============
+
+// Push subscriptions table - stores FCM tokens
+export const pushSubscriptionsTable = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
+  fcm_token: text("fcm_token").notNull(),
+  device_type: text("device_type", { enum: ["web", "ios", "android"] }).default("web").notNull(),
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at"),
+}, (table) => ({
+  userIdIdx: index("push_subscriptions_user_id_idx").on(table.user_id),
+  fcmTokenIdx: index("push_subscriptions_fcm_token_idx").on(table.fcm_token),
+}));
 
 // Club signatures table
 export const clubSignaturesTable = pgTable("club_signatures", {
@@ -727,6 +830,55 @@ export const insertEventCoachSchema = z.object({
   coach_id: z.string().min(1, "Coach is required"),
 });
 
+// ============ MESSAGING SCHEMAS ============
+
+export const createChatChannelSchema = z.object({
+  name: z.string().optional(),
+  channel_type: z.enum(["direct", "team", "program", "group"]),
+  team_id: z.string().optional(),
+  program_id: z.string().optional(),
+  participant_ids: z.array(z.string()).min(1, "At least one participant required"),
+});
+
+export const sendMessageSchema = z.object({
+  channel_id: z.string().min(1, "Channel is required"),
+  content: z.string().min(1, "Message cannot be empty"),
+});
+
+// ============ BULLETIN BOARD SCHEMAS ============
+
+export const createBulletinPostSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  content: z.string().min(1, "Content is required"),
+  team_id: z.string().optional(),
+  program_id: z.string().optional(),
+  is_pinned: z.boolean().optional(),
+});
+
+export const updateBulletinPostSchema = z.object({
+  title: z.string().min(1).optional(),
+  content: z.string().min(1).optional(),
+  is_pinned: z.boolean().optional(),
+});
+
+export const markBulletinReadSchema = z.object({
+  post_id: z.string().min(1, "Post ID is required"),
+  is_hidden: z.boolean().optional(),
+});
+
+// ============ PUSH NOTIFICATION SCHEMAS ============
+
+export const registerPushTokenSchema = z.object({
+  fcm_token: z.string().min(1, "FCM token is required"),
+  device_type: z.enum(["web", "ios", "android"]).optional(),
+});
+
+// ============ COMMUNICATION SETTINGS SCHEMA ============
+
+export const updateCommunicationSettingsSchema = z.object({
+  include_director_in_chats: z.boolean(),
+});
+
 // Club creation schema (for Directors)
 export const createClubSchema = z.object({
   name: z.string().min(2, "Club name must be at least 2 characters"),
@@ -800,6 +952,27 @@ export type Login = z.infer<typeof loginSchema>;
 export type UpdateClubDocuments = z.infer<typeof updateClubDocumentsSchema>;
 export type UpdateClubSettings = z.infer<typeof updateClubSettingsSchema>;
 export type UpdateFacility = z.infer<typeof updateFacilitySchema>;
+
+// Messaging types
+export type ChatChannel = typeof chatChannelsTable.$inferSelect;
+export type ChannelParticipant = typeof channelParticipantsTable.$inferSelect;
+export type Message = typeof messagesTable.$inferSelect;
+export type CreateChatChannel = z.infer<typeof createChatChannelSchema>;
+export type SendMessage = z.infer<typeof sendMessageSchema>;
+
+// Bulletin board types
+export type BulletinPost = typeof bulletinPostsTable.$inferSelect;
+export type BulletinRead = typeof bulletinReadsTable.$inferSelect;
+export type CreateBulletinPost = z.infer<typeof createBulletinPostSchema>;
+export type UpdateBulletinPost = z.infer<typeof updateBulletinPostSchema>;
+export type MarkBulletinRead = z.infer<typeof markBulletinReadSchema>;
+
+// Push notification types
+export type PushSubscription = typeof pushSubscriptionsTable.$inferSelect;
+export type RegisterPushToken = z.infer<typeof registerPushTokenSchema>;
+
+// Communication settings types
+export type UpdateCommunicationSettings = z.infer<typeof updateCommunicationSettingsSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

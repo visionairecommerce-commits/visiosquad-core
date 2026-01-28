@@ -2491,5 +2491,376 @@ export async function registerRoutes(
     }
   });
 
+  // ============ COMMUNICATION SETTINGS ============
+  
+  app.get('/api/communication-settings', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const settings = await storage.getCommunicationSettings(clubId);
+      res.json(settings);
+    } catch (error) {
+      console.error('Error getting communication settings:', error);
+      res.status(500).json({ error: 'Failed to get communication settings' });
+    }
+  });
+
+  app.patch('/api/communication-settings', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { include_director_in_chats } = req.body;
+      
+      if (typeof include_director_in_chats !== 'boolean') {
+        return res.status(400).json({ error: 'include_director_in_chats must be a boolean' });
+      }
+      
+      await storage.updateCommunicationSettings(clubId, { include_director_in_chats });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating communication settings:', error);
+      res.status(500).json({ error: 'Failed to update communication settings' });
+    }
+  });
+
+  // ============ MESSAGING SYSTEM ============
+
+  // Get user's chat channels
+  app.get('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const channels = await storage.getChatChannels(clubId, userId);
+      res.json(channels);
+    } catch (error) {
+      console.error('Error getting chat channels:', error);
+      res.status(500).json({ error: 'Failed to get chat channels' });
+    }
+  });
+
+  // Create a new chat channel
+  app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId, userRole } = getAuthContext(req);
+      const { channel_type, participant_ids, name, team_id, program_id } = req.body;
+      
+      // Validate participants belong to the same club
+      const validation = await storage.validateChatParticipants(clubId, participant_ids, userId);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
+      }
+      
+      // Create the channel
+      const channel = await storage.createChatChannel(
+        clubId,
+        userId,
+        channel_type,
+        participant_ids,
+        { name, teamId: team_id, programId: program_id }
+      );
+      
+      // Add all participants (including the creator)
+      const allParticipants = [...new Set([userId, ...participant_ids])];
+      
+      // Auto-add parents if SafeSport requires it
+      if (validation.autoAddParentIds) {
+        allParticipants.push(...validation.autoAddParentIds);
+      }
+      
+      // Check if director should be auto-added
+      const settings = await storage.getCommunicationSettings(clubId);
+      if (settings.include_director_in_chats) {
+        const directorId = await storage.getDirectorId(clubId);
+        if (directorId && !allParticipants.includes(directorId)) {
+          allParticipants.push(directorId);
+          await storage.addChannelParticipant(channel.id, directorId, 'admin', undefined, true);
+        }
+      }
+      
+      // Add participants to channel
+      for (const participantId of allParticipants) {
+        if (participantId === userId) continue; // Creator is already added via createChatChannel
+        const user = await storage.getUserById(participantId);
+        if (user) {
+          await storage.addChannelParticipant(channel.id, participantId, user.role);
+        }
+      }
+      
+      // Add creator as participant
+      const creator = await storage.getUserById(userId);
+      if (creator) {
+        await storage.addChannelParticipant(channel.id, userId, creator.role);
+      }
+      
+      res.json(channel);
+    } catch (error) {
+      console.error('Error creating chat channel:', error);
+      res.status(500).json({ error: 'Failed to create chat channel' });
+    }
+  });
+
+  // Get messages for a channel
+  app.get('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { channelId } = req.params;
+      const { limit, before } = req.query;
+      
+      // Verify user is a participant
+      const participants = await storage.getChannelParticipants(channelId);
+      const isParticipant = participants.some(p => p.user_id === userId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'Not a participant of this channel' });
+      }
+      
+      const messages = await storage.getMessages(
+        channelId,
+        limit ? parseInt(limit as string) : 50,
+        before ? new Date(before as string) : undefined
+      );
+      
+      // Update last read timestamp
+      await storage.updateLastReadAt(channelId, userId);
+      
+      res.json(messages);
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      res.status(500).json({ error: 'Failed to get messages' });
+    }
+  });
+
+  // Send a message
+  app.post('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { channelId } = req.params;
+      const { content } = req.body;
+      
+      if (!content || content.trim().length === 0) {
+        return res.status(400).json({ error: 'Message cannot be empty' });
+      }
+      
+      // Verify user is a participant
+      const participants = await storage.getChannelParticipants(channelId);
+      const isParticipant = participants.some(p => p.user_id === userId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'Not a participant of this channel' });
+      }
+      
+      const message = await storage.sendMessage(channelId, userId, content.trim());
+      
+      // Send push notifications to other participants
+      const otherParticipantIds = participants
+        .filter(p => p.user_id !== userId)
+        .map(p => p.user_id);
+      
+      if (otherParticipantIds.length > 0) {
+        const fcmTokens = await storage.getPushTokensForUsers(otherParticipantIds);
+        if (fcmTokens.length > 0) {
+          const sender = await storage.getUserById(userId);
+          const channel = await storage.getChatChannel(clubId, channelId);
+          const { sendNewMessageNotification } = await import('./services/push-notifications');
+          await sendNewMessageNotification(
+            fcmTokens,
+            sender?.full_name || 'Someone',
+            channel?.name || null,
+            content.trim()
+          );
+        }
+      }
+      
+      res.json(message);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      res.status(500).json({ error: 'Failed to send message' });
+    }
+  });
+
+  // Get channel participants
+  app.get('/api/chat/channels/:channelId/participants', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const { channelId } = req.params;
+      
+      // Verify user is a participant
+      const participants = await storage.getChannelParticipants(channelId);
+      const isParticipant = participants.some(p => p.user_id === userId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'Not a participant of this channel' });
+      }
+      
+      res.json(participants);
+    } catch (error) {
+      console.error('Error getting participants:', error);
+      res.status(500).json({ error: 'Failed to get participants' });
+    }
+  });
+
+  // ============ BULLETIN BOARD ============
+
+  // Get bulletin posts
+  app.get('/api/bulletin', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { team_id, program_id } = req.query;
+      
+      const posts = await storage.getBulletinPosts(clubId, userId, {
+        teamId: team_id as string | undefined,
+        programId: program_id as string | undefined,
+      });
+      
+      res.json(posts);
+    } catch (error) {
+      console.error('Error getting bulletin posts:', error);
+      res.status(500).json({ error: 'Failed to get bulletin posts' });
+    }
+  });
+
+  // Create bulletin post
+  app.post('/api/bulletin', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { title, content, team_id, program_id, is_pinned } = req.body;
+      
+      if (!title || !content) {
+        return res.status(400).json({ error: 'Title and content are required' });
+      }
+      
+      const post = await storage.createBulletinPost(clubId, userId, {
+        title,
+        content,
+        teamId: team_id,
+        programId: program_id,
+        isPinned: is_pinned,
+      });
+      
+      // Send push notifications to relevant users
+      const users = await storage.getCoaches(clubId);
+      // Get all parents in the club
+      const athletes = await storage.getAthletes(clubId);
+      const parentIds = [...new Set(athletes.map(a => a.parent_id))];
+      
+      const allUserIds = [
+        ...users.map(u => u.id),
+        ...parentIds,
+      ].filter(id => id !== userId);
+      
+      if (allUserIds.length > 0) {
+        const fcmTokens = await storage.getPushTokensForUsers(allUserIds);
+        if (fcmTokens.length > 0) {
+          const author = await storage.getUserById(userId);
+          const { sendBulletinNotification } = await import('./services/push-notifications');
+          await sendBulletinNotification(fcmTokens, title, author?.full_name || 'Staff');
+        }
+      }
+      
+      res.json(post);
+    } catch (error) {
+      console.error('Error creating bulletin post:', error);
+      res.status(500).json({ error: 'Failed to create bulletin post' });
+    }
+  });
+
+  // Update bulletin post
+  app.patch('/api/bulletin/:postId', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { postId } = req.params;
+      const { title, content, is_pinned } = req.body;
+      
+      const post = await storage.updateBulletinPost(clubId, postId, {
+        title,
+        content,
+        isPinned: is_pinned,
+      });
+      
+      res.json(post);
+    } catch (error) {
+      console.error('Error updating bulletin post:', error);
+      res.status(500).json({ error: 'Failed to update bulletin post' });
+    }
+  });
+
+  // Delete bulletin post
+  app.delete('/api/bulletin/:postId', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { postId } = req.params;
+      
+      await storage.deleteBulletinPost(clubId, postId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting bulletin post:', error);
+      res.status(500).json({ error: 'Failed to delete bulletin post' });
+    }
+  });
+
+  // Mark bulletin as read
+  app.post('/api/bulletin/:postId/read', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { postId } = req.params;
+      
+      const read = await storage.markBulletinRead(clubId, postId, userId);
+      res.json(read);
+    } catch (error) {
+      console.error('Error marking bulletin as read:', error);
+      res.status(500).json({ error: 'Failed to mark bulletin as read' });
+    }
+  });
+
+  // Hide/unhide bulletin post
+  app.patch('/api/bulletin/:postId/hide', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { postId } = req.params;
+      const { is_hidden } = req.body;
+      
+      if (typeof is_hidden !== 'boolean') {
+        return res.status(400).json({ error: 'is_hidden must be a boolean' });
+      }
+      
+      const read = await storage.updateBulletinHidden(clubId, postId, userId, is_hidden);
+      res.json(read);
+    } catch (error) {
+      console.error('Error updating bulletin hidden status:', error);
+      res.status(500).json({ error: 'Failed to update bulletin hidden status' });
+    }
+  });
+
+  // ============ PUSH NOTIFICATIONS ============
+
+  // Register push token
+  app.post('/api/push/register', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const { fcm_token, device_type } = req.body;
+      
+      if (!fcm_token) {
+        return res.status(400).json({ error: 'FCM token is required' });
+      }
+      
+      const subscription = await storage.registerPushToken(userId, fcm_token, device_type || 'web');
+      res.json(subscription);
+    } catch (error) {
+      console.error('Error registering push token:', error);
+      res.status(500).json({ error: 'Failed to register push token' });
+    }
+  });
+
+  // Unregister push token
+  app.post('/api/push/unregister', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { fcm_token } = req.body;
+      
+      if (!fcm_token) {
+        return res.status(400).json({ error: 'FCM token is required' });
+      }
+      
+      await storage.deactivatePushToken(fcm_token);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error unregistering push token:', error);
+      res.status(500).json({ error: 'Failed to unregister push token' });
+    }
+  });
+
   return httpServer;
 }

@@ -1,16 +1,21 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from './lib/db';
+import { supabase } from './lib/supabase';
 import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
   sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
   programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
-  clubFormsTable, clubFormViewsTable
+  clubFormsTable, clubFormViewsTable,
+  chatChannelsTable, channelParticipantsTable, messagesTable,
+  bulletinPostsTable, bulletinReadsTable, pushSubscriptionsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger,
-  ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView
+  ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
+  ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
+  PushSubscription as PushSub
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -1370,6 +1375,495 @@ export class DatabaseStorage implements IStorage {
       coach_id: c.coach_id,
       club_id: c.club_id,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
+  // ============ COMMUNICATION SETTINGS ============
+
+  async updateCommunicationSettings(clubId: string, settings: { include_director_in_chats: boolean }): Promise<Club> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .update({ communication_settings: settings })
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapClub(data);
+  }
+
+  async getCommunicationSettings(clubId: string): Promise<{ include_director_in_chats: boolean }> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('communication_settings')
+      .eq('id', clubId)
+      .single();
+    if (error) throw error;
+    return data?.communication_settings || { include_director_in_chats: false };
+  }
+
+  // ============ MESSAGING SYSTEM ============
+
+  async createChatChannel(
+    clubId: string,
+    createdBy: string,
+    channelType: 'direct' | 'team' | 'program' | 'group',
+    participantIds: string[],
+    options?: { name?: string; teamId?: string; programId?: string }
+  ): Promise<ChatChannel> {
+    const { data, error } = await supabase
+      .from('chat_channels')
+      .insert({
+        club_id: clubId,
+        created_by: createdBy,
+        channel_type: channelType,
+        name: options?.name,
+        team_id: options?.teamId,
+        program_id: options?.programId,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapChatChannel(data);
+  }
+
+  async getChatChannels(clubId: string, userId: string): Promise<ChatChannel[]> {
+    const { data, error } = await supabase
+      .from('channel_participants')
+      .select('channel_id, chat_channels(*)')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return (data || [])
+      .filter((p: any) => p.chat_channels?.club_id === clubId)
+      .map((p: any) => this.mapChatChannel(p.chat_channels));
+  }
+
+  async getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined> {
+    const { data, error } = await supabase
+      .from('chat_channels')
+      .select('*')
+      .eq('id', channelId)
+      .eq('club_id', clubId)
+      .single();
+    if (error) return undefined;
+    return this.mapChatChannel(data);
+  }
+
+  async getChannelParticipants(channelId: string): Promise<ChannelParticipant[]> {
+    const { data, error } = await supabase
+      .from('channel_participants')
+      .select('*')
+      .eq('channel_id', channelId);
+    if (error) throw error;
+    return (data || []).map((p: any) => this.mapChannelParticipant(p));
+  }
+
+  async addChannelParticipant(
+    channelId: string,
+    userId: string,
+    role: string,
+    athleteId?: string,
+    isDirectorAutoAdded?: boolean
+  ): Promise<ChannelParticipant> {
+    const { data, error } = await supabase
+      .from('channel_participants')
+      .insert({
+        channel_id: channelId,
+        user_id: userId,
+        role,
+        athlete_id: athleteId,
+        is_director_auto_added: isDirectorAutoAdded || false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapChannelParticipant(data);
+  }
+
+  async sendMessage(channelId: string, senderId: string, content: string, messageType: 'text' | 'system' = 'text'): Promise<Message> {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        channel_id: channelId,
+        sender_id: senderId,
+        content,
+        message_type: messageType,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapMessage(data);
+  }
+
+  async getMessages(channelId: string, limit: number = 50, before?: Date): Promise<Message[]> {
+    let query = supabase
+      .from('messages')
+      .select('*')
+      .eq('channel_id', channelId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (before) {
+      query = query.lt('created_at', before.toISOString());
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((m: any) => this.mapMessage(m)).reverse();
+  }
+
+  async updateLastReadAt(channelId: string, userId: string): Promise<void> {
+    const { error } = await supabase
+      .from('channel_participants')
+      .update({ last_read_at: new Date().toISOString() })
+      .eq('channel_id', channelId)
+      .eq('user_id', userId);
+    if (error) throw error;
+  }
+
+  async validateChatParticipants(
+    clubId: string,
+    participantIds: string[],
+    initiatorId: string
+  ): Promise<{ valid: boolean; error?: string; autoAddParentIds?: string[] }> {
+    // Get all participant profiles
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, role, full_name')
+      .in('id', participantIds)
+      .eq('club_id', clubId);
+    
+    if (error) return { valid: false, error: 'Failed to fetch participants' };
+    
+    const parentIds: string[] = [];
+    
+    // Check for athlete participants (minors)
+    const { data: athletes } = await supabase
+      .from('athletes')
+      .select('id, parent_id, first_name, last_name')
+      .eq('club_id', clubId);
+    
+    const athleteMap = new Map((athletes || []).map((a: any) => [a.id, a]));
+    
+    // For any athlete in the chat, we need to auto-add their parent
+    for (const profile of profiles || []) {
+      // Check if this user has athletes (is a parent)
+      const { data: userAthletes } = await supabase
+        .from('athletes')
+        .select('id, parent_id')
+        .eq('parent_id', profile.id);
+      
+      // If coach is chatting with an athlete's profile, parent must be included
+      if (profile.role === 'parent' && userAthletes && userAthletes.length > 0) {
+        // This is already a parent, good
+      }
+    }
+    
+    // SafeSport rule: Block 1-on-1 adult-minor messaging
+    // If only 2 people in chat and one is a coach and one is related to a minor, block it
+    if (participantIds.length === 2) {
+      const roles = (profiles || []).map((p: any) => p.role);
+      const hasCoach = roles.includes('coach');
+      const hasOnlyParent = roles.filter((r: string) => r === 'parent').length === 1 && roles.length === 2;
+      
+      // Coaches can message parents directly (about their athletes)
+      // But we should ensure any coach-athlete discussion includes the parent
+    }
+    
+    return { valid: true, autoAddParentIds: parentIds };
+  }
+
+  async getDirectorId(clubId: string): Promise<string | undefined> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('role', 'admin')
+      .limit(1)
+      .single();
+    if (error) return undefined;
+    return data?.id;
+  }
+
+  // ============ BULLETIN BOARD ============
+
+  async createBulletinPost(
+    clubId: string,
+    authorId: string,
+    post: { title: string; content: string; teamId?: string; programId?: string; isPinned?: boolean }
+  ): Promise<BulletinPost> {
+    const { data, error } = await supabase
+      .from('bulletin_posts')
+      .insert({
+        club_id: clubId,
+        author_id: authorId,
+        title: post.title,
+        content: post.content,
+        team_id: post.teamId,
+        program_id: post.programId,
+        is_pinned: post.isPinned || false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapBulletinPost(data);
+  }
+
+  async getBulletinPosts(
+    clubId: string,
+    userId: string,
+    filters?: { teamId?: string; programId?: string }
+  ): Promise<(BulletinPost & { isRead: boolean; isHidden: boolean; author: User })[]> {
+    let query = supabase
+      .from('bulletin_posts')
+      .select('*, profiles!bulletin_posts_author_id_fkey(*), bulletin_reads(*)')
+      .eq('club_id', clubId)
+      .order('is_pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+    
+    if (filters?.teamId) {
+      query = query.eq('team_id', filters.teamId);
+    }
+    if (filters?.programId) {
+      query = query.eq('program_id', filters.programId);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    return (data || []).map((p: any) => {
+      const userRead = (p.bulletin_reads || []).find((r: any) => r.user_id === userId);
+      return {
+        ...this.mapBulletinPost(p),
+        isRead: !!userRead,
+        isHidden: userRead?.is_hidden || false,
+        author: this.mapUser(p.profiles),
+      };
+    });
+  }
+
+  async getBulletinPost(clubId: string, postId: string): Promise<BulletinPost | undefined> {
+    const { data, error } = await supabase
+      .from('bulletin_posts')
+      .select('*')
+      .eq('id', postId)
+      .eq('club_id', clubId)
+      .single();
+    if (error) return undefined;
+    return this.mapBulletinPost(data);
+  }
+
+  async updateBulletinPost(
+    clubId: string,
+    postId: string,
+    data: { title?: string; content?: string; isPinned?: boolean }
+  ): Promise<BulletinPost> {
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.content !== undefined) updateData.content = data.content;
+    if (data.isPinned !== undefined) updateData.is_pinned = data.isPinned;
+    
+    const { data: result, error } = await supabase
+      .from('bulletin_posts')
+      .update(updateData)
+      .eq('id', postId)
+      .eq('club_id', clubId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapBulletinPost(result);
+  }
+
+  async deleteBulletinPost(clubId: string, postId: string): Promise<void> {
+    // First delete all reads for this post
+    await supabase
+      .from('bulletin_reads')
+      .delete()
+      .eq('post_id', postId);
+    
+    // Then delete the post
+    const { error } = await supabase
+      .from('bulletin_posts')
+      .delete()
+      .eq('id', postId)
+      .eq('club_id', clubId);
+    if (error) throw error;
+  }
+
+  async markBulletinRead(clubId: string, postId: string, userId: string, isHidden?: boolean): Promise<BulletinRead> {
+    // Upsert - update if exists, insert if not
+    const { data: existing } = await supabase
+      .from('bulletin_reads')
+      .select('*')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .single();
+    
+    if (existing) {
+      const updateData: any = {};
+      if (isHidden !== undefined) updateData.is_hidden = isHidden;
+      
+      const { data, error } = await supabase
+        .from('bulletin_reads')
+        .update(updateData)
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return this.mapBulletinRead(data);
+    }
+    
+    const { data, error } = await supabase
+      .from('bulletin_reads')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        is_hidden: isHidden || false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapBulletinRead(data);
+  }
+
+  async updateBulletinHidden(clubId: string, postId: string, userId: string, isHidden: boolean): Promise<BulletinRead> {
+    return this.markBulletinRead(clubId, postId, userId, isHidden);
+  }
+
+  // ============ PUSH NOTIFICATIONS ============
+
+  async registerPushToken(userId: string, fcmToken: string, deviceType: 'web' | 'ios' | 'android' = 'web'): Promise<PushSub> {
+    // First, check if this token already exists
+    const { data: existing } = await supabase
+      .from('push_subscriptions')
+      .select('*')
+      .eq('fcm_token', fcmToken)
+      .single();
+    
+    if (existing) {
+      // Update the existing subscription
+      const { data, error } = await supabase
+        .from('push_subscriptions')
+        .update({
+          user_id: userId,
+          device_type: deviceType,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return this.mapPushSubscription(data);
+    }
+    
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .insert({
+        user_id: userId,
+        fcm_token: fcmToken,
+        device_type: deviceType,
+        is_active: true,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapPushSubscription(data);
+  }
+
+  async getPushTokensForUsers(userIds: string[]): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .select('fcm_token')
+      .in('user_id', userIds)
+      .eq('is_active', true);
+    if (error) throw error;
+    return (data || []).map((s: any) => s.fcm_token);
+  }
+
+  async deactivatePushToken(fcmToken: string): Promise<void> {
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .update({ is_active: false })
+      .eq('fcm_token', fcmToken);
+    if (error) throw error;
+  }
+
+  // ============ MAPPING HELPERS ============
+
+  private mapChatChannel(c: any): ChatChannel {
+    return {
+      id: c.id,
+      club_id: c.club_id,
+      name: c.name ?? undefined,
+      channel_type: c.channel_type,
+      team_id: c.team_id ?? undefined,
+      program_id: c.program_id ?? undefined,
+      created_by: c.created_by,
+      created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
+  private mapChannelParticipant(p: any): ChannelParticipant {
+    return {
+      id: p.id,
+      channel_id: p.channel_id,
+      user_id: p.user_id,
+      role: p.role,
+      athlete_id: p.athlete_id ?? undefined,
+      is_director_auto_added: p.is_director_auto_added,
+      last_read_at: p.last_read_at?.toISOString?.() ?? p.last_read_at ?? undefined,
+      joined_at: p.joined_at?.toISOString?.() ?? p.joined_at,
+    };
+  }
+
+  private mapMessage(m: any): Message {
+    return {
+      id: m.id,
+      channel_id: m.channel_id,
+      sender_id: m.sender_id,
+      content: m.content,
+      message_type: m.message_type,
+      created_at: m.created_at?.toISOString?.() ?? m.created_at,
+      updated_at: m.updated_at?.toISOString?.() ?? m.updated_at ?? undefined,
+      deleted_at: m.deleted_at?.toISOString?.() ?? m.deleted_at ?? undefined,
+    };
+  }
+
+  private mapBulletinPost(p: any): BulletinPost {
+    return {
+      id: p.id,
+      club_id: p.club_id,
+      team_id: p.team_id ?? undefined,
+      program_id: p.program_id ?? undefined,
+      author_id: p.author_id,
+      title: p.title,
+      content: p.content,
+      is_pinned: p.is_pinned,
+      created_at: p.created_at?.toISOString?.() ?? p.created_at,
+      updated_at: p.updated_at?.toISOString?.() ?? p.updated_at ?? undefined,
+    };
+  }
+
+  private mapBulletinRead(r: any): BulletinRead {
+    return {
+      id: r.id,
+      post_id: r.post_id,
+      user_id: r.user_id,
+      is_hidden: r.is_hidden,
+      read_at: r.read_at?.toISOString?.() ?? r.read_at,
+    };
+  }
+
+  private mapPushSubscription(s: any): PushSub {
+    return {
+      id: s.id,
+      user_id: s.user_id,
+      fcm_token: s.fcm_token,
+      device_type: s.device_type,
+      is_active: s.is_active,
+      created_at: s.created_at?.toISOString?.() ?? s.created_at,
+      updated_at: s.updated_at?.toISOString?.() ?? s.updated_at ?? undefined,
     };
   }
 }

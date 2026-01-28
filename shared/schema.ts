@@ -789,7 +789,7 @@ export const calculateConvenienceFee = (amount: number, method: 'credit_card' | 
 
 // Platform fee calculations
 export const PLATFORM_FEES = {
-  monthly: 1.00,
+  monthly: 2.00,
   clinic: 1.00,
   drop_in: 0.75,
 } as const;

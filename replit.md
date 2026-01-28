@@ -133,7 +133,7 @@ Preferred communication style: Simple, everyday language.
   - Dashboard shows alert banner if no billing card on file
   - Payment processing endpoint returns 403 error if billing card not configured
 - **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`
-- **Platform Ledger**: Automatic fee tracking ($1.00/month per athlete, $1.00 per player per clinic, $0.75 per drop-in)
+- **Platform Ledger**: Automatic fee tracking ($2.00/month per athlete, $1.00 per player per clinic, $0.75 per drop-in)
 - **Convenience Fees**: Credit card payments add 3% fee, ACH payments have no additional fee
 
 ### Advanced Scheduling Engine

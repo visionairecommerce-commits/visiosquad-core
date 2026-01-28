@@ -878,19 +878,25 @@ export class DatabaseStorage implements IStorage {
       name: contract.name,
       description: contract.description,
       monthly_price: String(contract.monthly_price),
+      paid_in_full_price: contract.paid_in_full_price ? String(contract.paid_in_full_price) : null,
+      initiation_fee: contract.initiation_fee ? String(contract.initiation_fee) : null,
       sessions_per_week: contract.sessions_per_week,
+      contract_document_id: contract.contract_document_id || null,
       is_active: true,
     }).returning();
     return this.mapProgramContract(c);
   }
 
-  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; team_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.monthly_price !== undefined) updateData.monthly_price = String(data.monthly_price);
+    if (data.paid_in_full_price !== undefined) updateData.paid_in_full_price = data.paid_in_full_price ? String(data.paid_in_full_price) : null;
+    if (data.initiation_fee !== undefined) updateData.initiation_fee = data.initiation_fee ? String(data.initiation_fee) : null;
     if (data.sessions_per_week !== undefined) updateData.sessions_per_week = data.sessions_per_week;
     if (data.team_id !== undefined) updateData.team_id = data.team_id;
+    if (data.contract_document_id !== undefined) updateData.contract_document_id = data.contract_document_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
 
     const [c] = await db.update(programContractsTable)
@@ -924,7 +930,7 @@ export class DatabaseStorage implements IStorage {
     return this.mapAthleteContract(contract);
   }
 
-  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract> {
+  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at' | 'initiation_fee_paid'>): Promise<AthleteContract> {
     const [c] = await db.insert(athleteContractsTable).values({
       club_id: clubId,
       athlete_id: contract.athlete_id,
@@ -932,6 +938,10 @@ export class DatabaseStorage implements IStorage {
       start_date: contract.start_date,
       end_date: contract.end_date,
       custom_price: contract.custom_price ? String(contract.custom_price) : null,
+      payment_plan: contract.payment_plan || 'monthly',
+      signed_name: contract.signed_name || null,
+      signed_at: contract.signed_name ? new Date() : null,
+      initiation_fee_paid: false,
       status: 'active',
     }).returning();
     return this.mapAthleteContract(c);
@@ -954,7 +964,10 @@ export class DatabaseStorage implements IStorage {
       name: c.name,
       description: c.description ?? undefined,
       monthly_price: parseFloat(c.monthly_price),
+      paid_in_full_price: c.paid_in_full_price ? parseFloat(c.paid_in_full_price) : undefined,
+      initiation_fee: c.initiation_fee ? parseFloat(c.initiation_fee) : undefined,
       sessions_per_week: c.sessions_per_week,
+      contract_document_id: c.contract_document_id ?? undefined,
       is_active: c.is_active,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
@@ -969,6 +982,10 @@ export class DatabaseStorage implements IStorage {
       start_date: c.start_date,
       end_date: c.end_date ?? undefined,
       custom_price: c.custom_price ? parseFloat(c.custom_price) : undefined,
+      payment_plan: c.payment_plan || 'monthly',
+      signed_name: c.signed_name ?? undefined,
+      signed_at: c.signed_at?.toISOString?.() ?? c.signed_at ?? undefined,
+      initiation_fee_paid: c.initiation_fee_paid ?? false,
       status: c.status,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };

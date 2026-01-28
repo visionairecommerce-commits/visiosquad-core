@@ -39,12 +39,13 @@ export const profilesTable = pgTable("profiles", {
   id: uuid("id").primaryKey(), // Links to Supabase auth.users.id
   email: text("email").notNull().unique(),
   full_name: text("full_name").notNull(),
-  role: text("role", { enum: ["admin", "coach", "parent"] }).notNull(),
+  role: text("role", { enum: ["admin", "coach", "parent", "athlete"] }).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id),
   has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
   can_bill: boolean("can_bill").default(false).notNull(),
   contract_status: text("contract_status", { enum: ["unsigned", "pending", "verified"] }).default("unsigned"),
   contract_method: text("contract_method", { enum: ["digital", "paper"] }),
+  athlete_id: uuid("athlete_id"), // For athlete role users - links to their athlete record
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -268,6 +269,9 @@ export const athletesTable = pgTable("athletes", {
   tags: text("tags").array().default([]),
   paid_through_date: text("paid_through_date"),
   is_locked: boolean("is_locked").default(false).notNull(),
+  // Athlete login credentials (optional - set by parent)
+  email: text("email").unique(), // Athlete's login email
+  has_login: boolean("has_login").default(false).notNull(), // Whether athlete can log in
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -413,7 +417,7 @@ export const eventCoachesTable = pgTable("event_coaches", {
 // ============ TYPE DEFINITIONS (for compatibility) ============
 
 // User roles
-export type UserRole = 'admin' | 'coach' | 'parent';
+export type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
 
 // Base types matching Supabase tables
 export interface Club {

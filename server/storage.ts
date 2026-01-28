@@ -177,7 +177,10 @@ export interface ProgramContract {
   name: string;
   description?: string;
   monthly_price: number;
+  paid_in_full_price?: number;
+  initiation_fee?: number;
   sessions_per_week: number;
+  contract_document_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -190,6 +193,10 @@ export interface AthleteContract {
   start_date: string;
   end_date?: string;
   custom_price?: number;
+  payment_plan: 'monthly' | 'paid_in_full';
+  signed_name?: string;
+  signed_at?: string;
+  initiation_fee_paid: boolean;
   status: 'active' | 'cancelled' | 'expired';
   created_at: string;
 }
@@ -344,7 +351,7 @@ export interface IStorage {
   // Athlete Contracts
   getAthleteContracts(clubId: string, athleteId?: string): Promise<AthleteContract[]>;
   getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined>;
-  createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract>;
+  createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at' | 'initiation_fee_paid'>): Promise<AthleteContract>;
   updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract>;
 
   // Events
@@ -1175,7 +1182,7 @@ export class MemStorage implements IStorage {
     return undefined;
   }
 
-  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract> {
+  async createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at' | 'initiation_fee_paid'>): Promise<AthleteContract> {
     throw new Error('Not implemented in MemStorage');
   }
 

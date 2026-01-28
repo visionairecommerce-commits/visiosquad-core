@@ -30,6 +30,7 @@ import AthletesPage from "@/pages/parent/athletes";
 import ParentSchedulePage from "@/pages/parent/schedule";
 import ParentPaymentsPage from "@/pages/parent/payments";
 import ParentDocumentsPage from "@/pages/parent/documents";
+import ParentContractsPage from "@/pages/parent/contracts";
 import SettingsPage from "@/pages/admin/settings";
 import EventsPage from "@/pages/admin/events";
 
@@ -95,6 +96,7 @@ function ParentRoutes() {
       <Route path="/create-club" component={RedirectToDashboard} />
       <Route path="/join" component={RedirectToDashboard} />
       <Route path="/athletes" component={AthletesPage} />
+      <Route path="/contracts" component={ParentContractsPage} />
       <Route path="/schedule" component={ParentSchedulePage} />
       <Route path="/payments" component={ParentPaymentsPage} />
       <Route path="/documents" component={ParentDocumentsPage} />

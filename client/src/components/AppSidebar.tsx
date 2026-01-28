@@ -53,9 +53,9 @@ const coachMenuItems = [
 const parentMenuItems = [
   { title: 'Home', url: '/', icon: Home },
   { title: 'My Athletes', url: '/athletes', icon: Users },
+  { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
   { title: 'Payments', url: '/payments', icon: CreditCard },
-  { title: 'Documents', url: '/documents', icon: FileText },
 ];
 
 export function AppSidebar() {

@@ -874,6 +874,139 @@ export async function registerRoutes(
     }
   });
 
+  // ============ PARENT CONTRACT ENROLLMENT ============
+  // Get available contracts for an athlete (based on their roster memberships)
+  app.get('/api/athletes/:athleteId/available-contracts', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      // Verify parent owns this athlete
+      const athletes = await storage.getAthletesByParent(clubId, userId);
+      const athleteIdList = athletes.map(a => a.id);
+      if (!athleteIdList.includes(athleteId)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Get athlete's roster memberships to find their programs
+      const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
+      const programIds = rosters.map(r => r.program_id);
+      const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
+      
+      // Get all contracts for those programs
+      const allContracts = await storage.getProgramContracts(clubId);
+      
+      // Filter to contracts that match athlete's programs/teams
+      const availableContracts = allContracts.filter(c => {
+        if (!programIds.includes(c.program_id)) return false;
+        // If contract is team-specific, athlete must be on that team
+        if (c.team_id && !teamIds.includes(c.team_id)) return false;
+        return c.is_active;
+      });
+      
+      res.json(availableContracts);
+    } catch (error) {
+      console.error('Error fetching available contracts:', error);
+      res.status(500).json({ error: 'Failed to fetch available contracts' });
+    }
+  });
+
+  // Get athlete's current contract
+  app.get('/api/athletes/:athleteId/contract', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      // Verify parent owns this athlete
+      const athletes = await storage.getAthletesByParent(clubId, userId);
+      const athleteIdList = athletes.map(a => a.id);
+      if (!athleteIdList.includes(athleteId)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      const contracts = await storage.getAthleteContracts(clubId, athleteId);
+      const activeContract = contracts.find(c => c.status === 'active');
+      
+      res.json(activeContract || null);
+    } catch (error) {
+      console.error('Error fetching athlete contract:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete contract' });
+    }
+  });
+
+  // Enroll athlete in a contract (parent signing)
+  const enrollContractSchema = z.object({
+    program_contract_id: z.string().min(1, "Contract ID is required"),
+    payment_plan: z.enum(['monthly', 'paid_in_full']).default('monthly'),
+    signed_name: z.string().min(1, "Signature is required"),
+    start_date: z.string().optional(),
+    end_date: z.string().optional(),
+  });
+
+  app.post('/api/athletes/:athleteId/enroll-contract', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      // Validate request body
+      const validationResult = enrollContractSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ error: 'Invalid request', details: validationResult.error.errors });
+      }
+      const { program_contract_id, payment_plan, signed_name, start_date, end_date } = validationResult.data;
+      
+      // Verify parent owns this athlete
+      const athletes = await storage.getAthletesByParent(clubId, userId);
+      const athleteIdList = athletes.map(a => a.id);
+      if (!athleteIdList.includes(athleteId)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      
+      // Verify the contract exists and is active
+      const programContract = await storage.getProgramContract(clubId, program_contract_id);
+      if (!programContract || !programContract.is_active) {
+        return res.status(400).json({ error: 'Contract not available' });
+      }
+      
+      // Verify athlete is eligible for this contract (roster membership check)
+      const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
+      const programIds = rosters.map(r => r.program_id);
+      const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
+      
+      // Contract must match athlete's program
+      if (!programIds.includes(programContract.program_id)) {
+        return res.status(403).json({ error: 'Athlete is not enrolled in this program' });
+      }
+      // If contract is team-specific, athlete must be on that team
+      if (programContract.team_id && !teamIds.includes(programContract.team_id)) {
+        return res.status(403).json({ error: 'Athlete is not on this team' });
+      }
+      
+      // Cancel any existing active contracts
+      const existingContracts = await storage.getAthleteContracts(clubId, athleteId);
+      const activeContracts = existingContracts.filter(c => c.status === 'active');
+      for (const activeContract of activeContracts) {
+        await storage.updateAthleteContractStatus(clubId, activeContract.id, 'cancelled');
+      }
+      
+      // Create the new contract with signature
+      const contract = await storage.createAthleteContract(clubId, {
+        athlete_id: athleteId,
+        program_contract_id,
+        payment_plan,
+        signed_name,
+        start_date: start_date || new Date().toISOString().split('T')[0],
+        end_date: end_date || undefined,
+        custom_price: undefined,
+      });
+      
+      res.status(201).json(contract);
+    } catch (error) {
+      console.error('Error enrolling athlete in contract:', error);
+      res.status(500).json({ error: 'Failed to enroll athlete in contract' });
+    }
+  });
+
   // ============ EVENTS ============
   const createEventSchema = z.object({
     title: z.string().min(1),

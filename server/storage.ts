@@ -132,6 +132,42 @@ export interface Session {
   created_at: string;
 }
 
+export interface Event {
+  id: string;
+  club_id: string;
+  program_id?: string;
+  team_id?: string;
+  title: string;
+  description?: string;
+  event_type: 'clinic' | 'camp' | 'tryout' | 'tournament' | 'other';
+  start_time: string;
+  end_time: string;
+  location?: string;
+  capacity?: number;
+  price: number;
+  status: 'scheduled' | 'cancelled' | 'completed';
+  created_at: string;
+}
+
+export interface EventRoster {
+  id: string;
+  event_id: string;
+  athlete_id: string;
+  club_id: string;
+  payment_id?: string;
+  checked_in: boolean;
+  check_in_time?: string;
+  created_at: string;
+}
+
+export interface EventCoach {
+  id: string;
+  event_id: string;
+  coach_id: string;
+  club_id: string;
+  created_at: string;
+}
+
 export interface ProgramContract {
   id: string;
   club_id: string;
@@ -170,7 +206,7 @@ export interface Payment {
   club_id: string;
   athlete_id: string;
   amount: number;
-  payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash';
+  payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash' | 'event';
   payment_method: 'credit_card' | 'ach' | 'cash';
   helcim_transaction_id?: string;
   months_paid?: number;
@@ -183,7 +219,7 @@ export interface PlatformLedger {
   club_id: string;
   payment_id: string;
   amount: number;
-  fee_type: 'monthly' | 'clinic' | 'drop_in';
+  fee_type: 'monthly' | 'clinic' | 'drop_in' | 'event';
   created_at: string;
 }
 
@@ -192,6 +228,7 @@ export const PLATFORM_FEES = {
   monthly: 1.00,
   clinic: 1.00,
   drop_in: 0.75,
+  event: 1.00,
 } as const;
 
 // Storage interface
@@ -290,7 +327,7 @@ export interface IStorage {
   // Payments
   getPayments(clubId: string): Promise<Payment[]>;
   createPayment(clubId: string, payment: Omit<Payment, 'id' | 'club_id' | 'created_at'>): Promise<Payment>;
-  createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in'): Promise<PlatformLedger>;
+  createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger>;
 
   // Program Contracts
   getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
@@ -304,6 +341,25 @@ export interface IStorage {
   getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined>;
   createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<AthleteContract>;
   updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract>;
+
+  // Events
+  getEvents(clubId: string, filters?: { programId?: string; teamId?: string }): Promise<Event[]>;
+  getEvent(clubId: string, eventId: string): Promise<Event | undefined>;
+  getEventsByCoach(clubId: string, coachId: string): Promise<Event[]>;
+  getEventsForAthlete(clubId: string, athleteId: string): Promise<Event[]>;
+  createEvent(clubId: string, event: Omit<Event, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Event>;
+  updateEvent(clubId: string, eventId: string, data: Partial<Omit<Event, 'id' | 'club_id' | 'created_at'>>): Promise<Event>;
+  deleteEvent(clubId: string, eventId: string): Promise<void>;
+
+  // Event Rosters
+  getEventRosters(clubId: string, eventId: string): Promise<(EventRoster & { athlete: Athlete })[]>;
+  addEventRoster(clubId: string, eventId: string, athleteId: string, paymentId?: string): Promise<EventRoster>;
+  removeEventRoster(clubId: string, rosterId: string): Promise<void>;
+  updateEventRosterCheckIn(clubId: string, rosterId: string, checkedIn: boolean): Promise<void>;
+
+  // Event Coaches
+  getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]>;
+  setEventCoaches(clubId: string, eventId: string, coachIds: string[]): Promise<void>;
 }
 
 // In-memory storage implementation
@@ -1052,7 +1108,7 @@ export class MemStorage implements IStorage {
     return newPayment;
   }
 
-  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in'): Promise<PlatformLedger> {
+  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger> {
     const entry: PlatformLedger = {
       id: randomUUID(),
       club_id: clubId,
@@ -1100,6 +1156,61 @@ export class MemStorage implements IStorage {
   }
 
   async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // Events (stub implementations - using database storage)
+  async getEvents(clubId: string, filters?: { programId?: string; teamId?: string }): Promise<Event[]> {
+    return [];
+  }
+
+  async getEvent(clubId: string, eventId: string): Promise<Event | undefined> {
+    return undefined;
+  }
+
+  async getEventsByCoach(clubId: string, coachId: string): Promise<Event[]> {
+    return [];
+  }
+
+  async getEventsForAthlete(clubId: string, athleteId: string): Promise<Event[]> {
+    return [];
+  }
+
+  async createEvent(clubId: string, event: Omit<Event, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Event> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateEvent(clubId: string, eventId: string, data: Partial<Omit<Event, 'id' | 'club_id' | 'created_at'>>): Promise<Event> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async deleteEvent(clubId: string, eventId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // Event Rosters (stub implementations)
+  async getEventRosters(clubId: string, eventId: string): Promise<(EventRoster & { athlete: Athlete })[]> {
+    return [];
+  }
+
+  async addEventRoster(clubId: string, eventId: string, athleteId: string, paymentId?: string): Promise<EventRoster> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async removeEventRoster(clubId: string, rosterId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateEventRosterCheckIn(clubId: string, rosterId: string, checkedIn: boolean): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // Event Coaches (stub implementations)
+  async getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]> {
+    return [];
+  }
+
+  async setEventCoaches(clubId: string, eventId: string, coachIds: string[]): Promise<void> {
     throw new Error('Not implemented in MemStorage');
   }
 }

@@ -4,12 +4,12 @@ import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
   sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
-  programContractsTable, athleteContractsTable
+  programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger,
-  ProgramContract, AthleteContract
+  ProgramContract, AthleteContract, Event, EventRoster, EventCoach
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -948,6 +948,193 @@ export class DatabaseStorage implements IStorage {
       start_date: c.start_date,
       end_date: c.end_date ?? undefined,
       status: c.status,
+      created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
+  // Event methods
+  async getEvents(clubId: string, filters?: { programId?: string; teamId?: string }): Promise<Event[]> {
+    let query = db.select().from(eventsTable).where(eq(eventsTable.club_id, clubId));
+    const events = await query;
+    let result = events.map(e => this.mapEvent(e));
+    if (filters?.programId) {
+      result = result.filter(e => e.program_id === filters.programId);
+    }
+    if (filters?.teamId) {
+      result = result.filter(e => e.team_id === filters.teamId);
+    }
+    return result;
+  }
+
+  async getEvent(clubId: string, eventId: string): Promise<Event | undefined> {
+    const [event] = await db.select().from(eventsTable)
+      .where(and(eq(eventsTable.club_id, clubId), eq(eventsTable.id, eventId)));
+    if (!event) return undefined;
+    return this.mapEvent(event);
+  }
+
+  async getEventsByCoach(clubId: string, coachId: string): Promise<Event[]> {
+    const coachAssignments = await db.select().from(eventCoachesTable)
+      .where(and(eq(eventCoachesTable.club_id, clubId), eq(eventCoachesTable.coach_id, coachId)));
+    const eventIds = coachAssignments.map(a => a.event_id);
+    if (eventIds.length === 0) return [];
+    const events = await db.select().from(eventsTable).where(eq(eventsTable.club_id, clubId));
+    return events.filter(e => eventIds.includes(e.id)).map(e => this.mapEvent(e));
+  }
+
+  async getEventsForAthlete(clubId: string, athleteId: string): Promise<Event[]> {
+    const rosters = await db.select().from(eventRostersTable)
+      .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.athlete_id, athleteId)));
+    const eventIds = rosters.map(r => r.event_id);
+    if (eventIds.length === 0) return [];
+    const events = await db.select().from(eventsTable).where(eq(eventsTable.club_id, clubId));
+    return events.filter(e => eventIds.includes(e.id)).map(e => this.mapEvent(e));
+  }
+
+  async createEvent(clubId: string, event: Omit<Event, 'id' | 'club_id' | 'status' | 'created_at'>): Promise<Event> {
+    const [e] = await db.insert(eventsTable).values({
+      club_id: clubId,
+      program_id: event.program_id ?? null,
+      team_id: event.team_id ?? null,
+      title: event.title,
+      description: event.description ?? null,
+      event_type: event.event_type,
+      start_time: new Date(event.start_time),
+      end_time: new Date(event.end_time),
+      location: event.location ?? null,
+      capacity: event.capacity ?? null,
+      price: event.price.toString(),
+      status: 'scheduled',
+    }).returning();
+    return this.mapEvent(e);
+  }
+
+  async updateEvent(clubId: string, eventId: string, data: Partial<Omit<Event, 'id' | 'club_id' | 'created_at'>>): Promise<Event> {
+    const updateData: any = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.event_type !== undefined) updateData.event_type = data.event_type;
+    if (data.program_id !== undefined) updateData.program_id = data.program_id;
+    if (data.team_id !== undefined) updateData.team_id = data.team_id;
+    if (data.start_time !== undefined) updateData.start_time = new Date(data.start_time);
+    if (data.end_time !== undefined) updateData.end_time = new Date(data.end_time);
+    if (data.location !== undefined) updateData.location = data.location;
+    if (data.capacity !== undefined) updateData.capacity = data.capacity;
+    if (data.price !== undefined) updateData.price = data.price.toString();
+    if (data.status !== undefined) updateData.status = data.status;
+    
+    const [e] = await db.update(eventsTable)
+      .set(updateData)
+      .where(and(eq(eventsTable.club_id, clubId), eq(eventsTable.id, eventId)))
+      .returning();
+    return this.mapEvent(e);
+  }
+
+  async deleteEvent(clubId: string, eventId: string): Promise<void> {
+    await db.delete(eventRostersTable).where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.event_id, eventId)));
+    await db.delete(eventCoachesTable).where(and(eq(eventCoachesTable.club_id, clubId), eq(eventCoachesTable.event_id, eventId)));
+    await db.delete(eventsTable).where(and(eq(eventsTable.club_id, clubId), eq(eventsTable.id, eventId)));
+  }
+
+  // Event Roster methods
+  async getEventRosters(clubId: string, eventId: string): Promise<(EventRoster & { athlete: Athlete })[]> {
+    const rosters = await db.select().from(eventRostersTable)
+      .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.event_id, eventId)));
+    const athletes = await db.select().from(athletesTable).where(eq(athletesTable.club_id, clubId));
+    const athleteMap = new Map(athletes.map(a => [a.id, this.mapAthlete(a)]));
+    return rosters.map(r => ({
+      ...this.mapEventRoster(r),
+      athlete: athleteMap.get(r.athlete_id)!,
+    })).filter(r => r.athlete);
+  }
+
+  async addEventRoster(clubId: string, eventId: string, athleteId: string, paymentId?: string): Promise<EventRoster> {
+    const [r] = await db.insert(eventRostersTable).values({
+      event_id: eventId,
+      athlete_id: athleteId,
+      club_id: clubId,
+      payment_id: paymentId ?? null,
+      checked_in: false,
+    }).returning();
+    return this.mapEventRoster(r);
+  }
+
+  async removeEventRoster(clubId: string, rosterId: string): Promise<void> {
+    await db.delete(eventRostersTable).where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.id, rosterId)));
+  }
+
+  async updateEventRosterCheckIn(clubId: string, rosterId: string, checkedIn: boolean): Promise<void> {
+    await db.update(eventRostersTable)
+      .set({ 
+        checked_in: checkedIn, 
+        check_in_time: checkedIn ? new Date() : null 
+      })
+      .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.id, rosterId)));
+  }
+
+  // Event Coach methods
+  async getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]> {
+    const coaches = await db.select().from(eventCoachesTable)
+      .where(and(eq(eventCoachesTable.club_id, clubId), eq(eventCoachesTable.event_id, eventId)));
+    const users = await db.select().from(profilesTable).where(eq(profilesTable.club_id, clubId));
+    const userMap = new Map(users.map(u => [u.id, this.mapUser(u)]));
+    return coaches.map(c => ({
+      ...this.mapEventCoach(c),
+      coach: userMap.get(c.coach_id)!,
+    })).filter(c => c.coach);
+  }
+
+  async setEventCoaches(clubId: string, eventId: string, coachIds: string[]): Promise<void> {
+    await db.delete(eventCoachesTable).where(and(eq(eventCoachesTable.club_id, clubId), eq(eventCoachesTable.event_id, eventId)));
+    if (coachIds.length > 0) {
+      await db.insert(eventCoachesTable).values(
+        coachIds.map(coachId => ({
+          event_id: eventId,
+          coach_id: coachId,
+          club_id: clubId,
+        }))
+      );
+    }
+  }
+
+  private mapEvent(e: any): Event {
+    return {
+      id: e.id,
+      club_id: e.club_id,
+      program_id: e.program_id ?? undefined,
+      team_id: e.team_id ?? undefined,
+      title: e.title,
+      description: e.description ?? undefined,
+      event_type: e.event_type,
+      start_time: e.start_time?.toISOString?.() ?? e.start_time,
+      end_time: e.end_time?.toISOString?.() ?? e.end_time,
+      location: e.location ?? undefined,
+      capacity: e.capacity ?? undefined,
+      price: parseFloat(e.price),
+      status: e.status,
+      created_at: e.created_at?.toISOString?.() ?? e.created_at,
+    };
+  }
+
+  private mapEventRoster(r: any): EventRoster {
+    return {
+      id: r.id,
+      event_id: r.event_id,
+      athlete_id: r.athlete_id,
+      club_id: r.club_id,
+      payment_id: r.payment_id ?? undefined,
+      checked_in: r.checked_in,
+      check_in_time: r.check_in_time?.toISOString?.() ?? r.check_in_time ?? undefined,
+      created_at: r.created_at?.toISOString?.() ?? r.created_at,
+    };
+  }
+
+  private mapEventCoach(c: any): EventCoach {
+    return {
+      id: c.id,
+      event_id: c.event_id,
+      coach_id: c.coach_id,
+      club_id: c.club_id,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }

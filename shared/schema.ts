@@ -211,7 +211,7 @@ export const paymentsTable = pgTable("payments", {
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  payment_type: text("payment_type", { enum: ["monthly", "clinic", "drop_in", "cash"] }).notNull(),
+  payment_type: text("payment_type", { enum: ["monthly", "clinic", "drop_in", "cash", "event"] }).notNull(),
   payment_method: text("payment_method", { enum: ["credit_card", "ach", "cash"] }).notNull(),
   helcim_transaction_id: text("helcim_transaction_id"),
   months_paid: integer("months_paid"),
@@ -225,7 +225,46 @@ export const platformLedgerTable = pgTable("platform_ledger", {
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   payment_id: uuid("payment_id").references(() => paymentsTable.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  fee_type: text("fee_type", { enum: ["monthly", "clinic", "drop_in"] }).notNull(),
+  fee_type: text("fee_type", { enum: ["monthly", "clinic", "drop_in", "event"] }).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Events table - standalone events like clinics, camps, tryouts
+export const eventsTable = pgTable("events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  program_id: uuid("program_id").references(() => programsTable.id),
+  team_id: uuid("team_id").references(() => teamsTable.id),
+  title: text("title").notNull(),
+  description: text("description"),
+  event_type: text("event_type", { enum: ["clinic", "camp", "tryout", "tournament", "other"] }).notNull(),
+  start_time: timestamp("start_time").notNull(),
+  end_time: timestamp("end_time").notNull(),
+  location: text("location"),
+  capacity: integer("capacity"),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  status: text("status", { enum: ["scheduled", "cancelled", "completed"] }).default("scheduled").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Event rosters table - athletes registered for events
+export const eventRostersTable = pgTable("event_rosters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event_id: uuid("event_id").references(() => eventsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  payment_id: uuid("payment_id").references(() => paymentsTable.id),
+  checked_in: boolean("checked_in").default(false).notNull(),
+  check_in_time: timestamp("check_in_time"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Event coaches table - coaches assigned to events
+export const eventCoachesTable = pgTable("event_coaches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event_id: uuid("event_id").references(() => eventsTable.id).notNull(),
+  coach_id: uuid("coach_id").references(() => profilesTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -397,6 +436,42 @@ export interface Session {
   created_at: string;
 }
 
+export interface Event {
+  id: string;
+  club_id: string;
+  program_id?: string;
+  team_id?: string;
+  title: string;
+  description?: string;
+  event_type: 'clinic' | 'camp' | 'tryout' | 'tournament' | 'other';
+  start_time: string;
+  end_time: string;
+  location?: string;
+  capacity?: number;
+  price: number;
+  status: 'scheduled' | 'cancelled' | 'completed';
+  created_at: string;
+}
+
+export interface EventRoster {
+  id: string;
+  event_id: string;
+  athlete_id: string;
+  club_id: string;
+  payment_id?: string;
+  checked_in: boolean;
+  check_in_time?: string;
+  created_at: string;
+}
+
+export interface EventCoach {
+  id: string;
+  event_id: string;
+  coach_id: string;
+  club_id: string;
+  created_at: string;
+}
+
 export interface RecurrencePattern {
   days: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday')[];
   timeBlocks: {
@@ -434,7 +509,7 @@ export interface Payment {
   club_id: string;
   athlete_id: string;
   amount: number;
-  payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash';
+  payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash' | 'event';
   payment_method: 'credit_card' | 'ach' | 'cash';
   helcim_transaction_id?: string;
   months_paid?: number;
@@ -546,6 +621,30 @@ export const cancelSessionSchema = z.object({
   reason: z.string().min(1, "Cancellation reason is required"),
 });
 
+// Event schemas
+export const insertEventSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  event_type: z.enum(['clinic', 'camp', 'tryout', 'tournament', 'other']),
+  program_id: z.string().optional(),
+  team_id: z.string().optional(),
+  start_time: z.string().min(1, "Start time is required"),
+  end_time: z.string().min(1, "End time is required"),
+  location: z.string().optional(),
+  capacity: z.number().optional(),
+  price: z.number().min(0, "Price must be non-negative"),
+});
+
+export const insertEventRosterSchema = z.object({
+  event_id: z.string().min(1, "Event is required"),
+  athlete_id: z.string().min(1, "Athlete is required"),
+});
+
+export const insertEventCoachSchema = z.object({
+  event_id: z.string().min(1, "Event is required"),
+  coach_id: z.string().min(1, "Coach is required"),
+});
+
 // Club creation schema (for Directors)
 export const createClubSchema = z.object({
   name: z.string().min(2, "Club name must be at least 2 characters"),
@@ -609,6 +708,9 @@ export type TimeBlock = z.infer<typeof timeBlockSchema>;
 export type CreateRecurringSession = z.infer<typeof createRecurringSessionSchema>;
 export type CashPayment = z.infer<typeof cashPaymentSchema>;
 export type CancelSession = z.infer<typeof cancelSessionSchema>;
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type InsertEventRoster = z.infer<typeof insertEventRosterSchema>;
+export type InsertEventCoach = z.infer<typeof insertEventCoachSchema>;
 export type CreateClub = z.infer<typeof createClubSchema>;
 export type RegisterUser = z.infer<typeof registerUserSchema>;
 export type SignDocument = z.infer<typeof signDocumentSchema>;

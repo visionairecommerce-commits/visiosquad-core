@@ -27,6 +27,7 @@ import {
   Home,
   FileText,
   DollarSign,
+  CalendarDays,
 } from 'lucide-react';
 
 const adminMenuItems = [
@@ -36,6 +37,7 @@ const adminMenuItems = [
   { title: 'Teams', url: '/teams', icon: Users },
   { title: 'Roster', url: '/roster', icon: UserCheck },
   { title: 'Schedule', url: '/schedule', icon: ClipboardList },
+  { title: 'Events', url: '/events', icon: CalendarDays },
   { title: 'Calendar', url: '/calendar', icon: Calendar },
   { title: 'Payments', url: '/payments', icon: CreditCard },
   { title: 'Settings', url: '/settings', icon: Settings },

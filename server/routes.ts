@@ -874,6 +874,226 @@ export async function registerRoutes(
     }
   });
 
+  // ============ EVENTS ============
+  const createEventSchema = z.object({
+    title: z.string().min(1),
+    description: z.string().optional(),
+    event_type: z.enum(['clinic', 'camp', 'tryout', 'tournament', 'other']),
+    program_id: z.string().optional(),
+    team_id: z.string().optional(),
+    start_time: z.string().min(1),
+    end_time: z.string().min(1),
+    location: z.string().optional(),
+    capacity: z.number().optional(),
+    price: z.number().min(0),
+  });
+
+  const addEventRosterSchema = z.object({
+    athlete_id: z.string().min(1),
+  });
+
+  app.get('/api/events', async (req, res) => {
+    try {
+      const { clubId, role, userId } = getAuthContext(req);
+      const programId = req.query.program_id as string | undefined;
+      const teamId = req.query.team_id as string | undefined;
+      
+      let events;
+      if (role === 'coach') {
+        events = await storage.getEventsByCoach(clubId, userId);
+      } else {
+        events = await storage.getEvents(clubId, { programId, teamId });
+      }
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      res.status(500).json({ error: 'Failed to fetch events' });
+    }
+  });
+
+  app.get('/api/events/:id', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const event = await storage.getEvent(clubId, req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      res.json(event);
+    } catch (error) {
+      console.error('Error fetching event:', error);
+      res.status(500).json({ error: 'Failed to fetch event' });
+    }
+  });
+
+  app.post('/api/events', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createEventSchema.parse(req.body);
+      const event = await storage.createEvent(clubId, {
+        title: data.title,
+        description: data.description,
+        event_type: data.event_type,
+        program_id: data.program_id,
+        team_id: data.team_id,
+        start_time: data.start_time,
+        end_time: data.end_time,
+        location: data.location,
+        capacity: data.capacity,
+        price: data.price,
+      });
+      res.status(201).json(event);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error('Error creating event:', error);
+      res.status(500).json({ error: 'Failed to create event' });
+    }
+  });
+
+  app.patch('/api/events/:id', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const event = await storage.updateEvent(clubId, req.params.id as string, req.body);
+      res.json(event);
+    } catch (error) {
+      console.error('Error updating event:', error);
+      res.status(500).json({ error: 'Failed to update event' });
+    }
+  });
+
+  app.delete('/api/events/:id', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteEvent(clubId, req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      res.status(500).json({ error: 'Failed to delete event' });
+    }
+  });
+
+  // Event rosters
+  app.get('/api/events/:id/rosters', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const rosters = await storage.getEventRosters(clubId, req.params.id as string);
+      res.json(rosters);
+    } catch (error) {
+      console.error('Error fetching event rosters:', error);
+      res.status(500).json({ error: 'Failed to fetch event rosters' });
+    }
+  });
+
+  app.post('/api/events/:id/rosters', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = addEventRosterSchema.parse(req.body);
+      
+      // Get the event to check price
+      const event = await storage.getEvent(clubId, req.params.id as string);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // Check if club has billing method before processing payment
+      const club = await storage.getClub(clubId);
+      if (!club?.billing_card_token && !club?.billing_bank_token) {
+        return res.status(403).json({ 
+          error: 'Billing method required',
+          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
+        });
+      }
+
+      // Create payment record for the event fee
+      let paymentId: string | undefined;
+      if (event.price > 0) {
+        const payment = await storage.createPayment(clubId, {
+          athlete_id: data.athlete_id,
+          amount: event.price,
+          payment_type: 'event',
+          payment_method: 'credit_card',
+          status: 'pending',
+        });
+        paymentId = payment.id;
+
+        // Create platform ledger entry ($1 per player per event)
+        await storage.createPlatformLedgerEntry(clubId, payment.id, PLATFORM_FEES.event, 'event');
+      }
+
+      const roster = await storage.addEventRoster(clubId, req.params.id as string, data.athlete_id, paymentId);
+      res.status(201).json(roster);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error('Error adding athlete to event:', error);
+      res.status(500).json({ error: 'Failed to add athlete to event' });
+    }
+  });
+
+  app.delete('/api/events/:id/rosters/:rosterId', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.removeEventRoster(clubId, req.params.rosterId as string);
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing athlete from event:', error);
+      res.status(500).json({ error: 'Failed to remove athlete from event' });
+    }
+  });
+
+  app.patch('/api/events/rosters/:rosterId/checkin', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { checked_in } = req.body;
+      await storage.updateEventRosterCheckIn(clubId, req.params.rosterId as string, checked_in);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating event roster check-in:', error);
+      res.status(500).json({ error: 'Failed to update check-in status' });
+    }
+  });
+
+  // Event coaches
+  app.get('/api/events/:id/coaches', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const coaches = await storage.getEventCoaches(clubId, req.params.id as string);
+      res.json(coaches);
+    } catch (error) {
+      console.error('Error fetching event coaches:', error);
+      res.status(500).json({ error: 'Failed to fetch event coaches' });
+    }
+  });
+
+  app.put('/api/events/:id/coaches', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { coach_ids } = req.body;
+      if (!Array.isArray(coach_ids)) {
+        return res.status(400).json({ error: 'coach_ids must be an array' });
+      }
+      await storage.setEventCoaches(clubId, req.params.id as string, coach_ids);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting event coaches:', error);
+      res.status(500).json({ error: 'Failed to set event coaches' });
+    }
+  });
+
+  // Get events for an athlete (parent view)
+  app.get('/api/athletes/:athleteId/events', async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const events = await storage.getEventsForAthlete(clubId, req.params.athleteId);
+      res.json(events);
+    } catch (error) {
+      console.error('Error fetching athlete events:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete events' });
+    }
+  });
+
   // ============ TEAMS ============
   app.get('/api/teams', async (req, res) => {
     try {

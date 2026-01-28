@@ -126,6 +126,30 @@ Preferred communication style: Simple, everyday language.
   - Hard block (>15 min overlap): Red error, prevents session creation
 - **Registration Access Gate**: `getSessionsForAthlete` filters sessions based on athlete's program/team roster membership
 
+### Standalone Events System
+- **Events**: Separate from sessions, used for clinics, camps, tryouts, tournaments, and other standalone events
+  - Event types: `clinic`, `camp`, `tryout`, `tournament`, `other`
+  - Each event has its own roster (event_rosters table), pricing, and coach assignments
+  - Optional program/team association for filtering
+- **Event Management UI**: Route `/events` (admin-only)
+  - Create, edit, delete events with date/time, location, price, and capacity
+  - Upcoming vs Past events distinction
+- **Event Calendar Integration**: 
+  - Calendar view (`/calendar`) shows both sessions and events
+  - Sessions displayed as blue dots, events as orange dots
+  - Filter tabs: All, Sessions, Events
+  - Program filter applies to both sessions and events
+- **Event Rosters & Check-in**: Click event cards to view/manage registered athletes
+  - Check-in/check-out tracking with attendance counts
+  - Payment status blocking for overdue athletes
+- **Platform Fees**: $1.00 per player per event (same as clinics)
+- **API Endpoints**:
+  - Full CRUD: GET/POST/PATCH/DELETE `/api/events`
+  - Roster management: GET/POST `/api/events/:id/rosters`, DELETE `/api/events/:id/rosters/:rosterId`
+  - Check-in: PATCH `/api/events/rosters/:rosterId/checkin`
+  - Coach assignment: GET/PUT `/api/events/:id/coaches`
+- **Payment Blocking**: Requires billing card or bank account before processing event payments
+
 ## External Dependencies
 
 ### Third-Party Services

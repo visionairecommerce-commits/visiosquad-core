@@ -31,6 +31,7 @@ import ParentSchedulePage from "@/pages/parent/schedule";
 import ParentPaymentsPage from "@/pages/parent/payments";
 import ParentDocumentsPage from "@/pages/parent/documents";
 import SettingsPage from "@/pages/admin/settings";
+import EventsPage from "@/pages/admin/events";
 
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
@@ -61,6 +62,7 @@ function AdminRoutes() {
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />
+      <Route path="/events" component={EventsPage} />
       <Route path="/calendar" component={AdminCalendarPage} />
       <Route path="/payments" component={AdminPaymentsPage} />
       <Route path="/settings" component={SettingsPage} />

@@ -109,8 +109,18 @@ export interface ClubForm {
   name: string;
   url: string;
   description?: string;
+  program_id?: string;
+  team_id?: string;
   is_active: boolean;
   created_at: string;
+}
+
+export interface ClubFormView {
+  id: string;
+  club_id: string;
+  form_id: string;
+  user_id: string;
+  viewed_at: string;
 }
 
 export interface Court {
@@ -306,8 +316,13 @@ export interface IStorage {
   getClubForms(clubId: string): Promise<ClubForm[]>;
   getClubForm(clubId: string, formId: string): Promise<ClubForm | undefined>;
   createClubForm(clubId: string, form: Omit<ClubForm, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ClubForm>;
-  updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; is_active?: boolean }): Promise<ClubForm>;
+  updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; program_id?: string | null; team_id?: string | null; is_active?: boolean }): Promise<ClubForm>;
   deleteClubForm(clubId: string, formId: string): Promise<void>;
+  
+  // Club Form Views (tracking when users click on forms)
+  getFormViewsByUser(clubId: string, userId: string): Promise<ClubFormView[]>;
+  markFormAsViewed(clubId: string, formId: string, userId: string): Promise<ClubFormView>;
+  getFormsForAthlete(clubId: string, athleteId: string, userId: string): Promise<(ClubForm & { viewed: boolean })[]>;
 
   // Facilities
   getFacilities(clubId: string): Promise<Facility[]>;

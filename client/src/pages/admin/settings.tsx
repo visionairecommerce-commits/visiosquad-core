@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { Club, Facility, ClubForm } from '@shared/schema';
+import type { Club, Facility, ClubForm, Program, Team } from '@shared/schema';
 
 export default function SettingsPage() {
   const { club, setClub } = useAuth();
@@ -39,6 +39,8 @@ export default function SettingsPage() {
   const [formName, setFormName] = useState('');
   const [formUrl, setFormUrl] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formProgramId, setFormProgramId] = useState<string | null>(null);
+  const [formTeamId, setFormTeamId] = useState<string | null>(null);
   
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -63,6 +65,14 @@ export default function SettingsPage() {
 
   const { data: clubForms = [], isLoading: formsLoading } = useQuery<ClubForm[]>({
     queryKey: ['/api/club-forms'],
+  });
+
+  const { data: programs = [] } = useQuery<Program[]>({
+    queryKey: ['/api/programs'],
+  });
+
+  const { data: teams = [] } = useQuery<Team[]>({
+    queryKey: ['/api/teams'],
   });
 
   interface Coach {
@@ -283,6 +293,8 @@ export default function SettingsPage() {
     setFormName('');
     setFormUrl('');
     setFormDescription('');
+    setFormProgramId(null);
+    setFormTeamId(null);
   };
 
   const createFacilityMutation = useMutation({
@@ -387,13 +399,21 @@ export default function SettingsPage() {
     if (editingForm) {
       updateFormMutation.mutate({
         id: editingForm.id,
-        data: { name: formName, url: formUrl, description: formDescription },
+        data: { 
+          name: formName, 
+          url: formUrl, 
+          description: formDescription,
+          program_id: formProgramId,
+          team_id: formTeamId,
+        },
       });
     } else {
       createFormMutation.mutate({
         name: formName,
         url: formUrl,
         description: formDescription,
+        program_id: formProgramId,
+        team_id: formTeamId,
       });
     }
   };
@@ -403,8 +423,15 @@ export default function SettingsPage() {
     setFormName(form.name);
     setFormUrl(form.url);
     setFormDescription(form.description || '');
+    setFormProgramId(form.program_id || null);
+    setFormTeamId(form.team_id || null);
     setFormDialogOpen(true);
   };
+  
+  // Get teams filtered by selected program
+  const filteredTeams = formProgramId 
+    ? teams.filter(t => t.program_id === formProgramId)
+    : teams;
 
   const handleFacilitySubmit = () => {
     if (!facilityName.trim()) {
@@ -1052,6 +1079,51 @@ export default function SettingsPage() {
                       data-testid="textarea-form-description"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="formProgram">Assign to Program (optional)</Label>
+                    <Select 
+                      value={formProgramId || 'all'} 
+                      onValueChange={(v) => {
+                        setFormProgramId(v === 'all' ? null : v);
+                        setFormTeamId(null); // Reset team when program changes
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-form-program">
+                        <SelectValue placeholder="All Programs (visible to everyone)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Programs (visible to everyone)</SelectItem>
+                        {programs.map(p => (
+                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Only athletes in the selected program will see this form
+                    </p>
+                  </div>
+                  {formProgramId && filteredTeams.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="formTeam">Assign to Team (optional)</Label>
+                      <Select 
+                        value={formTeamId || 'all-teams'} 
+                        onValueChange={(v) => setFormTeamId(v === 'all-teams' ? null : v)}
+                      >
+                        <SelectTrigger data-testid="select-form-team">
+                          <SelectValue placeholder="All Teams in Program" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all-teams">All Teams in Program</SelectItem>
+                          {filteredTeams.map(t => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Only athletes on the selected team will see this form
+                      </p>
+                    </div>
+                  )}
                   <Button
                     onClick={handleFormSubmit}
                     disabled={createFormMutation.isPending || updateFormMutation.isPending}
@@ -1080,7 +1152,7 @@ export default function SettingsPage() {
                     data-testid={`form-card-${form.id}`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium truncate">{form.name}</p>
                         <a
                           href={form.url}
@@ -1091,6 +1163,21 @@ export default function SettingsPage() {
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>
+                        {form.program_id && (
+                          <Badge variant="secondary" className="text-xs">
+                            {programs.find(p => p.id === form.program_id)?.name || 'Program'}
+                          </Badge>
+                        )}
+                        {form.team_id && (
+                          <Badge variant="outline" className="text-xs">
+                            {teams.find(t => t.id === form.team_id)?.name || 'Team'}
+                          </Badge>
+                        )}
+                        {!form.program_id && !form.team_id && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">
+                            All Athletes
+                          </Badge>
+                        )}
                       </div>
                       {form.description && (
                         <p className="text-sm text-muted-foreground truncate">{form.description}</p>

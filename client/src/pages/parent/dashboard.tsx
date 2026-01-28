@@ -31,6 +31,7 @@ import {
   UserPlus,
   GraduationCap,
   Users,
+  FileText,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +55,10 @@ export default function ParentDashboard() {
 
   const { data: sessions = [] } = useQuery<Session[]>({
     queryKey: ['/api/sessions'],
+  });
+
+  const { data: unviewedFormsCount } = useQuery<{ count: number }>({
+    queryKey: ['/api/my-unviewed-forms-count'],
   });
 
   const createAthleteMutation = useMutation({
@@ -148,6 +153,27 @@ export default function ParentDashboard() {
   return (
     <div className="space-y-6">
       <ContractGate />
+      
+      {unviewedFormsCount && unviewedFormsCount.count > 0 && (
+        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4" data-testid="alert-new-forms">
+          <div className="flex items-start gap-3">
+            <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-blue-800 dark:text-blue-300">New Forms Available</h3>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                You have {unviewedFormsCount.count} new form{unviewedFormsCount.count !== 1 ? 's' : ''} to review and fill out.
+              </p>
+              <Link href="/forms">
+                <Button size="sm" variant="outline" className="mt-3" data-testid="button-view-forms">
+                  <FileText className="h-4 w-4 mr-2" />
+                  View Forms
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome Back</h1>

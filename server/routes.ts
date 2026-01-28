@@ -1530,6 +1530,17 @@ export async function registerRoutes(
     name: z.string().min(1, "Form name is required"),
     url: z.string().url("Valid URL is required"),
     description: z.string().optional(),
+    program_id: z.string().uuid().optional().nullable(),
+    team_id: z.string().uuid().optional().nullable(),
+  });
+
+  const updateClubFormSchema = z.object({
+    name: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    description: z.string().optional().nullable(),
+    program_id: z.string().uuid().optional().nullable(),
+    team_id: z.string().uuid().optional().nullable(),
+    is_active: z.boolean().optional(),
   });
 
   app.get('/api/club-forms', requireRole('admin', 'coach'), async (req, res) => {
@@ -1543,32 +1554,51 @@ export async function registerRoutes(
     }
   });
 
-  app.post('/api/club-forms', requireRole('admin'), async (req, res) => {
+  app.post('/api/club-forms', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const data = createClubFormSchema.parse(req.body);
-      const form = await storage.createClubForm(clubId, data);
+      const form = await storage.createClubForm(clubId, {
+        name: data.name,
+        url: data.url,
+        description: data.description,
+        program_id: data.program_id ?? undefined,
+        team_id: data.team_id ?? undefined,
+      });
       res.status(201).json(form);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
       console.error('Error creating club form:', error);
       res.status(500).json({ error: 'Failed to create form' });
     }
   });
 
-  app.patch('/api/club-forms/:id', requireRole('admin'), async (req, res) => {
+  app.patch('/api/club-forms/:id', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const formId = req.params.id as string;
-      const data = req.body;
-      const form = await storage.updateClubForm(clubId, formId, data);
+      const data = updateClubFormSchema.parse(req.body);
+      const form = await storage.updateClubForm(clubId, formId, {
+        name: data.name,
+        url: data.url,
+        description: data.description ?? undefined,
+        program_id: data.program_id,
+        team_id: data.team_id,
+        is_active: data.is_active,
+      });
       res.json(form);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
       console.error('Error updating club form:', error);
       res.status(500).json({ error: 'Failed to update form' });
     }
   });
 
-  app.delete('/api/club-forms/:id', requireRole('admin'), async (req, res) => {
+  app.delete('/api/club-forms/:id', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       await storage.deleteClubForm(clubId, req.params.id as string);
@@ -1576,6 +1606,62 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error deleting club form:', error);
       res.status(500).json({ error: 'Failed to delete form' });
+    }
+  });
+
+  // Get forms for a specific athlete (parent view)
+  app.get('/api/athletes/:athleteId/forms', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { athleteId } = req.params;
+      
+      // Verify parent owns this athlete
+      const athlete = await storage.getAthlete(clubId, athleteId);
+      if (!athlete || athlete.parent_id !== userId) {
+        return res.status(403).json({ error: 'Not authorized to view forms for this athlete' });
+      }
+      
+      const forms = await storage.getFormsForAthlete(clubId, athleteId, userId);
+      res.json(forms);
+    } catch (error) {
+      console.error('Error fetching athlete forms:', error);
+      res.status(500).json({ error: 'Failed to fetch forms' });
+    }
+  });
+
+  // Mark a form as viewed (parent action)
+  app.post('/api/club-forms/:formId/view', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { formId } = req.params;
+      
+      const view = await storage.markFormAsViewed(clubId, formId, userId);
+      res.json(view);
+    } catch (error) {
+      console.error('Error marking form as viewed:', error);
+      res.status(500).json({ error: 'Failed to mark form as viewed' });
+    }
+  });
+
+  // Get unviewed form count for parent dashboard alert
+  app.get('/api/my-unviewed-forms-count', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      
+      // Get all athletes for this parent
+      const athletes = await storage.getAthletesByParent(clubId, userId);
+      
+      // Collect all unviewed forms across all athletes
+      const allUnviewedForms = new Set<string>();
+      for (const athlete of athletes) {
+        const forms = await storage.getFormsForAthlete(clubId, athlete.id, userId);
+        forms.filter(f => !f.viewed).forEach(f => allUnviewedForms.add(f.id));
+      }
+      
+      res.json({ count: allUnviewedForms.size });
+    } catch (error) {
+      console.error('Error fetching unviewed forms count:', error);
+      res.status(500).json({ error: 'Failed to fetch unviewed forms count' });
     }
   });
 

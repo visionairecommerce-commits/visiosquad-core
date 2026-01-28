@@ -5,12 +5,12 @@ import {
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
   sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
   programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
-  clubFormsTable
+  clubFormsTable, clubFormViewsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger,
-  ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm
+  ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -393,16 +393,20 @@ export class DatabaseStorage implements IStorage {
       name: form.name,
       url: form.url,
       description: form.description,
+      program_id: form.program_id || null,
+      team_id: form.team_id || null,
       is_active: true,
     }).returning();
     return this.mapClubForm(f);
   }
 
-  async updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; is_active?: boolean }): Promise<ClubForm> {
+  async updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; program_id?: string | null; team_id?: string | null; is_active?: boolean }): Promise<ClubForm> {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.url !== undefined) updateData.url = data.url;
     if (data.description !== undefined) updateData.description = data.description;
+    if (data.program_id !== undefined) updateData.program_id = data.program_id;
+    if (data.team_id !== undefined) updateData.team_id = data.team_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
 
     const [form] = await db.update(clubFormsTable)
@@ -413,6 +417,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteClubForm(clubId: string, formId: string): Promise<void> {
+    // First delete any form views associated with this form
+    await db.delete(clubFormViewsTable)
+      .where(and(eq(clubFormViewsTable.club_id, clubId), eq(clubFormViewsTable.form_id, formId)));
     await db.delete(clubFormsTable)
       .where(and(eq(clubFormsTable.club_id, clubId), eq(clubFormsTable.id, formId)));
   }
@@ -424,9 +431,95 @@ export class DatabaseStorage implements IStorage {
       name: f.name,
       url: f.url,
       description: f.description ?? undefined,
+      program_id: f.program_id ?? undefined,
+      team_id: f.team_id ?? undefined,
       is_active: f.is_active,
       created_at: f.created_at?.toISOString?.() ?? f.created_at,
     };
+  }
+
+  // Club Form Views
+  async getFormViewsByUser(clubId: string, userId: string): Promise<ClubFormView[]> {
+    const views = await db.select().from(clubFormViewsTable)
+      .where(and(eq(clubFormViewsTable.club_id, clubId), eq(clubFormViewsTable.user_id, userId)));
+    return views.map(v => ({
+      id: v.id,
+      club_id: v.club_id,
+      form_id: v.form_id,
+      user_id: v.user_id,
+      viewed_at: v.viewed_at?.toISOString?.() ?? v.viewed_at as any,
+    }));
+  }
+
+  async markFormAsViewed(clubId: string, formId: string, userId: string): Promise<ClubFormView> {
+    // Check if already viewed
+    const [existing] = await db.select().from(clubFormViewsTable)
+      .where(and(
+        eq(clubFormViewsTable.club_id, clubId),
+        eq(clubFormViewsTable.form_id, formId),
+        eq(clubFormViewsTable.user_id, userId)
+      ));
+    
+    if (existing) {
+      return {
+        id: existing.id,
+        club_id: existing.club_id,
+        form_id: existing.form_id,
+        user_id: existing.user_id,
+        viewed_at: existing.viewed_at?.toISOString?.() ?? existing.viewed_at as any,
+      };
+    }
+
+    const [view] = await db.insert(clubFormViewsTable).values({
+      club_id: clubId,
+      form_id: formId,
+      user_id: userId,
+    }).returning();
+    
+    return {
+      id: view.id,
+      club_id: view.club_id,
+      form_id: view.form_id,
+      user_id: view.user_id,
+      viewed_at: view.viewed_at?.toISOString?.() ?? view.viewed_at as any,
+    };
+  }
+
+  async getFormsForAthlete(clubId: string, athleteId: string, userId: string): Promise<(ClubForm & { viewed: boolean })[]> {
+    // Get athlete's roster memberships to determine which programs/teams they're in
+    const rosters = await db.select().from(athleteTeamRostersTable)
+      .where(and(eq(athleteTeamRostersTable.club_id, clubId), eq(athleteTeamRostersTable.athlete_id, athleteId)));
+    
+    const programIds = [...new Set(rosters.map(r => r.program_id))];
+    const teamIds = [...new Set(rosters.filter(r => r.team_id).map(r => r.team_id))];
+    
+    // Get all active forms for this club
+    const allForms = await db.select().from(clubFormsTable)
+      .where(and(eq(clubFormsTable.club_id, clubId), eq(clubFormsTable.is_active, true)));
+    
+    // Get user's form views
+    const views = await db.select().from(clubFormViewsTable)
+      .where(and(eq(clubFormViewsTable.club_id, clubId), eq(clubFormViewsTable.user_id, userId)));
+    const viewedFormIds = new Set(views.map(v => v.form_id));
+    
+    // Filter forms based on program/team targeting
+    const relevantForms = allForms.filter(form => {
+      // If no program or team specified, form is visible to everyone
+      if (!form.program_id && !form.team_id) return true;
+      
+      // If team is specified, check if athlete is on that team
+      if (form.team_id && teamIds.includes(form.team_id)) return true;
+      
+      // If only program is specified (no team), check if athlete is in that program
+      if (form.program_id && !form.team_id && programIds.includes(form.program_id)) return true;
+      
+      return false;
+    });
+    
+    return relevantForms.map(f => ({
+      ...this.mapClubForm(f),
+      viewed: viewedFormIds.has(f.id),
+    }));
   }
 
   // Courts

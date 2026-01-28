@@ -59,8 +59,19 @@ export const clubFormsTable = pgTable("club_forms", {
   name: text("name").notNull(),
   url: text("url").notNull(),
   description: text("description"),
+  program_id: uuid("program_id"), // Optional - form only visible to athletes in this program
+  team_id: uuid("team_id"), // Optional - form only visible to athletes on this team
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Club form views table - tracks when users click on forms
+export const clubFormViewsTable = pgTable("club_form_views", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  form_id: uuid("form_id").references(() => clubFormsTable.id).notNull(),
+  user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
+  viewed_at: timestamp("viewed_at").defaultNow().notNull(),
 });
 
 // Club signatures table
@@ -338,8 +349,18 @@ export interface ClubForm {
   name: string;
   url: string;
   description?: string;
+  program_id?: string;
+  team_id?: string;
   is_active: boolean;
   created_at: string;
+}
+
+export interface ClubFormView {
+  id: string;
+  club_id: string;
+  form_id: string;
+  user_id: string;
+  viewed_at: string;
 }
 
 export type ContractStatus = 'unsigned' | 'pending' | 'verified';

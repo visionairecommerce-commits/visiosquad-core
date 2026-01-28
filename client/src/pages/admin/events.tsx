@@ -78,6 +78,7 @@ interface EventFormData {
   location: string;
   capacity: number | undefined;
   price: number;
+  selectedAthletes: { id: string; first_name: string; last_name: string }[];
 }
 
 const initialFormData: EventFormData = {
@@ -91,6 +92,7 @@ const initialFormData: EventFormData = {
   location: '',
   capacity: undefined,
   price: 0,
+  selectedAthletes: [],
 };
 
 export default function EventsPage() {
@@ -102,6 +104,7 @@ export default function EventsPage() {
   const [rosterEventId, setRosterEventId] = useState<string | null>(null);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
   const [athleteSearchQuery, setAthleteSearchQuery] = useState<string>('');
+  const [formAthleteSearch, setFormAthleteSearch] = useState<string>('');
 
   const { data: events = [], isLoading } = useQuery<Event[]>({
     queryKey: ['/api/events'],
@@ -130,7 +133,7 @@ export default function EventsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (data: EventFormData) => {
-      return apiRequest('POST', '/api/events', {
+      const response = await apiRequest('POST', '/api/events', {
         title: data.title,
         description: data.description || undefined,
         event_type: data.event_type,
@@ -142,11 +145,22 @@ export default function EventsPage() {
         capacity: data.capacity || undefined,
         price: data.price,
       });
+      const event = await response.json();
+      
+      // Add selected athletes to the roster
+      for (const athlete of data.selectedAthletes) {
+        await apiRequest('POST', `/api/events/${event.id}/rosters`, {
+          athlete_id: athlete.id,
+        });
+      }
+      
+      return event;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/events'] });
       setIsDialogOpen(false);
       setFormData(initialFormData);
+      setFormAthleteSearch('');
       toast({
         title: 'Event Created',
         description: 'The event has been created successfully.',
@@ -285,6 +299,21 @@ export default function EventsPage() {
       })
     : [];
 
+  // Filter athletes for the form (event create/edit) - exclude already selected athletes
+  const formAvailableAthletes = athletes.filter(
+    a => !formData.selectedAthletes.some(s => s.id === a.id)
+  );
+  
+  const formSearchedAthletes = formAthleteSearch.trim()
+    ? formAvailableAthletes.filter(a => {
+        const fullName = `${a.first_name} ${a.last_name}`.toLowerCase();
+        const query = formAthleteSearch.toLowerCase().trim();
+        return fullName.includes(query) || 
+               a.first_name.toLowerCase().includes(query) || 
+               a.last_name.toLowerCase().includes(query);
+      })
+    : [];
+
   const rosterEvent = events.find(e => e.id === rosterEventId);
 
   const handleOpenCreate = () => {
@@ -306,8 +335,25 @@ export default function EventsPage() {
       location: event.location || '',
       capacity: event.capacity || undefined,
       price: event.price,
+      selectedAthletes: [], // For editing, use the roster dialog instead
     });
+    setFormAthleteSearch('');
     setIsDialogOpen(true);
+  };
+  
+  const handleAddAthleteToForm = (athlete: { id: string; first_name: string; last_name: string }) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedAthletes: [...prev.selectedAthletes, athlete],
+    }));
+    setFormAthleteSearch('');
+  };
+  
+  const handleRemoveAthleteFromForm = (athleteId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedAthletes: prev.selectedAthletes.filter(a => a.id !== athleteId),
+    }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -534,6 +580,111 @@ export default function EventsPage() {
                   </Select>
                 </div>
               </div>
+
+              {/* Athlete Selection Section - only show when creating */}
+              {!editingEvent && (
+                <div className="space-y-3 border-t pt-4">
+                  <Label>Add Athletes to Event (Optional)</Label>
+                  
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search athletes by name..."
+                      value={formAthleteSearch}
+                      onChange={(e) => setFormAthleteSearch(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-form-search-athlete"
+                    />
+                  </div>
+
+                  {formAthleteSearch.trim() && (
+                    <div className="border rounded-lg max-h-[140px] overflow-y-auto">
+                      {formSearchedAthletes.length === 0 ? (
+                        <div className="py-2 px-3 text-sm text-muted-foreground text-center">
+                          No athletes found matching "{formAthleteSearch}"
+                        </div>
+                      ) : (
+                        formSearchedAthletes.slice(0, 5).map(athlete => (
+                          <div
+                            key={athlete.id}
+                            className="flex items-center justify-between p-2 hover-elevate cursor-pointer border-b last:border-b-0"
+                            data-testid={`form-search-result-${athlete.id}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-6 w-6">
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(athlete.first_name, athlete.last_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="text-sm">
+                                {athlete.first_name} {athlete.last_name}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => handleAddAthleteToForm({ 
+                                id: athlete.id, 
+                                first_name: athlete.first_name, 
+                                last_name: athlete.last_name 
+                              })}
+                              data-testid={`button-form-add-athlete-${athlete.id}`}
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {formData.selectedAthletes.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Selected Athletes</span>
+                        <Badge variant="outline">{formData.selectedAthletes.length}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {formData.selectedAthletes.map(athlete => (
+                          <Badge
+                            key={athlete.id}
+                            variant="secondary"
+                            className="flex items-center gap-1 pr-1"
+                            data-testid={`badge-selected-athlete-${athlete.id}`}
+                          >
+                            {athlete.first_name} {athlete.last_name}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 ml-1"
+                              onClick={() => handleRemoveAthleteFromForm(athlete.id)}
+                              data-testid={`button-remove-selected-${athlete.id}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!formAthleteSearch.trim() && formData.selectedAthletes.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Search and add athletes now, or manage the roster later
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* For editing events, show link to roster management */}
+              {editingEvent && (
+                <div className="border-t pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    To add or remove athletes from this event, use the "Roster" button on the event card after saving.
+                  </p>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button

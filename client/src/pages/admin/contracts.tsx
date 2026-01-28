@@ -20,10 +20,17 @@ interface Program {
   name: string;
 }
 
+interface Team {
+  id: string;
+  name: string;
+  program_id: string;
+}
+
 interface ProgramContract {
   id: string;
   club_id: string;
   program_id: string;
+  team_id?: string;
   name: string;
   description?: string;
   monthly_price: number;
@@ -34,6 +41,7 @@ interface ProgramContract {
 
 const contractSchema = z.object({
   program_id: z.string().min(1, "Program is required"),
+  team_id: z.string().optional(),
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.coerce.number().min(0, "Price must be positive"),
@@ -52,6 +60,10 @@ export default function ContractsPage() {
     queryKey: ["/api/programs"],
   });
 
+  const { data: teams = [] } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
   const { data: contracts = [], isLoading } = useQuery<ProgramContract[]>({
     queryKey: ["/api/program-contracts"],
   });
@@ -60,12 +72,25 @@ export default function ContractsPage() {
     resolver: zodResolver(contractSchema),
     defaultValues: {
       program_id: "",
+      team_id: "",
       name: "",
       description: "",
       monthly_price: 0,
       sessions_per_week: 1,
     },
   });
+
+  const selectedProgramId = form.watch("program_id");
+  const teamsForProgram = teams.filter(t => t.program_id === selectedProgramId);
+
+  // Clear team_id when program changes to avoid invalid team/program combinations
+  const prevProgramId = useState<string | null>(null);
+  if (prevProgramId[0] !== selectedProgramId && prevProgramId[0] !== null) {
+    form.setValue("team_id", "");
+  }
+  if (prevProgramId[0] !== selectedProgramId) {
+    prevProgramId[1](selectedProgramId);
+  }
 
   const createMutation = useMutation({
     mutationFn: (data: ContractFormData) =>
@@ -113,6 +138,7 @@ export default function ContractsPage() {
       setEditingContract(contract);
       form.reset({
         program_id: contract.program_id,
+        team_id: contract.team_id || "",
         name: contract.name,
         description: contract.description || "",
         monthly_price: contract.monthly_price,
@@ -122,6 +148,7 @@ export default function ContractsPage() {
       setEditingContract(null);
       form.reset({
         program_id: "",
+        team_id: "",
         name: "",
         description: "",
         monthly_price: 0,
@@ -132,10 +159,15 @@ export default function ContractsPage() {
   };
 
   const handleSubmit = (data: ContractFormData) => {
+    // Normalize empty team_id to undefined for backend
+    const normalizedData = {
+      ...data,
+      team_id: data.team_id || undefined,
+    };
     if (editingContract) {
-      updateMutation.mutate({ id: editingContract.id, data });
+      updateMutation.mutate({ id: editingContract.id, data: normalizedData });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(normalizedData);
     }
   };
 
@@ -151,6 +183,11 @@ export default function ContractsPage() {
 
   const getProgramName = (programId: string) => {
     return programs.find(p => p.id === programId)?.name || "Unknown Program";
+  };
+
+  const getTeamName = (teamId?: string) => {
+    if (!teamId) return null;
+    return teams.find(t => t.id === teamId)?.name;
   };
 
   const groupedContracts = filteredContracts.reduce((acc, contract) => {
@@ -213,6 +250,37 @@ export default function ContractsPage() {
                     </FormItem>
                   )}
                 />
+
+                {teamsForProgram.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="team_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Team (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-contract-team">
+                              <SelectValue placeholder="All teams in program" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="">All teams in program</SelectItem>
+                            {teamsForProgram.map((team) => (
+                              <SelectItem key={team.id} value={team.id}>
+                                {team.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Optionally limit this contract to a specific team
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
@@ -372,9 +440,16 @@ export default function ContractsPage() {
                         <div className="flex items-start justify-between">
                           <div>
                             <CardTitle className="text-lg">{contract.name}</CardTitle>
-                            {!contract.is_active && (
-                              <Badge variant="secondary" className="mt-1">Inactive</Badge>
-                            )}
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              {contract.team_id && getTeamName(contract.team_id) && (
+                                <Badge variant="outline" data-testid={`badge-team-${contract.id}`}>
+                                  {getTeamName(contract.team_id)}
+                                </Badge>
+                              )}
+                              {!contract.is_active && (
+                                <Badge variant="secondary">Inactive</Badge>
+                              )}
+                            </div>
                           </div>
                           <div className="flex gap-1">
                             <Button

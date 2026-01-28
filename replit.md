@@ -97,10 +97,16 @@ Preferred communication style: Simple, everyday language.
 - **Program Contracts**: Directors can create pricing tiers (contracts) for each program
   - Each contract defines: name, description, monthly price, and sessions per week allowed
   - Example: "4 Days/Week Premium" at $500/month, "3 Days/Week Standard" at $350/month
+  - **Team-Specific Contracts**: Contracts can optionally be tied to a specific team within a program
+    - If team_id is set, contract only applies to athletes on that team
+    - If team_id is null, contract applies to all teams in the program
   - Route: `/contracts` (admin-only access)
 - **Athlete Contracts**: Athletes can subscribe to program contracts for recurring billing
   - Contract status: active, cancelled, expired
   - Stored in `athlete_contracts` table linking athlete_id to program_contract_id
+  - **Custom Price Override**: Individual athletes can have a custom monthly price that overrides the base contract price
+    - Stored as `custom_price` on athlete_contracts table
+    - When set, billing uses custom_price instead of program_contract.monthly_price
   - System automatically cancels previous active contracts when assigning a new one
 - **Drop-in Pricing**: Sessions have a `drop_in_price` field for non-contract attendees
 - **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`

@@ -77,6 +77,7 @@ export const programContractsTable = pgTable("program_contracts", {
   id: uuid("id").primaryKey().defaultRandom(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   program_id: uuid("program_id").references(() => programsTable.id).notNull(),
+  team_id: uuid("team_id"), // Optional - for team-specific contracts
   name: text("name").notNull(),
   description: text("description"),
   monthly_price: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
@@ -93,6 +94,7 @@ export const athleteContractsTable = pgTable("athlete_contracts", {
   program_contract_id: uuid("program_contract_id").references(() => programContractsTable.id).notNull(),
   start_date: text("start_date").notNull(),
   end_date: text("end_date"),
+  custom_price: decimal("custom_price", { precision: 10, scale: 2 }), // Optional - overrides contract monthly_price
   status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
@@ -342,6 +344,7 @@ export interface ProgramContract {
   id: string;
   club_id: string;
   program_id: string;
+  team_id?: string;
   name: string;
   description?: string;
   monthly_price: number;
@@ -357,6 +360,7 @@ export interface AthleteContract {
   program_contract_id: string;
   start_date: string;
   end_date?: string;
+  custom_price?: number;
   status: 'active' | 'cancelled' | 'expired';
   created_at: string;
 }
@@ -581,6 +585,7 @@ export const insertSessionSchema = z.object({
 
 export const insertProgramContractSchema = z.object({
   program_id: z.string().min(1, "Program is required"),
+  team_id: z.string().optional(),
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.number().min(0, "Price must be positive"),
@@ -592,6 +597,7 @@ export const insertAthleteContractSchema = z.object({
   program_contract_id: z.string().min(1, "Contract is required"),
   start_date: z.string().min(1, "Start date is required"),
   end_date: z.string().optional(),
+  custom_price: z.number().min(0).optional(),
 });
 
 export const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);

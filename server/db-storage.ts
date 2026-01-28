@@ -874,6 +874,7 @@ export class DatabaseStorage implements IStorage {
     const [c] = await db.insert(programContractsTable).values({
       club_id: clubId,
       program_id: contract.program_id,
+      team_id: contract.team_id || null,
       name: contract.name,
       description: contract.description,
       monthly_price: String(contract.monthly_price),
@@ -883,12 +884,13 @@ export class DatabaseStorage implements IStorage {
     return this.mapProgramContract(c);
   }
 
-  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; is_active?: boolean }): Promise<ProgramContract> {
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; sessions_per_week?: number; team_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.monthly_price !== undefined) updateData.monthly_price = String(data.monthly_price);
     if (data.sessions_per_week !== undefined) updateData.sessions_per_week = data.sessions_per_week;
+    if (data.team_id !== undefined) updateData.team_id = data.team_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
 
     const [c] = await db.update(programContractsTable)
@@ -929,6 +931,7 @@ export class DatabaseStorage implements IStorage {
       program_contract_id: contract.program_contract_id,
       start_date: contract.start_date,
       end_date: contract.end_date,
+      custom_price: contract.custom_price ? String(contract.custom_price) : null,
       status: 'active',
     }).returning();
     return this.mapAthleteContract(c);
@@ -947,6 +950,7 @@ export class DatabaseStorage implements IStorage {
       id: c.id,
       club_id: c.club_id,
       program_id: c.program_id,
+      team_id: c.team_id ?? undefined,
       name: c.name,
       description: c.description ?? undefined,
       monthly_price: parseFloat(c.monthly_price),
@@ -964,6 +968,7 @@ export class DatabaseStorage implements IStorage {
       program_contract_id: c.program_contract_id,
       start_date: c.start_date,
       end_date: c.end_date ?? undefined,
+      custom_price: c.custom_price ? parseFloat(c.custom_price) : undefined,
       status: c.status,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };

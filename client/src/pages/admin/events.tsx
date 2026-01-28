@@ -49,6 +49,7 @@ import {
   Edit,
   UserPlus,
   X,
+  Search,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -100,6 +101,7 @@ export default function EventsPage() {
   const [formData, setFormData] = useState<EventFormData>(initialFormData);
   const [rosterEventId, setRosterEventId] = useState<string | null>(null);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
+  const [athleteSearchQuery, setAthleteSearchQuery] = useState<string>('');
 
   const { data: events = [], isLoading } = useQuery<Event[]>({
     queryKey: ['/api/events'],
@@ -271,6 +273,17 @@ export default function EventsPage() {
   const availableAthletes = athletes.filter(
     a => !eventRosters.some(r => r.athlete_id === a.id)
   );
+
+  // Filter athletes by search query (searches all club athletes not yet on roster)
+  const searchedAthletes = athleteSearchQuery.trim()
+    ? availableAthletes.filter(a => {
+        const fullName = `${a.first_name} ${a.last_name}`.toLowerCase();
+        const query = athleteSearchQuery.toLowerCase().trim();
+        return fullName.includes(query) || 
+               a.first_name.toLowerCase().includes(query) || 
+               a.last_name.toLowerCase().includes(query);
+      })
+    : [];
 
   const rosterEvent = events.find(e => e.id === rosterEventId);
 
@@ -698,7 +711,7 @@ export default function EventsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={!!rosterEventId} onOpenChange={(open) => !open && setRosterEventId(null)}>
+      <Dialog open={!!rosterEventId} onOpenChange={(open) => { if (!open) { setRosterEventId(null); setAthleteSearchQuery(''); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -716,34 +729,66 @@ export default function EventsPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="flex items-end gap-2">
-              <div className="flex-1 space-y-1.5">
-                <Label htmlFor="add-athlete">Add Athlete</Label>
-                <Select value={selectedAthleteId} onValueChange={setSelectedAthleteId}>
-                  <SelectTrigger data-testid="select-athlete-to-add">
-                    <SelectValue placeholder="Select an athlete" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableAthletes.length === 0 ? (
-                      <div className="py-2 px-2 text-sm text-muted-foreground">No available athletes</div>
-                    ) : (
-                      availableAthletes.map(athlete => (
-                        <SelectItem key={athlete.id} value={athlete.id}>
-                          {athlete.first_name} {athlete.last_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-3">
+              <Label>Add An Athlete To The Event</Label>
+              
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search athletes by name..."
+                  value={athleteSearchQuery}
+                  onChange={(e) => setAthleteSearchQuery(e.target.value)}
+                  className="pl-9"
+                  data-testid="input-search-athlete"
+                />
               </div>
-              <Button
-                onClick={handleAddToRoster}
-                disabled={!selectedAthleteId || addToRosterMutation.isPending}
-                data-testid="button-add-to-roster"
-              >
-                <UserPlus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
+
+              {athleteSearchQuery.trim() && (
+                <div className="border rounded-lg max-h-[180px] overflow-y-auto">
+                  {searchedAthletes.length === 0 ? (
+                    <div className="py-3 px-3 text-sm text-muted-foreground text-center">
+                      No athletes found matching "{athleteSearchQuery}"
+                    </div>
+                  ) : (
+                    searchedAthletes.map(athlete => (
+                      <div
+                        key={athlete.id}
+                        className="flex items-center justify-between p-2 hover-elevate cursor-pointer border-b last:border-b-0"
+                        data-testid={`search-result-${athlete.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarFallback className="text-xs">
+                              {getInitials(athlete.first_name, athlete.last_name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium">
+                            {athlete.first_name} {athlete.last_name}
+                          </span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            addToRosterMutation.mutate({ eventId: rosterEventId!, athleteId: athlete.id });
+                            setAthleteSearchQuery('');
+                          }}
+                          disabled={addToRosterMutation.isPending}
+                          data-testid={`button-add-athlete-${athlete.id}`}
+                        >
+                          <UserPlus className="h-3.5 w-3.5 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {!athleteSearchQuery.trim() && availableAthletes.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Start typing to search from {availableAthletes.length} available athlete(s)
+                </p>
+              )}
             </div>
 
             <div className="border-t pt-4">

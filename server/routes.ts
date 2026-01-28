@@ -2546,33 +2546,56 @@ export async function registerRoutes(
     }
   });
 
-  // Create a new chat channel
+  // Create a new chat channel with Telegram-style audience targeting
   app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
     try {
       const { clubId, userId, userRole } = getAuthContext(req);
-      const { channel_type, participant_ids, name, team_id, program_id } = req.body;
+      const { channel_type, participant_ids, name, team_id, program_id, audience_type } = req.body;
+      
+      let resolvedParticipantIds: string[] = participant_ids || [];
+      
+      // Resolve participants based on audience type (Telegram-style targeting)
+      if (audience_type === 'team' && team_id) {
+        // Get all users in the team (parents of athletes + coaches)
+        resolvedParticipantIds = await storage.getTeamAudienceUserIds(clubId, team_id);
+      } else if (audience_type === 'roster' && team_id) {
+        // Roster is same as team for now (could be more specific in future)
+        resolvedParticipantIds = await storage.getTeamAudienceUserIds(clubId, team_id);
+      } else if (audience_type === 'program' && program_id) {
+        // Get all users in the program
+        resolvedParticipantIds = await storage.getProgramAudienceUserIds(clubId, program_id);
+      }
+      // For 'individual' audience_type, use participant_ids as provided
       
       // Validate participants belong to the same club
-      const validation = await storage.validateChatParticipants(clubId, participant_ids, userId);
+      const validation = await storage.validateChatParticipants(clubId, resolvedParticipantIds, userId);
       if (!validation.valid) {
         return res.status(400).json({ error: validation.error });
       }
       
-      // Create the channel
+      // Create the channel with audience_type stored
+      const effectiveChannelType = audience_type === 'team' ? 'team' : 
+                                   audience_type === 'program' ? 'program' : 
+                                   audience_type === 'roster' ? 'group' : channel_type;
+      
       const channel = await storage.createChatChannel(
         clubId,
         userId,
-        channel_type,
-        participant_ids,
+        effectiveChannelType,
+        resolvedParticipantIds,
         { name, teamId: team_id, programId: program_id }
       );
       
       // Add all participants (including the creator)
-      const allParticipants = [...new Set([userId, ...participant_ids])];
+      const allParticipants = [...new Set([userId, ...resolvedParticipantIds])];
       
-      // Auto-add parents if SafeSport requires it
+      // Auto-add parents if SafeSport requires it (already handled in team/program resolution)
       if (validation.autoAddParentIds) {
-        allParticipants.push(...validation.autoAddParentIds);
+        for (const parentId of validation.autoAddParentIds) {
+          if (!allParticipants.includes(parentId)) {
+            allParticipants.push(parentId);
+          }
+        }
       }
       
       // Check if director should be auto-added
@@ -2728,7 +2751,7 @@ export async function registerRoutes(
   app.post('/api/bulletin', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
-      const { title, content, team_id, program_id, is_pinned } = req.body;
+      const { title, content, team_id, program_id, is_pinned, audience_type } = req.body;
       
       if (!title || !content) {
         return res.status(400).json({ error: 'Title and content are required' });
@@ -2737,21 +2760,31 @@ export async function registerRoutes(
       const post = await storage.createBulletinPost(clubId, userId, {
         title,
         content,
+        audienceType: audience_type || 'club',
         teamId: team_id,
         programId: program_id,
         isPinned: is_pinned,
       });
       
-      // Send push notifications to relevant users
-      const users = await storage.getCoaches(clubId);
-      // Get all parents in the club
-      const athletes = await storage.getAthletes(clubId);
-      const parentIds = [...new Set(athletes.map(a => a.parent_id))];
+      // Resolve notification recipients based on audience type (Telegram-style targeting)
+      let allUserIds: string[] = [];
       
-      const allUserIds = [
-        ...users.map(u => u.id),
-        ...parentIds,
-      ].filter(id => id !== userId);
+      if (audience_type === 'team' && team_id) {
+        // Send to team members only
+        allUserIds = await storage.getTeamAudienceUserIds(clubId, team_id);
+      } else if (audience_type === 'roster' && team_id) {
+        // Send to roster (same as team for now)
+        allUserIds = await storage.getTeamAudienceUserIds(clubId, team_id);
+      } else if (audience_type === 'program' && program_id) {
+        // Send to all users in the program
+        allUserIds = await storage.getProgramAudienceUserIds(clubId, program_id);
+      } else {
+        // Default: Send to entire club
+        allUserIds = await storage.getClubAudienceUserIds(clubId);
+      }
+      
+      // Exclude the author from notifications
+      allUserIds = allUserIds.filter(id => id !== userId);
       
       if (allUserIds.length > 0) {
         const fcmTokens = await storage.getPushTokensForUsers(allUserIds);

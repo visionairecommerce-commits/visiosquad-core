@@ -990,38 +990,9 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = addEventRosterSchema.parse(req.body);
       
-      // Get the event to check price
-      const event = await storage.getEvent(clubId, req.params.id as string);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-
-      // Check if club has billing method before processing payment
-      const club = await storage.getClub(clubId);
-      if (!club?.billing_card_token && !club?.billing_bank_token) {
-        return res.status(403).json({ 
-          error: 'Billing method required',
-          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
-        });
-      }
-
-      // Create payment record for the event fee
-      let paymentId: string | undefined;
-      if (event.price > 0) {
-        const payment = await storage.createPayment(clubId, {
-          athlete_id: data.athlete_id,
-          amount: event.price,
-          payment_type: 'event',
-          payment_method: 'credit_card',
-          status: 'pending',
-        });
-        paymentId = payment.id;
-
-        // Create platform ledger entry ($1 per player per event)
-        await storage.createPlatformLedgerEntry(clubId, payment.id, PLATFORM_FEES.event, 'event');
-      }
-
-      const roster = await storage.addEventRoster(clubId, req.params.id as string, data.athlete_id, paymentId);
+      // Just add the athlete to the roster without any billing
+      // Billing is handled separately via the bill endpoint
+      const roster = await storage.addEventRoster(clubId, req.params.id as string, data.athlete_id);
       res.status(201).json(roster);
     } catch (error) {
       if (error instanceof z.ZodError) {

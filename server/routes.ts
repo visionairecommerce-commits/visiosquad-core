@@ -1579,6 +1579,95 @@ export async function registerRoutes(
     }
   });
 
+  // ============ CONTRACT COMPLIANCE ============
+  
+  // Update club contract settings (admin only)
+  const contractSettingsSchema = z.object({
+    contract_url: z.string().url().optional().or(z.literal('')),
+    contract_instructions: z.string().optional(),
+  });
+  
+  app.patch('/api/club/contract-settings', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = contractSettingsSchema.parse(req.body);
+      const club = await storage.updateClubContractSettings(
+        clubId, 
+        data.contract_url || undefined, 
+        data.contract_instructions || undefined
+      );
+      res.json(club);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error('Error updating contract settings:', error);
+      res.status(500).json({ error: 'Failed to update contract settings' });
+    }
+  });
+
+  // Get all users with contract status (admin/coach view)
+  app.get('/api/contract-compliance', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const users = await storage.getUsersWithContractStatus(clubId);
+      res.json(users);
+    } catch (error) {
+      console.error('Error fetching contract compliance:', error);
+      res.status(500).json({ error: 'Failed to fetch contract compliance data' });
+    }
+  });
+
+  // Verify user contract (admin/coach only)
+  app.patch('/api/users/:userId/verify-contract', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { userId } = req.params;
+      
+      // Security: Verify the user belongs to the same club and is a parent
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (targetUser.club_id !== clubId) {
+        return res.status(403).json({ error: 'Cannot verify user from another club' });
+      }
+      if (targetUser.role !== 'parent') {
+        return res.status(400).json({ error: 'Only parent contracts can be verified' });
+      }
+      
+      const user = await storage.updateUserContractStatus(userId, 'verified');
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error verifying contract:', error);
+      res.status(500).json({ error: 'Failed to verify contract' });
+    }
+  });
+
+  // Parent updates their own contract status (sign digitally or paper)
+  app.patch('/api/my-contract-status', requireRole('parent'), async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const { method } = req.body; // 'digital' or 'paper'
+      
+      if (!method || !['digital', 'paper'].includes(method)) {
+        return res.status(400).json({ error: 'Invalid contract method' });
+      }
+      
+      const user = await storage.updateUserContractStatus(userId, 'pending', method);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error('Error updating contract status:', error);
+      res.status(500).json({ error: 'Failed to update contract status' });
+    }
+  });
+
   // ============ FACILITIES ============
   app.get('/api/facilities', async (req, res) => {
     try {

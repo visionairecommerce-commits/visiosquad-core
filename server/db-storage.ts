@@ -110,6 +110,17 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(club);
   }
 
+  async updateClubContractSettings(clubId: string, contractUrl: string | undefined, contractInstructions: string | undefined): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({
+        contract_url: contractUrl,
+        contract_instructions: contractInstructions,
+      })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
   async completeOnboarding(clubId: string): Promise<Club> {
     const [club] = await db.update(clubsTable)
       .set({ onboarding_complete: true })
@@ -196,6 +207,24 @@ export class DatabaseStorage implements IStorage {
       .returning();
     if (!updated) return null;
     return this.mapUser(updated);
+  }
+
+  async updateUserContractStatus(userId: string, status: 'unsigned' | 'pending' | 'verified', method?: 'digital' | 'paper'): Promise<User | null> {
+    const updateData: any = { contract_status: status };
+    if (method) updateData.contract_method = method;
+    
+    const [updated] = await db.update(profilesTable)
+      .set(updateData)
+      .where(eq(profilesTable.id, userId))
+      .returning();
+    if (!updated) return null;
+    return this.mapUser(updated);
+  }
+
+  async getUsersWithContractStatus(clubId: string): Promise<User[]> {
+    const users = await db.select().from(profilesTable)
+      .where(and(eq(profilesTable.club_id, clubId), eq(profilesTable.role, 'parent')));
+    return users.map(u => this.mapUser(u));
   }
 
   // Signatures
@@ -737,6 +766,8 @@ export class DatabaseStorage implements IStorage {
       waiver_content: c.waiver_content ?? undefined,
       waiver_version: c.waiver_version ?? undefined,
       contract_version: c.contract_version ?? undefined,
+      contract_url: c.contract_url ?? undefined,
+      contract_instructions: c.contract_instructions ?? undefined,
       onboarding_complete: c.onboarding_complete,
       billing_card_token: c.billing_card_token ?? undefined,
       billing_card_last_four: c.billing_card_last_four ?? undefined,
@@ -744,6 +775,7 @@ export class DatabaseStorage implements IStorage {
       billing_bank_token: c.billing_bank_token ?? undefined,
       billing_bank_last_four: c.billing_bank_last_four ?? undefined,
       billing_method: c.billing_method ?? undefined,
+      coaches_can_bill: c.coaches_can_bill ?? false,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }
@@ -757,6 +789,8 @@ export class DatabaseStorage implements IStorage {
       club_id: u.club_id,
       has_signed_documents: u.has_signed_documents,
       can_bill: u.can_bill ?? false,
+      contract_status: u.contract_status ?? 'unsigned',
+      contract_method: u.contract_method ?? undefined,
       created_at: u.created_at?.toISOString?.() ?? u.created_at,
     };
   }

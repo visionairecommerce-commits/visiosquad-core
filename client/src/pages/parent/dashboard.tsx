@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { ContractGate } from '@/components/ContractGate';
 
 export default function ParentDashboard() {
   const { activeAthlete, setActiveAthlete, setAthletes } = useAthlete();
@@ -146,6 +147,7 @@ export default function ParentDashboard() {
 
   return (
     <div className="space-y-6">
+      <ContractGate />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome Back</h1>

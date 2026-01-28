@@ -266,6 +266,9 @@ export interface IStorage {
   completeOnboarding(clubId: string): Promise<Club>;
   regenerateClubCode(clubId: string): Promise<Club>;
   
+  // Club Contract Compliance Settings
+  updateClubContractSettings(clubId: string, contractUrl: string | undefined, contractInstructions: string | undefined): Promise<Club>;
+  
   // Users
   getUserById(userId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -274,6 +277,8 @@ export interface IStorage {
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
   updateUserSignedDocuments(userId: string): Promise<void>;
   updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null>;
+  updateUserContractStatus(userId: string, status: 'unsigned' | 'pending' | 'verified', method?: 'digital' | 'paper'): Promise<User | null>;
+  getUsersWithContractStatus(clubId: string): Promise<User[]>;
   
   // Signatures
   createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress?: string): Promise<ClubSignature>;
@@ -614,6 +619,15 @@ export class MemStorage implements IStorage {
     return club;
   }
 
+  async updateClubContractSettings(clubId: string, contractUrl: string | undefined, contractInstructions: string | undefined): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.contract_url = contractUrl;
+    club.contract_instructions = contractInstructions;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
   async regenerateClubCode(clubId: string): Promise<Club> {
     const club = this.clubs.get(clubId);
     if (!club) throw new Error('Club not found');
@@ -684,6 +698,27 @@ export class MemStorage implements IStorage {
     this.users.set(userId, user);
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
+  }
+
+  async updateUserContractStatus(userId: string, status: 'unsigned' | 'pending' | 'verified', method?: 'digital' | 'paper'): Promise<User | null> {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    user.contract_status = status;
+    if (method) user.contract_method = method;
+    this.users.set(userId, user);
+    const { password, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
+  async getUsersWithContractStatus(clubId: string): Promise<User[]> {
+    const users: User[] = [];
+    for (const user of this.users.values()) {
+      if (user.club_id === clubId && user.role === 'parent') {
+        const { password, ...userWithoutPassword } = user;
+        users.push(userWithoutPassword);
+      }
+    }
+    return users;
   }
 
   // Signatures

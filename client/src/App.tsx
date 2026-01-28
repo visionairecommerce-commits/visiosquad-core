@@ -22,6 +22,7 @@ import AdminSchedulePage from "@/pages/admin/schedule";
 import AdminCalendarPage from "@/pages/admin/calendar";
 import AdminPaymentsPage from "@/pages/admin/payments";
 import ContractsPage from "@/pages/admin/contracts";
+import ContractCompliancePage from "@/pages/admin/contract-compliance";
 import CoachDashboard from "@/pages/coach/dashboard";
 import CoachSessionsPage from "@/pages/coach/sessions";
 import CoachCalendarPage from "@/pages/coach/calendar";
@@ -61,6 +62,7 @@ function AdminRoutes() {
       <Route path="/onboarding" component={RedirectToDashboard} />
       <Route path="/programs" component={ProgramsPage} />
       <Route path="/contracts" component={ContractsPage} />
+      <Route path="/contract-compliance" component={ContractCompliancePage} />
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />
@@ -84,6 +86,7 @@ function CoachRoutes() {
       <Route path="/sessions/:id" component={CoachSessionsPage} />
       <Route path="/calendar" component={CoachCalendarPage} />
       <Route path="/attendance" component={CoachSessionsPage} />
+      <Route path="/contract-compliance" component={ContractCompliancePage} />
       <Route component={NotFound} />
     </Switch>
   );

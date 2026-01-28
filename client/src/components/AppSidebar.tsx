@@ -29,12 +29,14 @@ import {
   DollarSign,
   CalendarDays,
   Link2,
+  Shield,
 } from 'lucide-react';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Programs', url: '/programs', icon: ClipboardList },
   { title: 'Contracts', url: '/contracts', icon: DollarSign },
+  { title: 'Contract Compliance', url: '/contract-compliance', icon: Shield },
   { title: 'Teams', url: '/teams', icon: Users },
   { title: 'Roster', url: '/roster', icon: UserCheck },
   { title: 'Schedule', url: '/schedule', icon: ClipboardList },
@@ -49,6 +51,7 @@ const coachMenuItems = [
   { title: 'Calendar', url: '/calendar', icon: Calendar },
   { title: 'My Sessions', url: '/sessions', icon: ClipboardList },
   { title: 'Attendance', url: '/attendance', icon: UserCheck },
+  { title: 'Contract Compliance', url: '/contract-compliance', icon: Shield },
 ];
 
 const parentMenuItems = [

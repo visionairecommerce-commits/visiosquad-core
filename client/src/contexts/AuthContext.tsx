@@ -10,6 +10,8 @@ interface User {
   role: UserRole;
   club_id: string;
   has_signed_documents: boolean;
+  contract_status?: 'unsigned' | 'pending' | 'verified';
+  contract_method?: 'digital' | 'paper';
   created_at: string;
 }
 
@@ -23,6 +25,8 @@ interface Club {
   waiver_content?: string;
   waiver_version?: number;
   contract_version?: number;
+  contract_url?: string;
+  contract_instructions?: string;
   onboarding_complete: boolean;
   created_at: string;
 }

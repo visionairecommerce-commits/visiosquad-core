@@ -15,6 +15,8 @@ export const clubsTable = pgTable("clubs", {
   waiver_content: text("waiver_content"),
   waiver_version: integer("waiver_version").default(1),
   contract_version: integer("contract_version").default(1),
+  contract_url: text("contract_url"), // External contract signing link (PandaDoc, SignWell, etc.)
+  contract_instructions: text("contract_instructions"), // Instructions for signing contracts
   onboarding_complete: boolean("onboarding_complete").default(false).notNull(),
   billing_card_token: text("billing_card_token"),
   billing_card_last_four: text("billing_card_last_four"),
@@ -35,6 +37,8 @@ export const profilesTable = pgTable("profiles", {
   club_id: uuid("club_id").references(() => clubsTable.id),
   has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
   can_bill: boolean("can_bill").default(false).notNull(),
+  contract_status: text("contract_status", { enum: ["unsigned", "pending", "verified"] }).default("unsigned"),
+  contract_method: text("contract_method", { enum: ["digital", "paper"] }),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -306,6 +310,8 @@ export interface Club {
   waiver_content?: string;
   waiver_version?: number;
   contract_version?: number;
+  contract_url?: string;
+  contract_instructions?: string;
   onboarding_complete: boolean;
   billing_card_token?: string;
   billing_card_last_four?: string;
@@ -336,6 +342,9 @@ export interface ClubForm {
   created_at: string;
 }
 
+export type ContractStatus = 'unsigned' | 'pending' | 'verified';
+export type ContractMethod = 'digital' | 'paper';
+
 export interface User {
   id: string;
   email: string;
@@ -344,6 +353,8 @@ export interface User {
   club_id: string;
   has_signed_documents: boolean;
   can_bill: boolean;
+  contract_status?: ContractStatus;
+  contract_method?: ContractMethod;
   created_at: string;
 }
 

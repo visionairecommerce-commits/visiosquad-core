@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink, HelpCircle, Shield } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -30,6 +31,8 @@ export default function SettingsPage() {
   const [clubAddress, setClubAddress] = useState(club?.address || '');
   const [clubLogoUrl, setClubLogoUrl] = useState(club?.logo_url || '');
   const [waiverContent, setWaiverContent] = useState(club?.waiver_content || '');
+  const [contractUrl, setContractUrl] = useState(club?.contract_url || '');
+  const [contractInstructions, setContractInstructions] = useState(club?.contract_instructions || '');
   
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingForm, setEditingForm] = useState<ClubForm | null>(null);
@@ -208,6 +211,27 @@ export default function SettingsPage() {
       toast({ title: 'Failed to save documents', variant: 'destructive' });
     },
   });
+
+  const updateContractSettingsMutation = useMutation({
+    mutationFn: async (settings: { contract_url?: string; contract_instructions?: string }) => {
+      const response = await apiRequest('PATCH', '/api/club/contract-settings', settings);
+      return response.json();
+    },
+    onSuccess: (data: Club) => {
+      setClub(data);
+      toast({ title: 'Contract settings saved!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to save contract settings', variant: 'destructive' });
+    },
+  });
+
+  const handleSaveContractSettings = () => {
+    updateContractSettingsMutation.mutate({
+      contract_url: contractUrl || undefined,
+      contract_instructions: contractInstructions || undefined,
+    });
+  };
 
   const createFormMutation = useMutation({
     mutationFn: async (form: { name: string; url: string; description?: string }) => {
@@ -894,6 +918,77 @@ export default function SettingsPage() {
             >
               Save Waiver
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Contract Compliance
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm">
+                  <p>To collect digital signatures for free, we recommend using PandaDoc (Free eSign plan), SignWell, or Dropbox Sign. Upload your PDF there, create a "Shareable Link," and paste it here.</p>
+                </TooltipContent>
+              </Tooltip>
+            </CardTitle>
+            <CardDescription>
+              Manage contract signing links and track compliance for all parents
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="contractUrl" className="flex items-center gap-2">
+                External Contract Link
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-sm">
+                    <p>To collect digital signatures for free, we recommend using PandaDoc (Free eSign plan), SignWell, or Dropbox Sign. Upload your PDF there, create a "Shareable Link," and paste it here.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </Label>
+              <Input
+                id="contractUrl"
+                type="url"
+                value={contractUrl}
+                onChange={(e) => setContractUrl(e.target.value)}
+                placeholder="https://app.pandadoc.com/..."
+                data-testid="input-contract-url"
+              />
+              <p className="text-sm text-muted-foreground">
+                Parents will be directed to this link to sign your club contract digitally.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contractInstructions">Additional Instructions (optional)</Label>
+              <Textarea
+                id="contractInstructions"
+                value={contractInstructions}
+                onChange={(e) => setContractInstructions(e.target.value)}
+                placeholder="Any special instructions for parents signing the contract..."
+                data-testid="textarea-contract-instructions"
+              />
+            </div>
+            <Button
+              onClick={handleSaveContractSettings}
+              disabled={updateContractSettingsMutation.isPending}
+              data-testid="button-save-contract-settings"
+            >
+              {updateContractSettingsMutation.isPending ? 'Saving...' : 'Save Contract Settings'}
+            </Button>
+            {club?.contract_url && (
+              <Alert>
+                <Check className="h-4 w-4" />
+                <AlertDescription>
+                  Contract link is configured. Parents can sign digitally using the link above.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
 

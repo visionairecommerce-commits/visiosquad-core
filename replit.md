@@ -77,12 +77,39 @@ Preferred communication style: Simple, everyday language.
 - **Club Join Code**: Display, copy, and regenerate 6-character club codes with shareable join links
 - **Club Identity**: Manage club name, address, and logo URL with live preview
 - **Document Vault**: Master club waiver text with version tracking (contract PDFs are now per-program tier)
+- **Contract Compliance**: Configure external contract signing links and instructions
+  - `contract_url`: Link to external e-signature service (PandaDoc, SignWell, Dropbox Sign)
+  - `contract_instructions`: Text displayed to parents when signing (e.g., which contract form to use)
+  - Contract compliance enabled when either URL or instructions are set
 - **Forms & Links**: CRUD for Google Forms and external links (stored in `club_forms` table)
   - Name, URL, description fields with is_active flag
   - Accessible to admins and coaches via Settings page
   - API: GET/POST/PATCH/DELETE `/api/club-forms`
 - **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
 - Route: `/settings` (admin-only access)
+
+#### Contract Compliance System
+- **Purpose**: Track and verify digital/paper contract signatures from parents
+- **Database Fields**:
+  - `clubs.contract_url`: External e-signature service link
+  - `clubs.contract_instructions`: Instructions shown to parents
+  - `profiles.contract_status`: 'unsigned' | 'pending' | 'verified'
+  - `profiles.contract_method`: 'digital' | 'paper'
+- **Parent Flow**:
+  1. Parent sees ContractGate on dashboard if contract_status != 'verified'
+  2. Options: "Sign Digitally" (opens external link) or "I Signed Paper Copy"
+  3. Both options set status to 'pending' awaiting verification
+  4. Once verified by director/coach, gate disappears
+- **Verification Page** (`/contract-compliance`): Directors/coaches view all parents with filtering
+  - Filter by status (All, Pending, Unsigned, Verified)
+  - One-click verification button per parent
+  - Shows contract method (digital/paper)
+- **API Endpoints**:
+  - PATCH `/api/club/contract-settings` - Directors update contract URL/instructions (Zod validated)
+  - GET `/api/contract-compliance` - Directors/coaches view parent contract status
+  - PATCH `/api/users/:userId/verify-contract` - Verify a parent's contract (validates same-club membership)
+  - PATCH `/api/my-contract-status` - Parents update their own status (parent role enforced)
+- **Security**: verify-contract validates user belongs to same club and is a parent role before allowing verification
 
 ### Event Calendar & Attendance
 - **Calendar View** (`/calendar`): Directors and coaches see all scheduled sessions in a month calendar

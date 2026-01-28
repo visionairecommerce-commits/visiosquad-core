@@ -81,7 +81,10 @@ export const programContractsTable = pgTable("program_contracts", {
   name: text("name").notNull(),
   description: text("description"),
   monthly_price: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
+  paid_in_full_price: decimal("paid_in_full_price", { precision: 10, scale: 2 }), // Discounted upfront price
+  initiation_fee: decimal("initiation_fee", { precision: 10, scale: 2 }), // One-time fee
   sessions_per_week: integer("sessions_per_week").notNull(),
+  contract_document_id: uuid("contract_document_id"), // Links to contract template/document
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
@@ -95,6 +98,10 @@ export const athleteContractsTable = pgTable("athlete_contracts", {
   start_date: text("start_date").notNull(),
   end_date: text("end_date"),
   custom_price: decimal("custom_price", { precision: 10, scale: 2 }), // Optional - overrides contract monthly_price
+  payment_plan: text("payment_plan", { enum: ["paid_in_full", "monthly"] }).default("monthly").notNull(),
+  signed_name: text("signed_name"), // Parent's typed signature
+  signed_at: timestamp("signed_at"), // When contract was signed
+  initiation_fee_paid: boolean("initiation_fee_paid").default(false).notNull(),
   status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
@@ -348,7 +355,10 @@ export interface ProgramContract {
   name: string;
   description?: string;
   monthly_price: number;
+  paid_in_full_price?: number;
+  initiation_fee?: number;
   sessions_per_week: number;
+  contract_document_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -361,6 +371,10 @@ export interface AthleteContract {
   start_date: string;
   end_date?: string;
   custom_price?: number;
+  payment_plan: 'paid_in_full' | 'monthly';
+  signed_name?: string;
+  signed_at?: string;
+  initiation_fee_paid: boolean;
   status: 'active' | 'cancelled' | 'expired';
   created_at: string;
 }
@@ -589,7 +603,10 @@ export const insertProgramContractSchema = z.object({
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.number().min(0, "Price must be positive"),
+  paid_in_full_price: z.number().min(0).optional(),
+  initiation_fee: z.number().min(0).optional(),
   sessions_per_week: z.number().min(1, "At least 1 session per week required").max(7, "Maximum 7 sessions per week"),
+  contract_document_id: z.string().optional(),
 });
 
 export const insertAthleteContractSchema = z.object({
@@ -598,6 +615,8 @@ export const insertAthleteContractSchema = z.object({
   start_date: z.string().min(1, "Start date is required"),
   end_date: z.string().optional(),
   custom_price: z.number().min(0).optional(),
+  payment_plan: z.enum(["paid_in_full", "monthly"]).default("monthly"),
+  signed_name: z.string().optional(),
 });
 
 export const dayOfWeekSchema = z.enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);

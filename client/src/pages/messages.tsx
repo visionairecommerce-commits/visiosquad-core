@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -29,9 +30,22 @@ import {
   Plus, 
   Users, 
   Loader2,
-  User as UserIcon
+  User as UserIcon,
+  Building2,
+  UserSquare2
 } from 'lucide-react';
 import { format } from 'date-fns';
+
+interface Team {
+  id: string;
+  name: string;
+  program_id: string;
+}
+
+interface Program {
+  id: string;
+  name: string;
+}
 
 interface ChatChannel {
   id: string;
@@ -73,6 +87,10 @@ export default function MessagesPage() {
   const [messageInput, setMessageInput] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [selectedRecipient, setSelectedRecipient] = useState<string>('');
+  const [audienceType, setAudienceType] = useState<'individual' | 'roster' | 'team' | 'program'>('individual');
+  const [selectedTeam, setSelectedTeam] = useState<string>('');
+  const [selectedProgram, setSelectedProgram] = useState<string>('');
+  const [chatName, setChatName] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: channels = [], isLoading: channelsLoading } = useQuery<ChatChannel[]>({
@@ -102,6 +120,16 @@ export default function MessagesPage() {
     enabled: user?.role === 'admin' || user?.role === 'coach',
   });
 
+  const { data: teams = [] } = useQuery<Team[]>({
+    queryKey: ['/api/teams'],
+    enabled: user?.role === 'admin' || user?.role === 'coach',
+  });
+
+  const { data: programs = [] } = useQuery<Program[]>({
+    queryKey: ['/api/programs'],
+    enabled: user?.role === 'admin' || user?.role === 'coach',
+  });
+
   const clubUsers = [
     ...coaches.map(c => ({ ...c, userType: 'coach' })),
     ...(user?.role === 'admin' || user?.role === 'coach' 
@@ -123,16 +151,30 @@ export default function MessagesPage() {
   });
 
   const createChannelMutation = useMutation({
-    mutationFn: async (participantId: string) => {
+    mutationFn: async (data: { 
+      audienceType: 'individual' | 'roster' | 'team' | 'program';
+      participantIds?: string[];
+      teamId?: string;
+      programId?: string;
+      name?: string;
+    }) => {
       return apiRequest('POST', '/api/chat/channels', {
-        channel_type: 'direct',
-        participant_ids: [participantId],
+        channel_type: data.audienceType === 'individual' ? 'direct' : data.audienceType,
+        audience_type: data.audienceType,
+        participant_ids: data.participantIds || [],
+        team_id: data.teamId,
+        program_id: data.programId,
+        name: data.name,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/chat/channels'] });
       setNewChatOpen(false);
       setSelectedRecipient('');
+      setAudienceType('individual');
+      setSelectedTeam('');
+      setSelectedProgram('');
+      setChatName('');
     },
   });
 
@@ -172,10 +214,43 @@ export default function MessagesPage() {
   };
 
   const handleCreateChat = () => {
-    if (selectedRecipient) {
-      createChannelMutation.mutate(selectedRecipient);
+    if (audienceType === 'individual' && selectedRecipient) {
+      createChannelMutation.mutate({
+        audienceType: 'individual',
+        participantIds: [selectedRecipient],
+      });
+    } else if (audienceType === 'team' && selectedTeam) {
+      const team = teams.find(t => t.id === selectedTeam);
+      createChannelMutation.mutate({
+        audienceType: 'team',
+        teamId: selectedTeam,
+        name: chatName || `${team?.name || 'Team'} Chat`,
+      });
+    } else if (audienceType === 'roster' && selectedTeam) {
+      const team = teams.find(t => t.id === selectedTeam);
+      createChannelMutation.mutate({
+        audienceType: 'roster',
+        teamId: selectedTeam,
+        name: chatName || `${team?.name || 'Roster'} Group`,
+      });
+    } else if (audienceType === 'program' && selectedProgram) {
+      const program = programs.find(p => p.id === selectedProgram);
+      createChannelMutation.mutate({
+        audienceType: 'program',
+        programId: selectedProgram,
+        name: chatName || `${program?.name || 'Program'} Chat`,
+      });
     }
   };
+
+  const canCreateChat = () => {
+    if (audienceType === 'individual') return !!selectedRecipient;
+    if (audienceType === 'team' || audienceType === 'roster') return !!selectedTeam;
+    if (audienceType === 'program') return !!selectedProgram;
+    return false;
+  };
+
+  const isStaff = user?.role === 'admin' || user?.role === 'coach';
 
   const getChannelDisplayName = (channel: ChatChannel) => {
     if (channel.name) return channel.name;
@@ -211,23 +286,130 @@ export default function MessagesPage() {
                 <DialogTitle>Start New Conversation</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>
-                  <SelectTrigger data-testid="select-recipient">
-                    <SelectValue placeholder="Select a person..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clubUsers
-                      .filter(u => u.id !== user?.id)
-                      .map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.full_name} ({u.role})
+                {isStaff && (
+                  <div className="space-y-2">
+                    <Label>Audience</Label>
+                    <Select 
+                      value={audienceType} 
+                      onValueChange={(value) => {
+                        setAudienceType(value as typeof audienceType);
+                        setSelectedRecipient('');
+                        setSelectedTeam('');
+                        setSelectedProgram('');
+                      }}
+                    >
+                      <SelectTrigger data-testid="select-audience-type">
+                        <SelectValue placeholder="Select audience..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="individual">
+                          <div className="flex items-center gap-2">
+                            <UserIcon className="h-4 w-4" />
+                            Individual (Parent/Coach)
+                          </div>
                         </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                        <SelectItem value="roster">
+                          <div className="flex items-center gap-2">
+                            <UserSquare2 className="h-4 w-4" />
+                            Specific Roster/Group
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="team">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Team
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="program">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            Full Program
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {audienceType === 'individual' && (
+                  <div className="space-y-2">
+                    <Label>Select Person</Label>
+                    <Select value={selectedRecipient} onValueChange={setSelectedRecipient}>
+                      <SelectTrigger data-testid="select-recipient">
+                        <SelectValue placeholder="Select a person..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clubUsers
+                          .filter(u => u.id !== user?.id)
+                          .map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.full_name} ({u.role})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {(audienceType === 'team' || audienceType === 'roster') && (
+                  <div className="space-y-2">
+                    <Label>Select Team</Label>
+                    <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                      <SelectTrigger data-testid="select-team">
+                        <SelectValue placeholder="Select a team..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map((team) => (
+                          <SelectItem key={team.id} value={team.id}>
+                            {team.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {audienceType === 'team' 
+                        ? 'All parents of athletes on this team and coaches will be included.' 
+                        : 'All parents on this roster will be included.'}
+                    </p>
+                  </div>
+                )}
+
+                {audienceType === 'program' && (
+                  <div className="space-y-2">
+                    <Label>Select Program</Label>
+                    <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+                      <SelectTrigger data-testid="select-program">
+                        <SelectValue placeholder="Select a program..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {programs.map((program) => (
+                          <SelectItem key={program.id} value={program.id}>
+                            {program.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      All parents of athletes in this program and all coaches will receive messages.
+                    </p>
+                  </div>
+                )}
+
+                {audienceType !== 'individual' && (
+                  <div className="space-y-2">
+                    <Label>Chat Name (Optional)</Label>
+                    <Input
+                      placeholder="Enter a name for this chat..."
+                      value={chatName}
+                      onChange={(e) => setChatName(e.target.value)}
+                      data-testid="input-chat-name"
+                    />
+                  </div>
+                )}
+
                 <Button 
                   onClick={handleCreateChat} 
-                  disabled={!selectedRecipient || createChannelMutation.isPending}
+                  disabled={!canCreateChat() || createChannelMutation.isPending}
                   className="w-full"
                   data-testid="button-start-conversation"
                 >

@@ -17,6 +17,9 @@ function getAuthHeaders(): Record<string, string> {
       if (session.user) {
         headers['X-User-Role'] = session.user.role || 'admin';
         headers['X-User-Id'] = session.user.id || 'demo-user';
+        if (session.user.athlete_id) {
+          headers['X-Athlete-Id'] = session.user.athlete_id;
+        }
       }
       if (session.club) {
         headers['X-Club-Id'] = session.club.id;

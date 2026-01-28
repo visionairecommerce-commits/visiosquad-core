@@ -13,15 +13,16 @@ import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, i
 const DEMO_CLUB_ID = 'demo-club-1';
 
 // Role types for authorization
-type UserRole = 'admin' | 'coach' | 'parent';
+type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
 
 // Demo auth middleware - extracts role from header for demo mode
 // In production, this would validate JWT/session and extract user info
-function getAuthContext(req: Request): { clubId: string; role: UserRole; userId: string } {
+function getAuthContext(req: Request): { clubId: string; role: UserRole; userId: string; athleteId?: string } {
   const role = (req.headers['x-user-role'] as UserRole) || 'admin';
   const userId = (req.headers['x-user-id'] as string) || 'demo-admin';
   const clubId = (req.headers['x-club-id'] as string) || DEMO_CLUB_ID;
-  return { clubId, role, userId };
+  const athleteId = req.headers['x-athlete-id'] as string | undefined;
+  return { clubId, role, userId, athleteId };
 }
 
 // Role-based access control middleware
@@ -2291,10 +2292,70 @@ export async function registerRoutes(
     }
   });
 
-  app.post('/api/sessions/:sessionId/register', requireRole('parent'), async (req, res) => {
+  app.get('/api/my-registrations', requireRole('athlete'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
-      const data = registerSessionSchema.parse(req.body);
+      const { clubId, athleteId } = getAuthContext(req);
+      if (!athleteId) {
+        return res.status(400).json({ error: 'No athlete linked to this account' });
+      }
+      const registrations = await storage.getAthleteRegistrations(clubId, athleteId);
+      res.json(registrations);
+    } catch (error) {
+      console.error('Error fetching my registrations:', error);
+      res.status(500).json({ error: 'Failed to fetch registrations' });
+    }
+  });
+
+  app.get('/api/my-sessions', requireRole('athlete'), async (req, res) => {
+    try {
+      const { clubId, athleteId } = getAuthContext(req);
+      if (!athleteId) {
+        return res.status(400).json({ error: 'No athlete linked to this account' });
+      }
+      
+      // Get athlete's roster entries to determine which programs/teams they're part of
+      const rosterEntries = await storage.getAthleteRosterEntries(clubId, athleteId);
+      const programIds = new Set(rosterEntries.map(r => r.program_id));
+      const teamIds = new Set(rosterEntries.map(r => r.team_id).filter(Boolean));
+      
+      // Get all sessions and filter to only those for athlete's programs/teams
+      const allSessions = await storage.getSessions(clubId);
+      const athleteSessions = allSessions.filter(session => {
+        // Include if the session is for a program the athlete is in
+        if (programIds.has(session.program_id)) {
+          // If session has a specific team, check if athlete is on that team
+          if (session.team_id) {
+            return teamIds.has(session.team_id);
+          }
+          return true; // Program-wide session
+        }
+        return false;
+      });
+      
+      res.json(athleteSessions);
+    } catch (error) {
+      console.error('Error fetching my sessions:', error);
+      res.status(500).json({ error: 'Failed to fetch sessions' });
+    }
+  });
+
+  app.get('/api/my-rosters', requireRole('athlete'), async (req, res) => {
+    try {
+      const { clubId, athleteId } = getAuthContext(req);
+      if (!athleteId) {
+        return res.status(400).json({ error: 'No athlete linked to this account' });
+      }
+      const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
+      res.json(rosters);
+    } catch (error) {
+      console.error('Error fetching my rosters:', error);
+      res.status(500).json({ error: 'Failed to fetch rosters' });
+    }
+  });
+
+  app.post('/api/sessions/:sessionId/register', requireRole('parent', 'athlete'), async (req, res) => {
+    try {
+      const { clubId, role, athleteId: selfAthleteId } = getAuthContext(req);
       const sessionId = req.params.sessionId as string;
       const session = await storage.getSession(clubId, sessionId);
 
@@ -2302,8 +2363,20 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Session not found' });
       }
 
+      // Determine which athlete to register - for athletes, use their linked ID
+      let targetAthleteId: string;
+      if (role === 'athlete') {
+        if (!selfAthleteId) {
+          return res.status(400).json({ error: 'No athlete linked to this account' });
+        }
+        targetAthleteId = selfAthleteId;
+      } else {
+        const data = registerSessionSchema.parse(req.body);
+        targetAthleteId = data.athlete_id;
+      }
+
       // Check if athlete's payment is current
-      const athlete = await storage.getAthlete(clubId, data.athlete_id);
+      const athlete = await storage.getAthlete(clubId, targetAthleteId);
       if (!athlete) {
         return res.status(404).json({ error: 'Athlete not found' });
       }
@@ -2315,7 +2388,7 @@ export async function registerRoutes(
       }
 
       // Check contract status - athlete must have signed contract for this program/team
-      const rosterEntries = await storage.getAthleteRosterEntries(clubId, data.athlete_id);
+      const rosterEntries = await storage.getAthleteRosterEntries(clubId, targetAthleteId);
       const hasSignedContract = rosterEntries.some(entry => {
         const matchesProgram = entry.program_id === session.program_id;
         const matchesTeam = !session.team_id || entry.team_id === session.team_id;
@@ -2325,31 +2398,34 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Contract signature required', contract_required: true });
       }
 
-      // Process payment if session has a drop-in price (for non-contract attendees)
-      if (session.drop_in_price && session.drop_in_price > 0 && data.payment_method) {
-        const totalAmount = calculateTotalWithFee(session.drop_in_price, data.payment_method);
-        
-        // In production, we'd process the actual payment
-        // For demo, we simulate success
-        const payment = await storage.createPayment(clubId, {
-          athlete_id: data.athlete_id,
-          amount: totalAmount,
-          payment_type: session.session_type === 'clinic' ? 'clinic' : 'drop_in',
-          payment_method: data.payment_method,
-          status: 'completed',
-        });
+      // Process payment if session has a drop-in price (for non-contract attendees) - only for parents
+      if (role === 'parent' && session.drop_in_price && session.drop_in_price > 0) {
+        const data = registerSessionSchema.parse(req.body);
+        if (data.payment_method) {
+          const totalAmount = calculateTotalWithFee(session.drop_in_price, data.payment_method);
+          
+          // In production, we'd process the actual payment
+          // For demo, we simulate success
+          const payment = await storage.createPayment(clubId, {
+            athlete_id: targetAthleteId,
+            amount: totalAmount,
+            payment_type: session.session_type === 'clinic' ? 'clinic' : 'drop_in',
+            payment_method: data.payment_method,
+            status: 'completed',
+          });
 
-        // Create platform ledger entry
-        const feeType = session.session_type === 'clinic' ? 'clinic' : 'drop_in';
-        await storage.createPlatformLedgerEntry(
-          clubId,
-          payment.id,
-          PLATFORM_FEES[feeType],
-          feeType
-        );
+          // Create platform ledger entry
+          const feeType = session.session_type === 'clinic' ? 'clinic' : 'drop_in';
+          await storage.createPlatformLedgerEntry(
+            clubId,
+            payment.id,
+            PLATFORM_FEES[feeType],
+            feeType
+          );
+        }
       }
 
-      const registration = await storage.createRegistration(clubId, sessionId, data.athlete_id);
+      const registration = await storage.createRegistration(clubId, sessionId, targetAthleteId);
       res.status(201).json(registration);
     } catch (error) {
       if (error instanceof z.ZodError) {

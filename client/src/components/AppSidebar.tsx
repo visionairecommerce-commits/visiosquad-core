@@ -71,6 +71,13 @@ const parentMenuItems = [
   { title: 'Forms & Links', url: '/forms', icon: Link2 },
 ];
 
+const athleteMenuItems = [
+  { title: 'Dashboard', url: '/', icon: Home },
+  { title: 'Messages', url: '/messages', icon: MessageSquare },
+  { title: 'Bulletin', url: '/bulletin', icon: Megaphone },
+  { title: 'My Schedule', url: '/schedule', icon: Calendar },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, club, logout } = useAuth();
@@ -79,6 +86,8 @@ export function AppSidebar() {
     ? adminMenuItems
     : user?.role === 'coach'
     ? coachMenuItems
+    : user?.role === 'athlete'
+    ? athleteMenuItems
     : parentMenuItems;
 
   const getInitials = (name: string | undefined | null) => {

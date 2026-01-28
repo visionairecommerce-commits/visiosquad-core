@@ -26,10 +26,13 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'coach' | 'parent';
+  role: 'admin' | 'coach' | 'parent' | 'athlete';
   club_id: string;
   has_signed_documents: boolean;
   can_bill: boolean;
+  contract_status?: 'unsigned' | 'pending' | 'verified';
+  contract_method?: 'digital' | 'paper';
+  athlete_id?: string;
   created_at: string;
 }
 

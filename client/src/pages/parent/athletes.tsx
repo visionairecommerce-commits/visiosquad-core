@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { isAthleteAccessLocked } from '@shared/schema';
 import { useAthlete } from '@/contexts/AthleteContext';
-import { Plus, AlertCircle, CheckCircle, Calendar, GraduationCap } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle, Calendar, GraduationCap, Key, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -26,12 +26,19 @@ import type { Athlete } from '@shared/schema';
 export default function AthletesPage() {
   const { setActiveAthlete } = useAthlete();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     date_of_birth: '',
     graduation_year: new Date().getFullYear() + 10,
+  });
+  const [loginFormData, setLoginFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
   });
 
   const { data: athletes = [], isLoading } = useQuery<Athlete[]>({
@@ -64,6 +71,78 @@ export default function AthletesPage() {
       });
     },
   });
+
+  const setupLoginMutation = useMutation({
+    mutationFn: async (data: { athleteId: string; email: string; password: string }) => {
+      return apiRequest('POST', `/api/athletes/${data.athleteId}/setup-login`, { email: data.email, password: data.password });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+      setLoginDialogOpen(false);
+      setSelectedAthlete(null);
+      setLoginFormData({ email: '', password: '', confirmPassword: '' });
+      toast({
+        title: 'Login Created',
+        description: 'Your athlete can now log in with their own account.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to set up login. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleOpenLoginDialog = (athlete: Athlete, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedAthlete(athlete);
+    setLoginFormData({ 
+      email: athlete.email || '', 
+      password: '', 
+      confirmPassword: '' 
+    });
+    setLoginDialogOpen(true);
+  };
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAthlete) return;
+    
+    if (!loginFormData.email || !loginFormData.password) {
+      toast({
+        title: 'Missing Fields',
+        description: 'Please fill in email and password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (loginFormData.password.length < 6) {
+      toast({
+        title: 'Password Too Short',
+        description: 'Password must be at least 6 characters.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (loginFormData.password !== loginFormData.confirmPassword) {
+      toast({
+        title: 'Passwords Don\'t Match',
+        description: 'Please make sure both passwords are the same.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setupLoginMutation.mutate({
+      athleteId: selectedAthlete.id,
+      email: loginFormData.email,
+      password: loginFormData.password,
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,12 +342,94 @@ export default function AthletesPage() {
                       )}
                     </div>
                   )}
+
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    {athlete.has_login ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="h-4 w-4" />
+                        <span>Has own login</span>
+                        {athlete.email && <span className="text-xs">({athlete.email})</span>}
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => handleOpenLoginDialog(athlete, e)}
+                        data-testid={`button-setup-login-${athlete.id}`}
+                      >
+                        <Key className="h-4 w-4 mr-2" />
+                        Set Up Login
+                      </Button>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+
+      <Dialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Up Athlete Login</DialogTitle>
+            <DialogDescription>
+              {selectedAthlete && (
+                <>Create a separate login for {selectedAthlete.first_name} so they can access their own schedule and messages.</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="athlete_email">Email Address</Label>
+              <Input
+                id="athlete_email"
+                type="email"
+                placeholder="athlete@example.com"
+                value={loginFormData.email}
+                onChange={(e) => setLoginFormData({ ...loginFormData, email: e.target.value })}
+                required
+                data-testid="input-athlete-login-email"
+              />
+              <p className="text-xs text-muted-foreground">
+                This will be the email your athlete uses to log in.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="athlete_password">Password</Label>
+              <Input
+                id="athlete_password"
+                type="password"
+                placeholder="At least 6 characters"
+                value={loginFormData.password}
+                onChange={(e) => setLoginFormData({ ...loginFormData, password: e.target.value })}
+                required
+                data-testid="input-athlete-login-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="athlete_confirm_password">Confirm Password</Label>
+              <Input
+                id="athlete_confirm_password"
+                type="password"
+                placeholder="Confirm password"
+                value={loginFormData.confirmPassword}
+                onChange={(e) => setLoginFormData({ ...loginFormData, confirmPassword: e.target.value })}
+                required
+                data-testid="input-athlete-login-confirm-password"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setLoginDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={setupLoginMutation.isPending} data-testid="button-submit-athlete-login">
+                {setupLoginMutation.isPending ? 'Setting up...' : 'Create Login'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

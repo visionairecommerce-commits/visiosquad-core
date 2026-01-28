@@ -37,6 +37,8 @@ import SettingsPage from "@/pages/admin/settings";
 import EventsPage from "@/pages/admin/events";
 import MessagesPage from "@/pages/messages";
 import BulletinPage from "@/pages/bulletin";
+import AthleteDashboard from "@/pages/athlete/dashboard";
+import AthleteSchedulePage from "@/pages/athlete/schedule";
 
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
@@ -118,6 +120,19 @@ function ParentRoutes() {
   );
 }
 
+function AthleteRoutes() {
+  return (
+    <Switch>
+      <Route path="/" component={AthleteDashboard} />
+      <Route path="/login" component={RedirectToDashboard} />
+      <Route path="/schedule" component={AthleteSchedulePage} />
+      <Route path="/messages" component={MessagesPage} />
+      <Route path="/bulletin" component={BulletinPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function AuthenticatedApp() {
   const { user } = useAuth();
 
@@ -139,6 +154,7 @@ function AuthenticatedApp() {
             {user?.role === 'admin' && <AdminRoutes />}
             {user?.role === 'coach' && <CoachRoutes />}
             {user?.role === 'parent' && <ParentRoutes />}
+            {user?.role === 'athlete' && <AthleteRoutes />}
           </main>
         </div>
       </div>

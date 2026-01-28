@@ -569,6 +569,8 @@ export interface Athlete {
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
+  email?: string;
+  has_login: boolean;
   created_at: string;
 }
 

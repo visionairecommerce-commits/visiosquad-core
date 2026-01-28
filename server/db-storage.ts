@@ -914,6 +914,7 @@ export class DatabaseStorage implements IStorage {
       can_bill: u.can_bill ?? false,
       contract_status: u.contract_status ?? 'unsigned',
       contract_method: u.contract_method ?? undefined,
+      athlete_id: u.athlete_id ?? undefined,
       created_at: u.created_at?.toISOString?.() ?? u.created_at,
     };
   }

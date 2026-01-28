@@ -510,10 +510,15 @@ export interface IStorage {
   // SafeSport validation
   validateChatParticipants(clubId: string, participantIds: string[], initiatorId: string): Promise<{ valid: boolean; error?: string; autoAddParentIds?: string[] }>;
   getDirectorId(clubId: string): Promise<string | undefined>;
+  
+  // Audience resolution for Telegram-style targeting
+  getTeamAudienceUserIds(clubId: string, teamId: string): Promise<string[]>;
+  getProgramAudienceUserIds(clubId: string, programId: string): Promise<string[]>;
+  getClubAudienceUserIds(clubId: string): Promise<string[]>;
 
   // ============ BULLETIN BOARD ============
   
-  createBulletinPost(clubId: string, authorId: string, post: { title: string; content: string; teamId?: string; programId?: string; isPinned?: boolean }): Promise<BulletinPost>;
+  createBulletinPost(clubId: string, authorId: string, post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program'; teamId?: string; programId?: string; isPinned?: boolean }): Promise<BulletinPost>;
   getBulletinPosts(clubId: string, userId: string, filters?: { teamId?: string; programId?: string }): Promise<(BulletinPost & { isRead: boolean; isHidden: boolean; author: User })[]>;
   getBulletinPost(clubId: string, postId: string): Promise<BulletinPost | undefined>;
   updateBulletinPost(clubId: string, postId: string, data: { title?: string; content?: string; isPinned?: boolean }): Promise<BulletinPost>;

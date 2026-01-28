@@ -1591,12 +1591,111 @@ export class DatabaseStorage implements IStorage {
     return data?.id;
   }
 
+  // Get all user IDs for a team (parents of athletes + coaches)
+  async getTeamAudienceUserIds(clubId: string, teamId: string): Promise<string[]> {
+    const userIds = new Set<string>();
+    
+    // Get all athletes in this team's roster
+    const { data: roster } = await supabase
+      .from('athlete_team_rosters')
+      .select('athlete_id')
+      .eq('club_id', clubId)
+      .eq('team_id', teamId);
+    
+    if (roster && roster.length > 0) {
+      const athleteIds = roster.map((r: any) => r.athlete_id);
+      
+      // Get parent IDs for these athletes
+      const { data: athletes } = await supabase
+        .from('athletes')
+        .select('parent_id')
+        .in('id', athleteIds);
+      
+      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+    }
+    
+    // Get team's assigned coaches
+    const { data: team } = await supabase
+      .from('teams')
+      .select('coach_id')
+      .eq('id', teamId)
+      .single();
+    
+    if (team?.coach_id) {
+      userIds.add(team.coach_id);
+    }
+    
+    // Add all coaches in the club (they should see team communications)
+    const { data: coaches } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('role', 'coach');
+    
+    (coaches || []).forEach((c: any) => userIds.add(c.id));
+    
+    // Add director
+    const directorId = await this.getDirectorId(clubId);
+    if (directorId) userIds.add(directorId);
+    
+    return Array.from(userIds);
+  }
+
+  // Get all user IDs for a program (all parents of athletes in any team in the program + coaches)
+  async getProgramAudienceUserIds(clubId: string, programId: string): Promise<string[]> {
+    const userIds = new Set<string>();
+    
+    // Get all athletes enrolled in this program (via roster with program_id)
+    const { data: roster } = await supabase
+      .from('athlete_team_rosters')
+      .select('athlete_id')
+      .eq('club_id', clubId)
+      .eq('program_id', programId);
+    
+    if (roster && roster.length > 0) {
+      const athleteIds = roster.map((r: any) => r.athlete_id);
+      
+      // Get parent IDs for these athletes
+      const { data: athletes } = await supabase
+        .from('athletes')
+        .select('parent_id')
+        .in('id', athleteIds);
+      
+      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+    }
+    
+    // Add all coaches in the club
+    const { data: coaches } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('role', 'coach');
+    
+    (coaches || []).forEach((c: any) => userIds.add(c.id));
+    
+    // Add director
+    const directorId = await this.getDirectorId(clubId);
+    if (directorId) userIds.add(directorId);
+    
+    return Array.from(userIds);
+  }
+
+  // Get all user IDs in a club (for club-wide posts)
+  async getClubAudienceUserIds(clubId: string): Promise<string[]> {
+    const { data: users } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('club_id', clubId);
+    
+    return (users || []).map((u: any) => u.id);
+  }
+
   // ============ BULLETIN BOARD ============
 
   async createBulletinPost(
     clubId: string,
     authorId: string,
-    post: { title: string; content: string; teamId?: string; programId?: string; isPinned?: boolean }
+    post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program'; teamId?: string; programId?: string; isPinned?: boolean }
   ): Promise<BulletinPost> {
     const { data, error } = await supabase
       .from('bulletin_posts')
@@ -1605,6 +1704,7 @@ export class DatabaseStorage implements IStorage {
         author_id: authorId,
         title: post.title,
         content: post.content,
+        audience_type: post.audienceType || 'club',
         team_id: post.teamId,
         program_id: post.programId,
         is_pinned: post.isPinned || false,

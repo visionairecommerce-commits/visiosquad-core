@@ -158,8 +158,19 @@ export default function MessagesPage() {
       programId?: string;
       name?: string;
     }) => {
+      // Map audience_type to valid channel_type enum values
+      const getChannelType = (audienceType: string) => {
+        switch (audienceType) {
+          case 'individual': return 'direct';
+          case 'roster': return 'group'; // roster uses group channel type
+          case 'team': return 'team';
+          case 'program': return 'program';
+          default: return 'group';
+        }
+      };
+      
       return apiRequest('POST', '/api/chat/channels', {
-        channel_type: data.audienceType === 'individual' ? 'direct' : data.audienceType,
+        channel_type: getChannelType(data.audienceType),
         audience_type: data.audienceType,
         participant_ids: data.participantIds || [],
         team_id: data.teamId,

@@ -28,6 +28,7 @@ import {
   FileText,
   DollarSign,
   CalendarDays,
+  Link2,
 } from 'lucide-react';
 
 const adminMenuItems = [
@@ -56,6 +57,7 @@ const parentMenuItems = [
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
   { title: 'Payments', url: '/payments', icon: CreditCard },
+  { title: 'Forms & Links', url: '/forms', icon: Link2 },
 ];
 
 export function AppSidebar() {

@@ -31,6 +31,7 @@ import ParentSchedulePage from "@/pages/parent/schedule";
 import ParentPaymentsPage from "@/pages/parent/payments";
 import ParentDocumentsPage from "@/pages/parent/documents";
 import ParentContractsPage from "@/pages/parent/contracts";
+import ParentFormsPage from "@/pages/parent/forms";
 import SettingsPage from "@/pages/admin/settings";
 import EventsPage from "@/pages/admin/events";
 
@@ -100,6 +101,7 @@ function ParentRoutes() {
       <Route path="/schedule" component={ParentSchedulePage} />
       <Route path="/payments" component={ParentPaymentsPage} />
       <Route path="/documents" component={ParentDocumentsPage} />
+      <Route path="/forms" component={ParentFormsPage} />
       <Route component={NotFound} />
     </Switch>
   );

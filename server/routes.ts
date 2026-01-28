@@ -166,7 +166,6 @@ const signDocumentSchema = z.object({
 });
 
 const updateDocumentsSchema = z.object({
-  contract_pdf_url: z.string().optional(),
   waiver_content: z.string().min(10),
 });
 
@@ -519,7 +518,7 @@ export async function registerRoutes(
       const data = updateDocumentsSchema.parse(req.body);
       const club = await storage.updateClubDocuments(
         clubId,
-        data.contract_pdf_url,
+        undefined,
         data.waiver_content
       );
       

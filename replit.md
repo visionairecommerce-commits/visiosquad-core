@@ -76,7 +76,11 @@ Preferred communication style: Simple, everyday language.
 #### Settings Dashboard (Directors Only)
 - **Club Join Code**: Display, copy, and regenerate 6-character club codes with shareable join links
 - **Club Identity**: Manage club name, address, and logo URL with live preview
-- **Document Vault**: Version-tracked waiver content and contract PDF URLs with signature tracking
+- **Document Vault**: Master club waiver text with version tracking (contract PDFs are now per-program tier)
+- **Forms & Links**: CRUD for Google Forms and external links (stored in `club_forms` table)
+  - Name, URL, description fields with is_active flag
+  - Accessible to admins and coaches via Settings page
+  - API: GET/POST/PATCH/DELETE `/api/club-forms`
 - **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
 - Route: `/settings` (admin-only access)
 

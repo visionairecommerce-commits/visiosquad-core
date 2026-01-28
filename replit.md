@@ -100,7 +100,7 @@ Preferred communication style: Simple, everyday language.
     - `paid_in_full_price` (optional): Discounted price for upfront annual/full payment
     - `initiation_fee` (optional): One-time fee charged at contract signup
   - Example: "4 Days/Week Premium" at $500/month or $5,500 paid-in-full with $100 initiation fee
-  - `contract_document_id` can link to a contract template/PDF for signing
+  - `contract_document_url` can link to a custom contract PDF for this tier (overrides club default from Document Vault)
   - **Team-Specific Contracts**: Contracts can optionally be tied to a specific team within a program
     - If team_id is set, contract only applies to athletes on that team
     - If team_id is null, contract applies to all teams in the program

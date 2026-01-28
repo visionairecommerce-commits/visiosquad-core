@@ -37,7 +37,7 @@ interface ProgramContract {
   paid_in_full_price?: number;
   initiation_fee?: number;
   sessions_per_week: number;
-  contract_document_id?: string;
+  contract_document_url?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -51,6 +51,7 @@ const contractSchema = z.object({
   paid_in_full_price: z.coerce.number().min(0).optional().or(z.literal("")),
   initiation_fee: z.coerce.number().min(0).optional().or(z.literal("")),
   sessions_per_week: z.coerce.number().min(1, "At least 1 session per week").max(7, "Maximum 7 sessions per week"),
+  contract_document_url: z.string().url().optional().or(z.literal("")),
 });
 
 type ContractFormData = z.infer<typeof contractSchema>;
@@ -84,6 +85,7 @@ export default function ContractsPage() {
       paid_in_full_price: "",
       initiation_fee: "",
       sessions_per_week: 1,
+      contract_document_url: "",
     },
   });
 
@@ -152,6 +154,7 @@ export default function ContractsPage() {
         paid_in_full_price: contract.paid_in_full_price || "",
         initiation_fee: contract.initiation_fee || "",
         sessions_per_week: contract.sessions_per_week,
+        contract_document_url: contract.contract_document_url || "",
       });
     } else {
       setEditingContract(null);
@@ -164,6 +167,7 @@ export default function ContractsPage() {
         paid_in_full_price: "",
         initiation_fee: "",
         sessions_per_week: 1,
+        contract_document_url: "",
       });
     }
     setIsDialogOpen(true);
@@ -425,6 +429,28 @@ export default function ContractsPage() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="contract_document_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contract Document URL (Optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="url"
+                          placeholder="https://example.com/contract.pdf"
+                          {...field}
+                          data-testid="input-contract-document-url"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Custom contract PDF for this tier. If blank, uses the club's default contract from Document Vault.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>

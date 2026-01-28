@@ -32,7 +32,7 @@ interface ProgramContract {
   paid_in_full_price?: number;
   initiation_fee?: number;
   sessions_per_week: number;
-  contract_document_id?: string;
+  contract_document_url?: string;
   is_active: boolean;
 }
 

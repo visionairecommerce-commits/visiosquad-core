@@ -84,7 +84,7 @@ export const programContractsTable = pgTable("program_contracts", {
   paid_in_full_price: decimal("paid_in_full_price", { precision: 10, scale: 2 }), // Discounted upfront price
   initiation_fee: decimal("initiation_fee", { precision: 10, scale: 2 }), // One-time fee
   sessions_per_week: integer("sessions_per_week").notNull(),
-  contract_document_id: uuid("contract_document_id"), // Links to contract template/document
+  contract_document_url: text("contract_document_url"), // Custom contract PDF URL (overrides club default)
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
@@ -358,7 +358,7 @@ export interface ProgramContract {
   paid_in_full_price?: number;
   initiation_fee?: number;
   sessions_per_week: number;
-  contract_document_id?: string;
+  contract_document_url?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -606,7 +606,7 @@ export const insertProgramContractSchema = z.object({
   paid_in_full_price: z.number().min(0).optional(),
   initiation_fee: z.number().min(0).optional(),
   sessions_per_week: z.number().min(1, "At least 1 session per week required").max(7, "Maximum 7 sessions per week"),
-  contract_document_id: z.string().optional(),
+  contract_document_url: z.string().optional(),
 });
 
 export const insertAthleteContractSchema = z.object({

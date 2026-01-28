@@ -88,7 +88,8 @@ export const chatChannelsTable = pgTable("chat_channels", {
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   name: text("name"), // Optional name for group chats
   channel_type: text("channel_type", { enum: ["direct", "team", "program", "group"] }).notNull(),
-  team_id: uuid("team_id"), // Optional - for team channels
+  audience_type: text("audience_type", { enum: ["individual", "roster", "team", "program"] }).default("individual"), // Telegram-style targeting
+  team_id: uuid("team_id"), // Optional - for team/roster channels
   program_id: uuid("program_id"), // Optional - for program channels
   created_by: uuid("created_by").references(() => profilesTable.id).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
@@ -134,7 +135,8 @@ export const messagesTable = pgTable("messages", {
 export const bulletinPostsTable = pgTable("bulletin_posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
-  team_id: uuid("team_id"), // Optional - for team-specific posts
+  audience_type: text("audience_type", { enum: ["club", "roster", "team", "program"] }).default("club"), // Telegram-style targeting
+  team_id: uuid("team_id"), // Optional - for team/roster-specific posts
   program_id: uuid("program_id"), // Optional - for program-specific posts
   author_id: uuid("author_id").references(() => profilesTable.id).notNull(),
   title: text("title").notNull(),

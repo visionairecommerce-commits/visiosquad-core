@@ -487,6 +487,71 @@ export async function registerRoutes(
     }
   });
 
+  // Setup athlete login credentials (parent only)
+  app.post('/api/athletes/:athleteId/setup-login', requireRole('parent'), async (req, res) => {
+    try {
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Authentication service not configured' });
+      }
+      
+      const { clubId, userId } = getAuthContext(req);
+      const athleteId = req.params.athleteId;
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+      
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      
+      // Verify the athlete belongs to this parent
+      const athlete = await storage.getAthlete(clubId, athleteId);
+      if (!athlete || athlete.parent_id !== userId) {
+        return res.status(403).json({ error: 'You can only set up login for your own athletes' });
+      }
+      
+      // Check if athlete already has login
+      if (athlete.has_login) {
+        return res.status(400).json({ error: 'This athlete already has login credentials' });
+      }
+      
+      // Create Supabase Auth user for the athlete
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true, // Auto-confirm email
+      });
+      
+      if (authError || !authData.user) {
+        console.error('Error creating athlete auth:', authError);
+        return res.status(400).json({ error: authError?.message || 'Failed to create login' });
+      }
+      
+      // Create profile for the athlete
+      await storage.createProfile({
+        id: authData.user.id,
+        email,
+        full_name: `${athlete.first_name} ${athlete.last_name}`,
+        role: 'athlete',
+        club_id: clubId,
+        athlete_id: athleteId,
+      });
+      
+      // Update athlete with login info
+      await storage.updateAthlete(athleteId, {
+        email,
+        has_login: true,
+      });
+      
+      res.json({ success: true, message: 'Athlete login created successfully' });
+    } catch (error) {
+      console.error('Error setting up athlete login:', error);
+      res.status(500).json({ error: 'Failed to set up athlete login' });
+    }
+  });
+
   // Get club info (for e-signing page)
   app.get('/api/clubs/:clubId', async (req, res) => {
     try {

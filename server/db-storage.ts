@@ -205,6 +205,18 @@ export class DatabaseStorage implements IStorage {
     return this.mapUser(user);
   }
 
+  async createProfile(profile: { id: string; email: string; full_name: string; role: 'athlete'; club_id: string; athlete_id: string }): Promise<void> {
+    await db.insert(profilesTable).values({
+      id: profile.id,
+      email: profile.email.toLowerCase(),
+      full_name: profile.full_name,
+      role: profile.role,
+      club_id: profile.club_id,
+      athlete_id: profile.athlete_id,
+      has_signed_documents: true, // Athletes don't need to sign docs
+    });
+  }
+
   async updateUserSignedDocuments(userId: string): Promise<void> {
     await db.update(profilesTable)
       .set({ has_signed_documents: true })
@@ -604,7 +616,7 @@ export class DatabaseStorage implements IStorage {
     return allAthletes.filter(a => !assignedIds.has(a.id));
   }
 
-  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'created_at'>): Promise<Athlete> {
+  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete> {
     const [a] = await db.insert(athletesTable).values({
       club_id: clubId,
       parent_id: athlete.parent_id,
@@ -615,8 +627,15 @@ export class DatabaseStorage implements IStorage {
       tags: athlete.tags || [],
       paid_through_date: athlete.paid_through_date,
       is_locked: false,
+      has_login: false,
     }).returning();
     return this.mapAthlete(a);
+  }
+
+  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void> {
+    await db.update(athletesTable)
+      .set(updates)
+      .where(eq(athletesTable.id, athleteId));
   }
 
   async updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void> {
@@ -947,6 +966,8 @@ export class DatabaseStorage implements IStorage {
       tags: a.tags || [],
       paid_through_date: a.paid_through_date ?? undefined,
       is_locked: a.is_locked,
+      email: a.email ?? undefined,
+      has_login: a.has_login ?? false,
       created_at: a.created_at?.toISOString?.() ?? a.created_at,
     };
   }

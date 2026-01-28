@@ -82,6 +82,8 @@ export interface Athlete {
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
+  email?: string;
+  has_login: boolean;
   created_at: string;
 }
 
@@ -356,6 +358,7 @@ export interface IStorage {
   getParents(clubId: string): Promise<User[]>;
   getUser(userId: string): Promise<User | null>;
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
+  createProfile(profile: { id: string; email: string; full_name: string; role: 'athlete'; club_id: string; athlete_id: string }): Promise<void>;
   updateUserSignedDocuments(userId: string): Promise<void>;
   updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null>;
   updateUserContractStatus(userId: string, status: 'unsigned' | 'pending' | 'verified', method?: 'digital' | 'paper'): Promise<User | null>;
@@ -414,7 +417,8 @@ export interface IStorage {
   getAthlete(clubId: string, athleteId: string): Promise<Athlete | undefined>;
   getAthletesByParent(clubId: string, parentId: string): Promise<Athlete[]>;
   getUnassignedAthletes(clubId: string, programId: string): Promise<Athlete[]>;
-  createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'created_at'>): Promise<Athlete>;
+  createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete>;
+  updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
 
   // Roster
@@ -824,6 +828,21 @@ export class MemStorage implements IStorage {
     return userWithoutPassword;
   }
 
+  async createProfile(profile: { id: string; email: string; full_name: string; role: 'athlete'; club_id: string; athlete_id: string }): Promise<void> {
+    const user: User & { password: string } = {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      role: profile.role,
+      club_id: profile.club_id,
+      has_signed_documents: true, // Athletes don't need to sign docs
+      can_bill: false,
+      password: '', // No password stored in memory, handled by Supabase Auth
+      created_at: new Date().toISOString(),
+    };
+    this.users.set(user.id, user);
+  }
+
   async updateUserSignedDocuments(userId: string): Promise<void> {
     const user = this.users.get(userId);
     if (user) {
@@ -1114,16 +1133,26 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'created_at'>): Promise<Athlete> {
+  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete> {
     const newAthlete: Athlete = {
       ...athlete,
       id: randomUUID(),
       club_id: clubId,
       is_locked: false,
+      has_login: false,
       created_at: new Date().toISOString(),
     };
     this.athletes.set(newAthlete.id, newAthlete);
     return newAthlete;
+  }
+
+  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void> {
+    const athlete = this.athletes.get(athleteId);
+    if (athlete) {
+      if (updates.email !== undefined) athlete.email = updates.email;
+      if (updates.has_login !== undefined) athlete.has_login = updates.has_login;
+      this.athletes.set(athleteId, athlete);
+    }
   }
 
   async updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void> {

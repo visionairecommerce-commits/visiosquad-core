@@ -353,6 +353,7 @@ export interface IStorage {
   getUserById(userId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getCoaches(clubId: string): Promise<User[]>;
+  getParents(clubId: string): Promise<User[]>;
   getUser(userId: string): Promise<User | null>;
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
   updateUserSignedDocuments(userId: string): Promise<void>;
@@ -784,6 +785,12 @@ export class MemStorage implements IStorage {
   async getCoaches(clubId: string): Promise<User[]> {
     return Array.from(this.users.values())
       .filter(u => u.club_id === clubId && u.role === 'coach')
+      .map(({ password, ...user }) => user);
+  }
+
+  async getParents(clubId: string): Promise<User[]> {
+    return Array.from(this.users.values())
+      .filter(u => u.club_id === clubId && u.role === 'parent')
       .map(({ password, ...user }) => user);
   }
 

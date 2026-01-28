@@ -1333,6 +1333,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/parents', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const parents = await storage.getParents(clubId);
+      res.json(parents);
+    } catch (error) {
+      console.error('Error fetching parents:', error);
+      res.status(500).json({ error: 'Failed to fetch parents' });
+    }
+  });
+
   // Update coach billing permission
   app.patch('/api/coaches/:id/billing', requireRole('admin'), async (req, res) => {
     try {

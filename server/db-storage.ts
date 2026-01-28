@@ -179,6 +179,12 @@ export class DatabaseStorage implements IStorage {
     return users.map(u => this.mapUser(u));
   }
 
+  async getParents(clubId: string): Promise<User[]> {
+    const users = await db.select().from(profilesTable)
+      .where(and(eq(profilesTable.club_id, clubId), eq(profilesTable.role, 'parent')));
+    return users.map(u => this.mapUser(u));
+  }
+
   async getUser(userId: string): Promise<User | null> {
     const [user] = await db.select().from(profilesTable)
       .where(eq(profilesTable.id, userId));

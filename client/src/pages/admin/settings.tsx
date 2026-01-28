@@ -10,13 +10,86 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink, HelpCircle, Shield } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink, HelpCircle, Shield, MessageSquare } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Club, Facility, ClubForm, Program, Team } from '@shared/schema';
+
+function CommunicationSettingsCard() {
+  const { toast } = useToast();
+  
+  interface CommunicationSettings {
+    include_director_in_chats: boolean;
+  }
+  
+  const { data: settings, isLoading } = useQuery<CommunicationSettings>({
+    queryKey: ['/api/communication-settings'],
+  });
+  
+  const updateMutation = useMutation({
+    mutationFn: async (newSettings: CommunicationSettings) => {
+      return apiRequest('PATCH', '/api/communication-settings', newSettings);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/communication-settings'] });
+      toast({ title: 'Communication settings updated!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update settings', variant: 'destructive' });
+    },
+  });
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <MessageSquare className="h-5 w-5" />
+          Communication Settings
+        </CardTitle>
+        <CardDescription>
+          Configure SafeSport compliant messaging options for your club
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading settings...
+          </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-md border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-base font-medium">
+                Include Director in All Chats
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Automatically add the club director to all new chat conversations for oversight
+              </p>
+            </div>
+            <Switch
+              checked={settings?.include_director_in_chats ?? false}
+              onCheckedChange={(checked) => 
+                updateMutation.mutate({ include_director_in_chats: checked })
+              }
+              disabled={updateMutation.isPending}
+              data-testid="switch-include-director"
+            />
+          </div>
+        )}
+        <Alert>
+          <Shield className="h-4 w-4" />
+          <AlertDescription>
+            SafeSport Compliance: Coach-athlete chats automatically include the athlete's parent. 
+            Private 1-on-1 messaging between adults and minors is blocked.
+          </AlertDescription>
+        </Alert>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   const { club, setClub } = useAuth();
@@ -912,6 +985,8 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        <CommunicationSettingsCard />
 
         <Card className="md:col-span-2">
           <CardHeader>

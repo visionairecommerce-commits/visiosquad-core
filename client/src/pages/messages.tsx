@@ -89,9 +89,28 @@ export default function MessagesPage() {
     enabled: !!selectedChannel?.id,
   });
 
-  const { data: clubUsers = [] } = useQuery<User[]>({
+  const { data: coaches = [] } = useQuery<User[]>({
     queryKey: ['/api/coaches'],
   });
+
+  const { data: athletes = [] } = useQuery<{id: string; parent_id: string; first_name: string; last_name: string}[]>({
+    queryKey: ['/api/athletes'],
+  });
+  
+  const { data: parentUsers = [] } = useQuery<User[]>({
+    queryKey: ['/api/parents'],
+    enabled: user?.role === 'admin' || user?.role === 'coach',
+  });
+
+  const clubUsers = [
+    ...coaches.map(c => ({ ...c, userType: 'coach' })),
+    ...(user?.role === 'admin' || user?.role === 'coach' 
+      ? parentUsers.map(p => ({ ...p, userType: 'parent' })) 
+      : []),
+    ...(user?.role === 'parent' 
+      ? coaches.map(c => ({ ...c, userType: 'coach' })) 
+      : []),
+  ].filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i);
 
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {

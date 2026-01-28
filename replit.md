@@ -2,15 +2,7 @@
 
 ## Overview
 
-VisioSport is a multi-tenant sports SaaS platform designed for managing athletic programs, teams, scheduling, payments, and athlete registrations. The application serves three user roles: Club Admins, Coaches, and Parents, each with their own dashboard and feature set.
-
-Key capabilities include:
-- Program and team management with contract templates
-- Conflict-aware scheduling engine for practices, clinics, and drop-in sessions
-- Payment processing with convenience fee calculation (Credit Card: 3%, ACH: none)
-- Athlete roster management with payment status tracking
-- Session cancellation with automated email notifications
-- Multi-athlete family views with athlete switching
+VisioSport is a multi-tenant SaaS platform designed for comprehensive management of athletic programs. It streamlines team management, scheduling, payment processing, and athlete registrations for Club Admins, Coaches, and Parents. The platform aims to centralize sports club operations, offering a robust solution for diverse athletic organizations.
 
 ## User Preferences
 
@@ -18,210 +10,57 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
-- **Framework**: React with TypeScript, using Vite as the build tool
-- **Routing**: Wouter for client-side routing with role-based route separation
-- **State Management**: React Context for Auth and Active Athlete state, TanStack Query for server state
-- **UI Components**: shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom CSS variables for theming (light/dark mode support)
+### Frontend
+- **Framework**: React with TypeScript, Vite
+- **Routing**: Wouter with role-based separation
+- **State Management**: React Context (Auth, Active Athlete), TanStack Query (server state)
+- **UI Components**: shadcn/ui (Radix UI)
+- **Styling**: Tailwind CSS with custom CSS variables (light/dark mode)
 
-### Backend Architecture
+### Backend
 - **Runtime**: Node.js with Express.js
-- **API Design**: RESTful endpoints under `/api` prefix with Zod schema validation
-- **Build System**: esbuild for server bundling, Vite for client bundling
-- **Multi-tenancy**: All database queries filtered by `club_id` for tenant isolation
+- **API Design**: RESTful, Zod schema validation
+- **Build System**: esbuild (server), Vite (client)
+- **Multi-tenancy**: `club_id` filtering for data isolation
 
 ### Data Layer
-- **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema Location**: `shared/schema.ts` contains type definitions shared between client and server
-- **Database**: PostgreSQL (configured via `DATABASE_URL` environment variable)
-- **Primary Database**: Supabase for data persistence and real-time features
+- **ORM**: Drizzle ORM with PostgreSQL
+- **Schema**: `shared/schema.ts`
+- **Database**: PostgreSQL (Supabase for persistence and real-time)
 
 ### Authentication & Authorization
-- **Supabase Auth**: User authentication via Supabase Auth (users visible in Supabase Dashboard > Authentication)
-  - Users created via `supabaseAdmin.auth.admin.createUser()` with service role key
-  - Login via `supabaseAdmin.auth.signInWithPassword()` returning JWT session tokens
-  - Database trigger `handle_new_user()` auto-creates profile record on signup
-  - Environment variables: `SUPABASE_SERVICE_ROLE_KEY` for admin operations
-- **Multi-tenant onboarding system** with club code-based registration
-- Session-based auth context with persistent login state via localStorage + Supabase session
-- Role-based UI rendering and route protection (Admin/Director, Coach, Parent)
-- Backend role-based access control via `X-User-Role`, `X-User-Id`, and `X-Club-Id` headers
-- Role middleware pattern: `requireRole('admin', 'coach')` applied to protected endpoints
+- **Auth Provider**: Supabase Auth (JWT session tokens)
+- **Multi-tenant Onboarding**: Club code-based registration
+- **Role-Based Access**: Admin/Director, Coach, Parent roles for UI and API protection (`X-User-Role`, `X-User-Id`, `X-Club-Id` headers)
+- **Director Onboarding**: Club creation, waiver setup, club code generation.
+- **Parent/Coach Join Flow**: Club code entry, waiver e-signature, account creation.
+- **E-Signatures**: Stored in `club_signatures` table, tracks waiver and contract signing status.
+- **Contract Compliance**: Tracks and verifies parent contract signatures (digital/paper), with a dedicated verification page for directors/coaches.
+- **Settings Dashboard (Directors Only)**: Manage club identity, join codes, waiver text, contract signing links, forms, and facilities.
 
-#### Director (Admin) Onboarding Flow
-1. Director creates account and new club at `/create-club`
-2. System generates unique 6-character club code (excludes ambiguous characters O/0, I/1)
-3. Director sets up waiver document at `/onboarding` (required before accessing dashboard)
-4. After completing onboarding, Director can share club code via invite link or SMS
-5. Dashboard includes "Share Club Access" section with copy link and text invite buttons
+### Core Features
 
-#### Parent/Coach Join Flow
-1. Parent or Coach navigates to `/join` (optionally with `?code=XXXXXX`)
-2. Enters club code to find their club
-3. Reviews and e-signs club waiver (checkbox + typed signature)
-4. Creates account with email/password
-5. Account is automatically bound to club via `club_id`
-
-#### E-Signatures
-- Stored in `club_signatures` table with: signed name, document type, timestamp, IP address
-- User's `has_signed_documents` flag tracks signature status
-- Clubs can require waiver signature before granting access
-- **Parent Documents Page** (`/documents`): Parents can view and sign waivers and contracts at any time
-  - Shows signature status (Signed/Pending/Not Required) for both waiver and contract
-  - Displays waiver content inline with agreement checkbox and typed signature
-  - Links to contract PDF for review before signing
-  - Alerts shown when required documents are unsigned
-
-#### Settings Dashboard (Directors Only)
-- **Club Join Code**: Display, copy, and regenerate 6-character club codes with shareable join links
-- **Club Identity**: Manage club name, address, and logo URL with live preview
-- **Document Vault**: Master club waiver text with version tracking (contract PDFs are now per-program tier)
-- **Contract Compliance**: Configure external contract signing links and instructions
-  - `contract_url`: Link to external e-signature service (PandaDoc, SignWell, Dropbox Sign)
-  - `contract_instructions`: Text displayed to parents when signing (e.g., which contract form to use)
-  - Contract compliance enabled when either URL or instructions are set
-- **Forms & Links**: CRUD for Google Forms and external links (stored in `club_forms` table)
-  - Name, URL, description fields with is_active flag
-  - Accessible to admins and coaches via Settings page
-  - API: GET/POST/PATCH/DELETE `/api/club-forms`
-- **Facilities Manager**: CRUD operations for physical locations used in scheduling conflict detection
-- Route: `/settings` (admin-only access)
-
-#### Contract Compliance System
-- **Purpose**: Track and verify digital/paper contract signatures from parents
-- **Database Fields**:
-  - `clubs.contract_url`: External e-signature service link
-  - `clubs.contract_instructions`: Instructions shown to parents
-  - `profiles.contract_status`: 'unsigned' | 'pending' | 'verified'
-  - `profiles.contract_method`: 'digital' | 'paper'
-- **Parent Flow**:
-  1. Parent sees ContractGate on dashboard if contract_status != 'verified'
-  2. Options: "Sign Digitally" (opens external link) or "I Signed Paper Copy"
-  3. Both options set status to 'pending' awaiting verification
-  4. Once verified by director/coach, gate disappears
-- **Verification Page** (`/contract-compliance`): Directors/coaches view all parents with filtering
-  - Filter by status (All, Pending, Unsigned, Verified)
-  - One-click verification button per parent
-  - Shows contract method (digital/paper)
-- **API Endpoints**:
-  - PATCH `/api/club/contract-settings` - Directors update contract URL/instructions (Zod validated)
-  - GET `/api/contract-compliance` - Directors/coaches view parent contract status
-  - PATCH `/api/users/:userId/verify-contract` - Verify a parent's contract (validates same-club membership)
-  - PATCH `/api/my-contract-status` - Parents update their own status (parent role enforced)
-- **Security**: verify-contract validates user belongs to same club and is a parent role before allowing verification
-
-### Event Calendar & Attendance
-- **Calendar View** (`/calendar`): Directors and coaches see all scheduled sessions in a month calendar
-  - Month navigation with previous/next buttons
-  - Sessions shown as dots on calendar days
-  - Click day to see sessions scheduled for that date
-  - Filter by program (admin only)
-- **Session Details Modal**: Click a session card to see registered athletes
-  - Shows athlete name, check-in status, and payment status
-  - Check In/Check Out buttons for each athlete
-  - Athletes with overdue payments are flagged and blocked from check-in
-  - Attendance count displayed (e.g., "3/5 checked in")
-- **API**: Uses `GET /api/sessions/:id/registrations` and `PATCH /api/registrations/:id/checkin`
-
-### Contract-Based Pricing Model
-- **Program Contracts**: Directors can create pricing tiers (contracts) for each program
-  - Each contract defines: name, description, sessions per week allowed, and three pricing components:
-    - `monthly_price` (required): Recurring monthly billing amount
-    - `paid_in_full_price` (optional): Discounted price for upfront annual/full payment
-    - `initiation_fee` (optional): One-time fee charged at contract signup
-  - Example: "4 Days/Week Premium" at $500/month or $5,500 paid-in-full with $100 initiation fee
-  - `contract_document_url` can link to a custom contract PDF for this tier (overrides club default from Document Vault)
-  - **Team-Specific Contracts**: Contracts can optionally be tied to a specific team within a program
-    - If team_id is set, contract only applies to athletes on that team
-    - If team_id is null, contract applies to all teams in the program
-  - Route: `/contracts` (admin-only access)
-- **Athlete Contracts**: Athletes can subscribe to program contracts for recurring billing
-  - Contract status: active, cancelled, expired
-  - Stored in `athlete_contracts` table linking athlete_id to program_contract_id
-  - **Payment Plan Selection**: `payment_plan` field tracks whether parent chose 'monthly' or 'paid_in_full'
-  - **Signature Tracking**: `signed_name` and `signed_at` record parent's contract signature
-  - **Initiation Fee Status**: `initiation_fee_paid` boolean tracks whether one-time fee has been collected
-  - **Custom Price Override**: Individual athletes can have a custom monthly price that overrides the base contract price
-    - Stored as `custom_price` on athlete_contracts table
-    - When set, billing uses custom_price instead of program_contract.monthly_price
-  - System automatically cancels previous active contracts when assigning a new one
-- **Parent Contract Enrollment** (`/contracts` for parents):
-  - Parents can view available contracts based on their athlete's roster memberships
-  - Select payment plan (monthly vs paid-in-full with discount if available)
-  - E-sign contract with typed signature
-  - API validates contract eligibility against athlete's program/team enrollment
-- **Drop-in Pricing**: Sessions have a `drop_in_price` field for non-contract attendees
-- **API Endpoints**: Full CRUD for program contracts at `/api/program-contracts`, parent enrollment at `/api/athletes/:id/enroll-contract`
-
-### Business Logic Patterns
-- **Billing Card Requirement**: Directors must add a credit card in Settings > Billing before processing any client payments
-  - Card is tokenized via Helcim and stored as `billing_card_token` on the clubs table
-  - Dashboard shows alert banner if no billing card on file
-  - Payment processing endpoint returns 403 error if billing card not configured
-- **Payment Access Control**: Athletes are "locked" if `current_date > (paid_through_date + 7 days)`
-- **Platform Ledger**: Automatic fee tracking ($2.00/month per athlete, $1.00 per player per event, $0.75 per drop-in)
-- **Convenience Fees**: Credit card payments add 3% fee, ACH payments have no additional fee
-
-### Advanced Scheduling Engine
-- **Facilities**: Physical locations (fields, courts, gyms) used for facility-specific conflict detection
-- **Session Targeting**: Sessions can target entire programs (team_id=null) or specific teams (team_id set)
-- **Recurring Sessions**: Create multiple sessions at once with time blocks supporting different times per day
-  - Example: Mon/Wed @ 5 PM, Tue/Thu @ 6 PM using separate time blocks
-  - Sessions share a `recurrence_group_id` for grouped management
-- **Conflict Detection**: 
-  - Facility-specific: Only sessions at the same facility are checked for conflicts
-  - Soft warning (≤15 min overlap): Yellow alert, allows proceeding with forceCreate
-  - Hard block (>15 min overlap): Red error, prevents session creation
-- **Registration Access Gate**: `getSessionsForAthlete` filters sessions based on athlete's program/team roster membership
-
-### Standalone Events System
-- **Events**: Separate from sessions, used for clinics, camps, tryouts, tournaments, and other standalone events
-  - Event types: `clinic`, `camp`, `tryout`, `tournament`, `other`
-  - Each event has its own roster (event_rosters table), pricing, and coach assignments
-  - Optional program/team association for filtering
-- **Event Management UI**: Route `/events` (admin-only)
-  - Create, edit, delete events with date/time, location, price, and capacity
-  - Upcoming vs Past events distinction
-- **Event Calendar Integration**: 
-  - Calendar view (`/calendar`) shows both sessions and events
-  - Sessions displayed as blue dots, events as orange dots
-  - Filter tabs: All, Sessions, Events
-  - Program filter applies to both sessions and events
-- **Event Rosters & Check-in**: Click event cards to view/manage registered athletes
-  - Check-in/check-out tracking with attendance counts
-  - Payment status blocking for overdue athletes
-- **Platform Fees**: $1.00 per player per event (same as clinics)
-- **API Endpoints**:
-  - Full CRUD: GET/POST/PATCH/DELETE `/api/events`
-  - Roster management: GET/POST `/api/events/:id/rosters`, DELETE `/api/events/:id/rosters/:rosterId`
-  - Check-in: PATCH `/api/events/rosters/:rosterId/checkin`
-  - Coach assignment: GET/PUT `/api/events/:id/coaches`
-- **Payment Blocking**: Requires billing card or bank account before processing event payments
+- **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
+- **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
+- **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, 0% for ACH). Requires billing card on file for clubs.
+- **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
+- **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
+- **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
+- **SafeSport Communication Hub**: Real-time messaging (Supabase Realtime) and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats, director oversight option).
+- **Push Notifications**: Firebase Cloud Messaging (FCM) for new messages and bulletin posts.
 
 ## External Dependencies
 
 ### Third-Party Services
-- **Supabase**: Primary database and authentication backend
-  - Environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
-  - Uses database trigger `handle_new_user()` to sync auth.users → profiles table
-  
-- **Helcim**: Payment processing for credit card and ACH transactions
-  - Environment variables: `HELCIM_API_TOKEN`, `HELCIM_ACCOUNT_ID`
-  
-- **Resend**: Transactional email service for notifications
-  - Environment variables: `RESEND_API_KEY`
-  - Used for session cancellations, contract signing alerts, payment confirmations
+- **Supabase**: Database, authentication, and real-time features (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`).
+- **Helcim**: Payment gateway for credit card and ACH transactions (`HELCIM_API_TOKEN`, `HELCIM_ACCOUNT_ID`).
+- **Resend**: Transactional email service for notifications (`RESEND_API_KEY`).
+- **Firebase**: Push notifications (FCM) via Firebase Admin SDK (`FIREBASE_SERVICE_ACCOUNT`).
 
-### Key NPM Dependencies
-- `@supabase/supabase-js`: Supabase client SDK
-- `@tanstack/react-query`: Server state management
-- `drizzle-orm` / `drizzle-zod`: Database ORM and validation
-- `date-fns`: Date manipulation utilities
-- `zod`: Runtime type validation
-- `resend`: Email API client
-
-### Development Tools
-- `tsx`: TypeScript execution for development
-- `drizzle-kit`: Database migration tooling
-- Replit-specific Vite plugins for development experience
+### Key NPM Packages
+- `@supabase/supabase-js`: Supabase client SDK.
+- `@tanstack/react-query`: Server state management.
+- `drizzle-orm`, `drizzle-zod`: ORM and validation.
+- `date-fns`: Date utilities.
+- `zod`: Runtime type validation.
+- `resend`: Email API client.

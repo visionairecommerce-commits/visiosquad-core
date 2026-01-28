@@ -29,6 +29,7 @@ export interface User {
   role: 'admin' | 'coach' | 'parent';
   club_id: string;
   has_signed_documents: boolean;
+  can_bill: boolean;
   created_at: string;
 }
 
@@ -250,8 +251,10 @@ export interface IStorage {
   getUserById(userId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getCoaches(clubId: string): Promise<User[]>;
+  getUser(userId: string): Promise<User | null>;
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
   updateUserSignedDocuments(userId: string): Promise<void>;
+  updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null>;
   
   // Signatures
   createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress?: string): Promise<ClubSignature>;
@@ -615,6 +618,13 @@ export class MemStorage implements IStorage {
       .map(({ password, ...user }) => user);
   }
 
+  async getUser(userId: string): Promise<User | null> {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    const { password, ...userWithoutPassword } = user;
+    return userWithoutPassword;
+  }
+
   async createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User> {
     const userId = randomUUID();
     const user: User & { password: string } = {
@@ -624,6 +634,7 @@ export class MemStorage implements IStorage {
       role,
       club_id: clubId,
       has_signed_documents: false,
+      can_bill: false,
       password,
       created_at: new Date().toISOString(),
     };
@@ -638,6 +649,15 @@ export class MemStorage implements IStorage {
       user.has_signed_documents = true;
       this.users.set(userId, user);
     }
+  }
+
+  async updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null> {
+    const user = this.users.get(userId);
+    if (!user) return null;
+    user.can_bill = canBill;
+    this.users.set(userId, user);
+    const { password, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
   // Signatures

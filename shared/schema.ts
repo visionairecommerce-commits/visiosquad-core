@@ -34,6 +34,7 @@ export const profilesTable = pgTable("profiles", {
   role: text("role", { enum: ["admin", "coach", "parent"] }).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id),
   has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
+  can_bill: boolean("can_bill").default(false).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -312,6 +313,7 @@ export interface User {
   role: UserRole;
   club_id: string;
   has_signed_documents: boolean;
+  can_bill: boolean;
   created_at: string;
 }
 

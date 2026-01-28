@@ -53,6 +53,17 @@ export default function SettingsPage() {
     queryKey: ['/api/facilities'],
   });
 
+  interface Coach {
+    id: string;
+    email: string;
+    full_name: string;
+    can_bill: boolean;
+  }
+
+  const { data: coaches = [], isLoading: coachesLoading } = useQuery<Coach[]>({
+    queryKey: ['/api/coaches'],
+  });
+
   interface BillingStatus {
     has_billing_method: boolean;
     billing_method: 'card' | 'bank' | null;
@@ -237,20 +248,18 @@ export default function SettingsPage() {
   });
 
   const updateCoachBillingMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const response = await apiRequest('PATCH', `/api/clubs/${club?.id}`, { 
-        coaches_can_bill: enabled 
+    mutationFn: async ({ coachId, canBill }: { coachId: string; canBill: boolean }) => {
+      const response = await apiRequest('PATCH', `/api/coaches/${coachId}/billing`, { 
+        can_bill: canBill 
       });
       return response.json();
     },
     onSuccess: (data) => {
-      if (setClub && data) {
-        setClub(data);
-      }
+      queryClient.invalidateQueries({ queryKey: ['/api/coaches'] });
       toast({ 
-        title: data?.coaches_can_bill 
-          ? 'Coaches can now bill athletes' 
-          : 'Coach billing disabled' 
+        title: data?.can_bill 
+          ? `${data.full_name} can now bill athletes` 
+          : `${data.full_name} billing access removed` 
       });
     },
     onError: () => {
@@ -715,30 +724,50 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Staff Permissions
+              Coach Billing Permissions
             </CardTitle>
             <CardDescription>
-              Control what coaches can do in your club
+              Choose which coaches can process payments for event registrations
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between rounded-md border p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="coaches-can-bill" className="text-base font-medium">
-                  Allow Coaches to Bill Athletes
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  When enabled, coaches can process payments for event registrations
-                </p>
+            {coachesLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading coaches...
               </div>
-              <Switch
-                id="coaches-can-bill"
-                checked={club?.coaches_can_bill || false}
-                onCheckedChange={(checked) => updateCoachBillingMutation.mutate(checked)}
-                disabled={updateCoachBillingMutation.isPending}
-                data-testid="switch-coaches-can-bill"
-              />
-            </div>
+            ) : coaches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No coaches in your club yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {coaches.map((coach) => (
+                  <div 
+                    key={coach.id} 
+                    className="flex items-center justify-between rounded-md border p-4"
+                  >
+                    <div className="space-y-0.5">
+                      <Label className="text-base font-medium">
+                        {coach.full_name}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">{coach.email}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground">
+                        {coach.can_bill ? 'Can bill' : 'Cannot bill'}
+                      </span>
+                      <Switch
+                        checked={coach.can_bill}
+                        onCheckedChange={(checked) => 
+                          updateCoachBillingMutation.mutate({ coachId: coach.id, canBill: checked })
+                        }
+                        disabled={updateCoachBillingMutation.isPending}
+                        data-testid={`switch-coach-billing-${coach.id}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

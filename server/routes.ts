@@ -1067,12 +1067,16 @@ export async function registerRoutes(
         });
       }
       
-      // Check billing permission for coaches
-      if (role === 'coach' && !club.coaches_can_bill) {
-        return res.status(403).json({ 
-          error: 'Billing not authorized',
-          message: 'You do not have permission to bill athletes. Please contact your club director.' 
-        });
+      // Check billing permission for coaches - use individual coach permission
+      if (role === 'coach') {
+        const userId = req.headers['x-user-id'] as string;
+        const coach = await storage.getUser(userId);
+        if (!coach?.can_bill) {
+          return res.status(403).json({ 
+            error: 'Billing not authorized',
+            message: 'You do not have permission to bill athletes. Please contact your club director.' 
+          });
+        }
       }
       
       const rosterId = req.params.rosterId as string;
@@ -1191,6 +1195,31 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching coaches:', error);
       res.status(500).json({ error: 'Failed to fetch coaches' });
+    }
+  });
+
+  // Update coach billing permission
+  app.patch('/api/coaches/:id/billing', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const coachId = req.params.id as string;
+      const { can_bill } = req.body;
+      
+      if (typeof can_bill !== 'boolean') {
+        return res.status(400).json({ error: 'can_bill must be a boolean' });
+      }
+      
+      // Verify coach belongs to this club
+      const coach = await storage.getUser(coachId);
+      if (!coach || coach.club_id !== clubId || coach.role !== 'coach') {
+        return res.status(404).json({ error: 'Coach not found' });
+      }
+      
+      const updated = await storage.updateUserBillingPermission(coachId, can_bill);
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating coach billing permission:', error);
+      res.status(500).json({ error: 'Failed to update coach billing permission' });
     }
   });
 

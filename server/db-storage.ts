@@ -162,6 +162,13 @@ export class DatabaseStorage implements IStorage {
     return users.map(u => this.mapUser(u));
   }
 
+  async getUser(userId: string): Promise<User | null> {
+    const [user] = await db.select().from(profilesTable)
+      .where(eq(profilesTable.id, userId));
+    if (!user) return null;
+    return this.mapUser(user);
+  }
+
   async createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User> {
     const userId = randomUUID();
     const [user] = await db.insert(profilesTable).values({
@@ -179,6 +186,15 @@ export class DatabaseStorage implements IStorage {
     await db.update(profilesTable)
       .set({ has_signed_documents: true })
       .where(eq(profilesTable.id, userId));
+  }
+
+  async updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null> {
+    const [updated] = await db.update(profilesTable)
+      .set({ can_bill: canBill })
+      .where(eq(profilesTable.id, userId))
+      .returning();
+    if (!updated) return null;
+    return this.mapUser(updated);
   }
 
   // Signatures
@@ -684,6 +700,7 @@ export class DatabaseStorage implements IStorage {
       role: u.role,
       club_id: u.club_id,
       has_signed_documents: u.has_signed_documents,
+      can_bill: u.can_bill ?? false,
       created_at: u.created_at?.toISOString?.() ?? u.created_at,
     };
   }

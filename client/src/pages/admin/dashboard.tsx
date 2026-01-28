@@ -119,7 +119,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Add a credit card or bank account to cover platform fees ($2.00/month per athlete, $1.00 per player per clinic, $0.75 per drop-in). This is required before you can process any client payments.
+              Add a credit card or bank account to cover platform fees ($2.00/month per athlete, $1.00 per player per event, $0.75 per drop-in). This is required before you can process any client payments.
             </p>
             <Link href="/settings">
               <Button size="lg" data-testid="button-add-billing-method">

@@ -46,8 +46,12 @@ Preferred communication style: Simple, everyday language.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
-- **SafeSport Communication Hub**: Real-time messaging (Supabase Realtime) and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats, director oversight option).
-- **Push Notifications**: Firebase Cloud Messaging (FCM) for new messages and bulletin posts.
+- **SafeSport Communication Hub**: Real-time messaging (Supabase Realtime) and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats, director oversight option). Features Telegram-style audience targeting:
+  - **Audience Types**: Individual (1-on-1 with parent), Roster (specific team roster), Team (all parents + coaches in team), Program (all users in program), Club (everyone in club for bulletins)
+  - **Audience Resolution**: `getTeamAudienceUserIds`, `getProgramAudienceUserIds`, `getClubAudienceUserIds` methods resolve participants based on audience type
+  - **SafeSport Compliance**: Parents are automatically included via audience resolution methods when targeting teams/programs
+  - **Channel Types**: `direct` for individual, `group` for roster, `team` for team-wide, `program` for program-wide
+- **Push Notifications**: Firebase Cloud Messaging (FCM) for new messages and bulletin posts. Batch sends to all users in selected audience.
 
 ## External Dependencies
 

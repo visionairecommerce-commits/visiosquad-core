@@ -34,7 +34,10 @@ interface ProgramContract {
   name: string;
   description?: string;
   monthly_price: number;
+  paid_in_full_price?: number;
+  initiation_fee?: number;
   sessions_per_week: number;
+  contract_document_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -45,6 +48,8 @@ const contractSchema = z.object({
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.coerce.number().min(0, "Price must be positive"),
+  paid_in_full_price: z.coerce.number().min(0).optional().or(z.literal("")),
+  initiation_fee: z.coerce.number().min(0).optional().or(z.literal("")),
   sessions_per_week: z.coerce.number().min(1, "At least 1 session per week").max(7, "Maximum 7 sessions per week"),
 });
 
@@ -76,6 +81,8 @@ export default function ContractsPage() {
       name: "",
       description: "",
       monthly_price: 0,
+      paid_in_full_price: "",
+      initiation_fee: "",
       sessions_per_week: 1,
     },
   });
@@ -142,6 +149,8 @@ export default function ContractsPage() {
         name: contract.name,
         description: contract.description || "",
         monthly_price: contract.monthly_price,
+        paid_in_full_price: contract.paid_in_full_price || "",
+        initiation_fee: contract.initiation_fee || "",
         sessions_per_week: contract.sessions_per_week,
       });
     } else {
@@ -152,6 +161,8 @@ export default function ContractsPage() {
         name: "",
         description: "",
         monthly_price: 0,
+        paid_in_full_price: "",
+        initiation_fee: "",
         sessions_per_week: 1,
       });
     }
@@ -159,10 +170,12 @@ export default function ContractsPage() {
   };
 
   const handleSubmit = (data: ContractFormData) => {
-    // Normalize empty team_id to undefined for backend
+    // Normalize empty values to undefined for backend
     const normalizedData = {
       ...data,
       team_id: data.team_id || undefined,
+      paid_in_full_price: data.paid_in_full_price === "" ? undefined : Number(data.paid_in_full_price),
+      initiation_fee: data.initiation_fee === "" ? undefined : Number(data.initiation_fee),
     };
     if (editingContract) {
       updateMutation.mutate({ id: editingContract.id, data: normalizedData });
@@ -363,6 +376,56 @@ export default function ContractsPage() {
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="paid_in_full_price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Paid-in-Full Price ($)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Optional"
+                            {...field}
+                            data-testid="input-contract-paid-in-full"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Discounted price if paid upfront
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="initiation_fee"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Initiation Fee ($)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Optional"
+                            {...field}
+                            data-testid="input-contract-initiation-fee"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          One-time fee at signup
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
@@ -475,17 +538,33 @@ export default function ContractsPage() {
                         {contract.description && (
                           <p className="text-sm text-muted-foreground mb-4">{contract.description}</p>
                         )}
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1.5">
-                            <DollarSign className="h-4 w-4 text-green-600" />
-                            <span className="font-semibold text-lg">${contract.monthly_price}</span>
-                            <span className="text-muted-foreground text-sm">/month</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              <DollarSign className="h-4 w-4 text-green-600" />
+                              <span className="font-semibold text-lg">${contract.monthly_price}</span>
+                              <span className="text-muted-foreground text-sm">/month</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium">{contract.sessions_per_week}</span>
+                              <span className="text-muted-foreground text-sm">days/week</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-4 w-4 text-blue-600" />
-                            <span className="font-medium">{contract.sessions_per_week}</span>
-                            <span className="text-muted-foreground text-sm">days/week</span>
-                          </div>
+                          {(contract.paid_in_full_price || contract.initiation_fee) && (
+                            <div className="flex items-center gap-3 text-sm flex-wrap">
+                              {contract.paid_in_full_price && (
+                                <span className="text-muted-foreground">
+                                  Paid-in-full: <span className="font-medium text-foreground">${contract.paid_in_full_price}</span>
+                                </span>
+                              )}
+                              {contract.initiation_fee && (
+                                <span className="text-muted-foreground">
+                                  Initiation: <span className="font-medium text-foreground">${contract.initiation_fee}</span>
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

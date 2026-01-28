@@ -47,6 +47,10 @@ import {
   Edit,
   Loader2,
   User,
+  Users,
+  Building2,
+  UserSquare2,
+  Globe,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -96,6 +100,7 @@ export default function BulletinPage() {
   const [newPost, setNewPost] = useState({
     title: '',
     content: '',
+    audience_type: 'club' as 'club' | 'roster' | 'team' | 'program',
     program_id: '',
     team_id: '',
     is_pinned: false,
@@ -120,7 +125,7 @@ export default function BulletinPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/bulletin'] });
       setCreateDialogOpen(false);
-      setNewPost({ title: '', content: '', program_id: '', team_id: '', is_pinned: false });
+      setNewPost({ title: '', content: '', audience_type: 'club', program_id: '', team_id: '', is_pinned: false });
       toast({ title: 'Post Created', description: 'Your bulletin post has been published.' });
     },
     onError: () => {
@@ -356,44 +361,93 @@ export default function BulletinPage() {
                     data-testid="input-post-content"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Target Program (Optional)</Label>
+                    <Label>Audience</Label>
                     <Select
-                      value={newPost.program_id}
-                      onValueChange={(val) => setNewPost({ ...newPost, program_id: val, team_id: '' })}
+                      value={newPost.audience_type}
+                      onValueChange={(val) => setNewPost({ 
+                        ...newPost, 
+                        audience_type: val as typeof newPost.audience_type,
+                        program_id: '',
+                        team_id: '' 
+                      })}
                     >
-                      <SelectTrigger data-testid="select-program">
-                        <SelectValue placeholder="All programs" />
+                      <SelectTrigger data-testid="select-audience-type">
+                        <SelectValue placeholder="Select audience..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All Programs</SelectItem>
-                        {programs.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                        ))}
+                        <SelectItem value="club">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-4 w-4" />
+                            Entire Club
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="program">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            Specific Program
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="team">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Specific Team
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="roster">
+                          <div className="flex items-center gap-2">
+                            <UserSquare2 className="h-4 w-4" />
+                            Specific Roster
+                          </div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {newPost.audience_type === 'club' && 'Post will be visible to everyone in your club.'}
+                      {newPost.audience_type === 'program' && 'Post will be visible to all users in the selected program.'}
+                      {newPost.audience_type === 'team' && 'Post will be visible to all parents and coaches of the selected team.'}
+                      {newPost.audience_type === 'roster' && 'Post will be visible to all parents on the selected roster.'}
+                    </p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Target Team (Optional)</Label>
-                    <Select
-                      value={newPost.team_id}
-                      onValueChange={(val) => setNewPost({ ...newPost, team_id: val })}
-                      disabled={!newPost.program_id}
-                    >
-                      <SelectTrigger data-testid="select-team">
-                        <SelectValue placeholder="All teams" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">All Teams</SelectItem>
-                        {teams
-                          .filter(t => t.program_id === newPost.program_id)
-                          .map((t) => (
+
+                  {newPost.audience_type === 'program' && (
+                    <div className="space-y-2">
+                      <Label>Select Program</Label>
+                      <Select
+                        value={newPost.program_id}
+                        onValueChange={(val) => setNewPost({ ...newPost, program_id: val })}
+                      >
+                        <SelectTrigger data-testid="select-program">
+                          <SelectValue placeholder="Choose a program..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {programs.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {(newPost.audience_type === 'team' || newPost.audience_type === 'roster') && (
+                    <div className="space-y-2">
+                      <Label>Select Team</Label>
+                      <Select
+                        value={newPost.team_id}
+                        onValueChange={(val) => setNewPost({ ...newPost, team_id: val })}
+                      >
+                        <SelectTrigger data-testid="select-team">
+                          <SelectValue placeholder="Choose a team..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {teams.map((t) => (
                             <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                           ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch

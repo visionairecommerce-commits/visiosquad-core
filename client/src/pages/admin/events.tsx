@@ -484,14 +484,14 @@ export default function EventsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="program_id">Associated Program (Optional)</Label>
                   <Select
-                    value={formData.program_id}
-                    onValueChange={(value) => setFormData({ ...formData, program_id: value })}
+                    value={formData.program_id || "__none__"}
+                    onValueChange={(value) => setFormData({ ...formData, program_id: value === "__none__" ? "" : value })}
                   >
                     <SelectTrigger data-testid="select-event-program">
                       <SelectValue placeholder="No program association" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No program association</SelectItem>
+                      <SelectItem value="__none__">No program association</SelectItem>
                       {programs.map(program => (
                         <SelectItem key={program.id} value={program.id}>
                           {program.name}
@@ -504,14 +504,14 @@ export default function EventsPage() {
                 <div className="space-y-2">
                   <Label htmlFor="team_id">Associated Team (Optional)</Label>
                   <Select
-                    value={formData.team_id}
-                    onValueChange={(value) => setFormData({ ...formData, team_id: value })}
+                    value={formData.team_id || "__none__"}
+                    onValueChange={(value) => setFormData({ ...formData, team_id: value === "__none__" ? "" : value })}
                   >
                     <SelectTrigger data-testid="select-event-team">
                       <SelectValue placeholder="No team association" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No team association</SelectItem>
+                      <SelectItem value="__none__">No team association</SelectItem>
                       {teams.map(team => (
                         <SelectItem key={team.id} value={team.id}>
                           {team.name}
@@ -725,7 +725,7 @@ export default function EventsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {availableAthletes.length === 0 ? (
-                      <SelectItem value="" disabled>No available athletes</SelectItem>
+                      <div className="py-2 px-2 text-sm text-muted-foreground">No available athletes</div>
                     ) : (
                       availableAthletes.map(athlete => (
                         <SelectItem key={athlete.id} value={athlete.id}>

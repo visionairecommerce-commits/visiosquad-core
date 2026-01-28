@@ -1082,6 +1082,60 @@ export async function registerRoutes(
     }
   });
 
+  // Bill athlete for event
+  app.post('/api/events/rosters/:rosterId/bill', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      
+      // Check if club has billing method
+      const club = await storage.getClub(clubId);
+      if (!club?.billing_card_token && !club?.billing_bank_token) {
+        return res.status(403).json({ 
+          error: 'Billing method required',
+          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
+        });
+      }
+      
+      const rosterId = req.params.rosterId as string;
+      
+      // Get the roster entry
+      const roster = await storage.getEventRosterById(clubId, rosterId);
+      if (!roster) {
+        return res.status(404).json({ error: 'Roster entry not found' });
+      }
+      
+      if (roster.payment_id) {
+        return res.status(400).json({ error: 'This roster entry has already been billed' });
+      }
+      
+      // Get the event to get the price
+      const event = await storage.getEvent(clubId, roster.event_id);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      
+      // Create payment record
+      const payment = await storage.createPayment(clubId, {
+        athlete_id: roster.athlete_id,
+        amount: event.price,
+        payment_type: 'event',
+        payment_method: 'credit_card', // Default, actual processing would use stored card
+        status: 'completed', // For now, mark as completed (actual implementation would process payment)
+      });
+      
+      // Update roster with payment_id
+      await storage.updateEventRosterPayment(clubId, rosterId, payment.id);
+      
+      // Create platform ledger entry ($1 per player per event)
+      await storage.createPlatformLedgerEntry(clubId, payment.id, PLATFORM_FEES.event, 'event');
+      
+      res.json({ success: true, payment });
+    } catch (error) {
+      console.error('Error billing for event:', error);
+      res.status(500).json({ error: 'Failed to bill for event' });
+    }
+  });
+
   // Get events for an athlete (parent view)
   app.get('/api/athletes/:athleteId/events', async (req, res) => {
     try {

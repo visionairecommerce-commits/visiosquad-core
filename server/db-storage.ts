@@ -1072,6 +1072,18 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.id, rosterId)));
   }
 
+  async getEventRosterById(clubId: string, rosterId: string): Promise<EventRoster | null> {
+    const [roster] = await db.select().from(eventRostersTable)
+      .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.id, rosterId)));
+    return roster ? this.mapEventRoster(roster) : null;
+  }
+
+  async updateEventRosterPayment(clubId: string, rosterId: string, paymentId: string): Promise<void> {
+    await db.update(eventRostersTable)
+      .set({ payment_id: paymentId })
+      .where(and(eq(eventRostersTable.club_id, clubId), eq(eventRostersTable.id, rosterId)));
+  }
+
   // Event Coach methods
   async getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]> {
     const coaches = await db.select().from(eventCoachesTable)

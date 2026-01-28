@@ -60,6 +60,7 @@ interface EventRoster {
   event_id: string;
   athlete_id: string;
   checked_in: boolean;
+  payment_id: string | null;
   athlete: {
     id: string;
     first_name: string;
@@ -271,6 +272,26 @@ export default function EventsPage() {
     },
   });
 
+  const billAthleteMutation = useMutation({
+    mutationFn: async ({ rosterId }: { rosterId: string }) => {
+      return apiRequest('POST', `/api/events/rosters/${rosterId}/bill`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', rosterEventId, 'rosters'] });
+      toast({
+        title: 'Payment Recorded',
+        description: 'The athlete has been billed for this event.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Billing Failed',
+        description: error.message || 'Failed to bill athlete for event.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleAddToRoster = () => {
     if (!rosterEventId || !selectedAthleteId) return;
     addToRosterMutation.mutate({ eventId: rosterEventId, athleteId: selectedAthleteId });
@@ -279,6 +300,10 @@ export default function EventsPage() {
   const handleRemoveFromRoster = (rosterId: string) => {
     if (!rosterEventId) return;
     removeFromRosterMutation.mutate({ eventId: rosterEventId, rosterId });
+  };
+
+  const handleBillAthlete = (rosterId: string) => {
+    billAthleteMutation.mutate({ rosterId });
   };
 
   const getInitials = (firstName: string, lastName: string) =>
@@ -396,7 +421,7 @@ export default function EventsPage() {
             Events
           </h1>
           <p className="text-muted-foreground">
-            Create and manage clinics, camps, tryouts, and tournaments
+            Create events and manage rosters and billing for those events
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
@@ -967,19 +992,44 @@ export default function EventsPage() {
                             {getInitials(roster.athlete.first_name, roster.athlete.last_name)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="font-medium text-sm">
-                          {roster.athlete.first_name} {roster.athlete.last_name}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">
+                            {roster.athlete.first_name} {roster.athlete.last_name}
+                          </span>
+                          {roster.payment_id ? (
+                            <Badge variant="outline" className="text-xs w-fit mt-0.5 text-green-600 border-green-300">
+                              Paid
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs w-fit mt-0.5 text-amber-600 border-amber-300">
+                              Unpaid
+                            </Badge>
+                          )}
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveFromRoster(roster.id)}
-                        disabled={removeFromRosterMutation.isPending}
-                        data-testid={`button-remove-from-roster-${roster.id}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {!roster.payment_id && rosterEvent && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleBillAthlete(roster.id)}
+                            disabled={billAthleteMutation.isPending}
+                            data-testid={`button-bill-athlete-${roster.id}`}
+                          >
+                            <DollarSign className="h-3.5 w-3.5 mr-1" />
+                            Bill ${rosterEvent.price}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveFromRoster(roster.id)}
+                          disabled={removeFromRosterMutation.isPending}
+                          data-testid={`button-remove-from-roster-${roster.id}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

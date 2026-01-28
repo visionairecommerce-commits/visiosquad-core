@@ -353,9 +353,11 @@ export interface IStorage {
 
   // Event Rosters
   getEventRosters(clubId: string, eventId: string): Promise<(EventRoster & { athlete: Athlete })[]>;
+  getEventRosterById(clubId: string, rosterId: string): Promise<EventRoster | null>;
   addEventRoster(clubId: string, eventId: string, athleteId: string, paymentId?: string): Promise<EventRoster>;
   removeEventRoster(clubId: string, rosterId: string): Promise<void>;
   updateEventRosterCheckIn(clubId: string, rosterId: string, checkedIn: boolean): Promise<void>;
+  updateEventRosterPayment(clubId: string, rosterId: string, paymentId: string): Promise<void>;
 
   // Event Coaches
   getEventCoaches(clubId: string, eventId: string): Promise<(EventCoach & { coach: User })[]>;
@@ -1193,6 +1195,10 @@ export class MemStorage implements IStorage {
     return [];
   }
 
+  async getEventRosterById(clubId: string, rosterId: string): Promise<EventRoster | null> {
+    return null;
+  }
+
   async addEventRoster(clubId: string, eventId: string, athleteId: string, paymentId?: string): Promise<EventRoster> {
     throw new Error('Not implemented in MemStorage');
   }
@@ -1202,6 +1208,10 @@ export class MemStorage implements IStorage {
   }
 
   async updateEventRosterCheckIn(clubId: string, rosterId: string, checkedIn: boolean): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateEventRosterPayment(clubId: string, rosterId: string, paymentId: string): Promise<void> {
     throw new Error('Not implemented in MemStorage');
   }
 

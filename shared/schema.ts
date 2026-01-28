@@ -48,6 +48,17 @@ export const clubDocumentsTable = pgTable("club_documents", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Club forms table - for storing Google Forms and other external links
+export const clubFormsTable = pgTable("club_forms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  description: text("description"),
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Club signatures table
 export const clubSignaturesTable = pgTable("club_signatures", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -312,6 +323,16 @@ export interface ClubDocument {
   document_type: 'waiver' | 'contract';
   file_url: string;
   version: number;
+  created_at: string;
+}
+
+export interface ClubForm {
+  id: string;
+  club_id: string;
+  name: string;
+  url: string;
+  description?: string;
+  is_active: boolean;
   created_at: string;
 }
 

@@ -10,12 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import type { Club, Facility } from '@shared/schema';
+import type { Club, Facility, ClubForm } from '@shared/schema';
 
 export default function SettingsPage() {
   const { club, setClub } = useAuth();
@@ -30,7 +30,12 @@ export default function SettingsPage() {
   const [clubAddress, setClubAddress] = useState(club?.address || '');
   const [clubLogoUrl, setClubLogoUrl] = useState(club?.logo_url || '');
   const [waiverContent, setWaiverContent] = useState(club?.waiver_content || '');
-  const [contractUrl, setContractUrl] = useState(club?.contract_pdf_url || '');
+  
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [editingForm, setEditingForm] = useState<ClubForm | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formDescription, setFormDescription] = useState('');
   
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -51,6 +56,10 @@ export default function SettingsPage() {
 
   const { data: facilities = [], isLoading: facilitiesLoading } = useQuery<Facility[]>({
     queryKey: ['/api/facilities'],
+  });
+
+  const { data: clubForms = [], isLoading: formsLoading } = useQuery<ClubForm[]>({
+    queryKey: ['/api/club-forms'],
   });
 
   interface Coach {
@@ -187,7 +196,7 @@ export default function SettingsPage() {
   });
 
   const updateDocumentsMutation = useMutation({
-    mutationFn: async (docs: { waiver_content: string; contract_pdf_url?: string }) => {
+    mutationFn: async (docs: { waiver_content: string }) => {
       const response = await apiRequest('PUT', `/api/clubs/${club?.id}/documents`, docs);
       return response.json();
     },
@@ -199,6 +208,58 @@ export default function SettingsPage() {
       toast({ title: 'Failed to save documents', variant: 'destructive' });
     },
   });
+
+  const createFormMutation = useMutation({
+    mutationFn: async (form: { name: string; url: string; description?: string }) => {
+      const response = await apiRequest('POST', '/api/club-forms', form);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/club-forms'] });
+      setFormDialogOpen(false);
+      resetFormFields();
+      toast({ title: 'Form link added!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to add form link', variant: 'destructive' });
+    },
+  });
+
+  const updateFormMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { name?: string; url?: string; description?: string } }) => {
+      const response = await apiRequest('PATCH', `/api/club-forms/${id}`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/club-forms'] });
+      setFormDialogOpen(false);
+      setEditingForm(null);
+      resetFormFields();
+      toast({ title: 'Form link updated!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update form link', variant: 'destructive' });
+    },
+  });
+
+  const deleteFormMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/club-forms/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/club-forms'] });
+      toast({ title: 'Form link deleted!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete form link', variant: 'destructive' });
+    },
+  });
+
+  const resetFormFields = () => {
+    setFormName('');
+    setFormUrl('');
+    setFormDescription('');
+  };
 
   const createFacilityMutation = useMutation({
     mutationFn: async (facility: { name: string; description?: string }) => {
@@ -287,8 +348,38 @@ export default function SettingsPage() {
     }
     updateDocumentsMutation.mutate({
       waiver_content: waiverContent,
-      contract_pdf_url: contractUrl || undefined,
     });
+  };
+
+  const handleFormSubmit = () => {
+    if (!formName.trim()) {
+      toast({ title: 'Form name is required', variant: 'destructive' });
+      return;
+    }
+    if (!formUrl.trim()) {
+      toast({ title: 'Form URL is required', variant: 'destructive' });
+      return;
+    }
+    if (editingForm) {
+      updateFormMutation.mutate({
+        id: editingForm.id,
+        data: { name: formName, url: formUrl, description: formDescription },
+      });
+    } else {
+      createFormMutation.mutate({
+        name: formName,
+        url: formUrl,
+        description: formDescription,
+      });
+    }
+  };
+
+  const handleEditForm = (form: ClubForm) => {
+    setEditingForm(form);
+    setFormName(form.name);
+    setFormUrl(form.url);
+    setFormDescription(form.description || '');
+    setFormDialogOpen(true);
   };
 
   const handleFacilitySubmit = () => {
@@ -782,45 +873,156 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="waiver">Master Club Waiver</Label>
-                <Textarea
-                  id="waiver"
-                  value={waiverContent}
-                  onChange={(e) => setWaiverContent(e.target.value)}
-                  placeholder="Enter your club's waiver text..."
-                  className="min-h-[150px]"
-                  data-testid="textarea-waiver"
-                />
-                {club?.waiver_version && (
-                  <Badge variant="secondary">Version {club.waiver_version}</Badge>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contract">Season Contract URL (optional)</Label>
-                <Input
-                  id="contract"
-                  value={contractUrl}
-                  onChange={(e) => setContractUrl(e.target.value)}
-                  placeholder="https://example.com/contract.pdf"
-                  data-testid="input-contract-url"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Upload your contract PDF to a file hosting service and paste the link here
-                </p>
-                {club?.contract_version && (
-                  <Badge variant="secondary">Version {club.contract_version}</Badge>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="waiver">Master Club Waiver</Label>
+              <Textarea
+                id="waiver"
+                value={waiverContent}
+                onChange={(e) => setWaiverContent(e.target.value)}
+                placeholder="Enter your club's waiver text..."
+                className="min-h-[150px]"
+                data-testid="textarea-waiver"
+              />
+              {club?.waiver_version && (
+                <Badge variant="secondary">Version {club.waiver_version}</Badge>
+              )}
             </div>
             <Button
               onClick={handleSaveDocuments}
               disabled={updateDocumentsMutation.isPending}
               data-testid="button-save-documents"
             >
-              Save Documents
+              Save Waiver
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Link className="h-5 w-5" />
+                Forms & Links
+              </CardTitle>
+              <CardDescription>
+                Google Forms and other links for coaches and families to use during the season
+              </CardDescription>
+            </div>
+            <Dialog open={formDialogOpen} onOpenChange={(open) => {
+              setFormDialogOpen(open);
+              if (!open) {
+                setEditingForm(null);
+                resetFormFields();
+              }
+            }}>
+              <DialogTrigger asChild>
+                <Button size="sm" data-testid="button-add-form">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Form Link
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{editingForm ? 'Edit Form Link' : 'Add Form Link'}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="formName">Name</Label>
+                    <Input
+                      id="formName"
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      placeholder="e.g., Equipment Request Form"
+                      data-testid="input-form-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="formUrl">URL</Label>
+                    <Input
+                      id="formUrl"
+                      type="url"
+                      value={formUrl}
+                      onChange={(e) => setFormUrl(e.target.value)}
+                      placeholder="https://forms.google.com/..."
+                      data-testid="input-form-url"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="formDesc">Description (optional)</Label>
+                    <Textarea
+                      id="formDesc"
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      placeholder="What is this form for..."
+                      data-testid="textarea-form-description"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleFormSubmit}
+                    disabled={createFormMutation.isPending || updateFormMutation.isPending}
+                    className="w-full"
+                    data-testid="button-save-form"
+                  >
+                    {(createFormMutation.isPending || updateFormMutation.isPending) ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </CardHeader>
+          <CardContent>
+            {formsLoading ? (
+              <p className="text-muted-foreground">Loading forms...</p>
+            ) : clubForms.length === 0 ? (
+              <p className="text-muted-foreground text-center py-4">
+                No form links added yet. Click "Add Form Link" to get started.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {clubForms.filter(f => f.is_active).map((form) => (
+                  <div
+                    key={form.id}
+                    className="flex items-center justify-between p-3 border rounded-md"
+                    data-testid={`form-card-${form.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">{form.name}</p>
+                        <a
+                          href={form.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-primary"
+                          data-testid={`link-form-${form.id}`}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </div>
+                      {form.description && (
+                        <p className="text-sm text-muted-foreground truncate">{form.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 ml-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEditForm(form)}
+                        data-testid={`button-edit-form-${form.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteFormMutation.mutate(form.id)}
+                        data-testid={`button-delete-form-${form.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

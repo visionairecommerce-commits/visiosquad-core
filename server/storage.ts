@@ -103,6 +103,16 @@ export interface Facility {
   created_at: string;
 }
 
+export interface ClubForm {
+  id: string;
+  club_id: string;
+  name: string;
+  url: string;
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Court {
   id: string;
   club_id: string;
@@ -286,6 +296,13 @@ export interface IStorage {
   createTeam(clubId: string, team: Omit<Team, 'id' | 'club_id' | 'created_at'>): Promise<Team>;
   updateTeam(clubId: string, teamId: string, data: { name?: string; coach_id?: string | null }): Promise<Team>;
   deleteTeam(clubId: string, teamId: string): Promise<void>;
+
+  // Club Forms (Google Forms links)
+  getClubForms(clubId: string): Promise<ClubForm[]>;
+  getClubForm(clubId: string, formId: string): Promise<ClubForm | undefined>;
+  createClubForm(clubId: string, form: Omit<ClubForm, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ClubForm>;
+  updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; is_active?: boolean }): Promise<ClubForm>;
+  deleteClubForm(clubId: string, formId: string): Promise<void>;
 
   // Facilities
   getFacilities(clubId: string): Promise<Facility[]>;
@@ -792,6 +809,27 @@ export class MemStorage implements IStorage {
   }
 
   // Facilities
+  // Club Forms (stub implementations - using database storage)
+  async getClubForms(clubId: string): Promise<ClubForm[]> {
+    return [];
+  }
+
+  async getClubForm(clubId: string, formId: string): Promise<ClubForm | undefined> {
+    return undefined;
+  }
+
+  async createClubForm(clubId: string, form: Omit<ClubForm, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ClubForm> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; is_active?: boolean }): Promise<ClubForm> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async deleteClubForm(clubId: string, formId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
   async getFacilities(clubId: string): Promise<Facility[]> {
     return Array.from(this.facilities.values()).filter(f => f.club_id === clubId);
   }

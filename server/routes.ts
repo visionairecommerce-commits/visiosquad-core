@@ -1523,6 +1523,60 @@ export async function registerRoutes(
     }
   });
 
+  // ============ CLUB FORMS (Google Forms links) ============
+  const createClubFormSchema = z.object({
+    name: z.string().min(1, "Form name is required"),
+    url: z.string().url("Valid URL is required"),
+    description: z.string().optional(),
+  });
+
+  app.get('/api/club-forms', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const forms = await storage.getClubForms(clubId);
+      res.json(forms);
+    } catch (error) {
+      console.error('Error fetching club forms:', error);
+      res.status(500).json({ error: 'Failed to fetch forms' });
+    }
+  });
+
+  app.post('/api/club-forms', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const data = createClubFormSchema.parse(req.body);
+      const form = await storage.createClubForm(clubId, data);
+      res.status(201).json(form);
+    } catch (error) {
+      console.error('Error creating club form:', error);
+      res.status(500).json({ error: 'Failed to create form' });
+    }
+  });
+
+  app.patch('/api/club-forms/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const formId = req.params.id as string;
+      const data = req.body;
+      const form = await storage.updateClubForm(clubId, formId, data);
+      res.json(form);
+    } catch (error) {
+      console.error('Error updating club form:', error);
+      res.status(500).json({ error: 'Failed to update form' });
+    }
+  });
+
+  app.delete('/api/club-forms/:id', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      await storage.deleteClubForm(clubId, req.params.id as string);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting club form:', error);
+      res.status(500).json({ error: 'Failed to delete form' });
+    }
+  });
+
   // ============ FACILITIES ============
   app.get('/api/facilities', async (req, res) => {
     try {

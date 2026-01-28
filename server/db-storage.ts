@@ -4,12 +4,13 @@ import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
   sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
-  programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable
+  programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
+  clubFormsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger,
-  ProgramContract, AthleteContract, Event, EventRoster, EventCoach
+  ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -342,6 +343,61 @@ export class DatabaseStorage implements IStorage {
   async deleteFacility(clubId: string, facilityId: string): Promise<void> {
     await db.delete(facilitiesTable)
       .where(and(eq(facilitiesTable.club_id, clubId), eq(facilitiesTable.id, facilityId)));
+  }
+
+  // Club Forms (Google Forms links)
+  async getClubForms(clubId: string): Promise<ClubForm[]> {
+    const forms = await db.select().from(clubFormsTable).where(eq(clubFormsTable.club_id, clubId));
+    return forms.map(f => this.mapClubForm(f));
+  }
+
+  async getClubForm(clubId: string, formId: string): Promise<ClubForm | undefined> {
+    const [form] = await db.select().from(clubFormsTable)
+      .where(and(eq(clubFormsTable.club_id, clubId), eq(clubFormsTable.id, formId)));
+    if (!form) return undefined;
+    return this.mapClubForm(form);
+  }
+
+  async createClubForm(clubId: string, form: Omit<ClubForm, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ClubForm> {
+    const [f] = await db.insert(clubFormsTable).values({
+      club_id: clubId,
+      name: form.name,
+      url: form.url,
+      description: form.description,
+      is_active: true,
+    }).returning();
+    return this.mapClubForm(f);
+  }
+
+  async updateClubForm(clubId: string, formId: string, data: { name?: string; url?: string; description?: string; is_active?: boolean }): Promise<ClubForm> {
+    const updateData: any = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.url !== undefined) updateData.url = data.url;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.is_active !== undefined) updateData.is_active = data.is_active;
+
+    const [form] = await db.update(clubFormsTable)
+      .set(updateData)
+      .where(and(eq(clubFormsTable.club_id, clubId), eq(clubFormsTable.id, formId)))
+      .returning();
+    return this.mapClubForm(form);
+  }
+
+  async deleteClubForm(clubId: string, formId: string): Promise<void> {
+    await db.delete(clubFormsTable)
+      .where(and(eq(clubFormsTable.club_id, clubId), eq(clubFormsTable.id, formId)));
+  }
+
+  private mapClubForm(f: any): ClubForm {
+    return {
+      id: f.id,
+      club_id: f.club_id,
+      name: f.name,
+      url: f.url,
+      description: f.description ?? undefined,
+      is_active: f.is_active,
+      created_at: f.created_at?.toISOString?.() ?? f.created_at,
+    };
   }
 
   // Courts

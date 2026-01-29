@@ -1,0 +1,35 @@
+Build the 'SafeSport & Club Management System' with 100% adherence to the following requirements. Use Helcim for payments and Supabase for the database. Many of these things are already done and just need to be verified.
+1. Registration & The 'Release' Rule:
+•	Club Code: Registration requires a unique 'Club Code' provided by a Director.
+•	Transfer Logic: Parents can change clubs by entering a new code, but ONLY if the current Director has 'Released' them.
+•	The Warning: If an unreleased parent tries to join a new club, show: 'To join a new club, you must first be released by your current club. Please contact your current club director to be released.'
+•	Auto-Release: All athletes are automatically released at the end of their contract date.
+2. Hybrid Contract Compliance:
+•	Manual Mode (Default): Directors provide an external URL. Parents sign externally and click 'I have signed' in-app.
+•	Manual Verification: Add a button for Directors: 'Manually Verify Contract.' No athlete/parent can access schedules, rosters, or messages until this is verified.
+•	Automated Mode (Coming Soon): Add a grayed-out 'Automated Contract Sync' toggle. In the 'Contract Compliance' section, add a note: 'Suggestion: Use DocuSeal for your manual contracts now to make the transition to our Automated Sync seamless in the future.'
+3. Family Accounts & Roles:
+•	Linked Profiles: Parents create an account and then create a sub-account for their athlete.
+•	Grad Year: The 'Athlete Graduation Year' is a REQUIRED field during profile creation.
+•	Permissions: Both see schedules, bulletins, and messages. ONLY Parents see payments and contracts.
+4. SafeSport Messaging & Notifications:
+•	Parent CC: Every message involving an athlete must automatically include the Parent.
+•	Read Receipts: Directors and Coaches must be able to see who has viewed messages and bulletins.
+•	Notifications: Parents and players get push notifications for new content; they can mark as 'Read' or 'New.'
+5. Helcim Payments & Fees:
+•	Director Requirement: Directors cannot charge athletes until they enter their own form of payment for app fees.
+•	Fee Saver Logic: Inform parents: 'Credit Card = 3% fee, ACH = 0% fee.'
+•	Auto-Billing: Billing is based on contract length with a start/end date. Billing MUST automatically shut off when the contract ends.
+•	Discount System: Add an 'Add a Discount' page where Directors search for a player and apply a custom price to their specific contract before the parent signs.
+6. Rosters, Teams & Programs:
+•	Structure: Programs house Teams. Registrations are locked to a specific Program/Contract.
+•	Access: Coaches/Directors can manually add any athlete to any event regardless of team.
+•	Filters: Filter athlete rosters by Program, Contract, and Grad Year.
+•	Coach Permissions: Directors can authorize specific coaches to see payment statuses for their teams ONLY. Coaches cannot see payment info for teams they aren't assigned to. Coaches can be assigned to Teams OR whole Programs.
+7. Scheduling & Facilities:
+•	Coaches and Directors can create single or recurring sessions.
+•	Fields: Title, Event Type, Program, Facility, Team (optional), Court/Field, Start/End Time, Location Notes, and Price (optional).
+•	Users can add new Facilities and Courts/Fields to the dropdown menus dynamically.
+8. End-of-Season Workflow:
+•	At the contract end-date, prompt the Director to Archive (keep messages/history for future marketing/tryouts) or Delete (permanently wipe athlete contact info).
+Check that all Helcim payment avenues and RLS policies are working properly, then run 'npx drizzle-kit push'."

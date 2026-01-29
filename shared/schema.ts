@@ -269,6 +269,10 @@ export const athletesTable = pgTable("athletes", {
   tags: text("tags").array().default([]),
   paid_through_date: text("paid_through_date"),
   is_locked: boolean("is_locked").default(false).notNull(),
+  // Release status for club transfers
+  is_released: boolean("is_released").default(false).notNull(), // Whether parent can transfer to another club
+  released_at: timestamp("released_at"), // When athlete was released
+  released_by: uuid("released_by").references(() => profilesTable.id), // Director who released the athlete
   // Athlete login credentials (optional - set by parent)
   email: text("email").unique(), // Athlete's login email
   has_login: boolean("has_login").default(false).notNull(), // Whether athlete can log in
@@ -569,6 +573,9 @@ export interface Athlete {
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
+  is_released: boolean;
+  released_at?: string;
+  released_by?: string;
   email?: string;
   has_login: boolean;
   created_at: string;

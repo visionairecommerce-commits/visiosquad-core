@@ -1091,6 +1091,32 @@ export default function SettingsPage() {
                 </AlertDescription>
               </Alert>
             )}
+
+            <div className="pt-4 border-t">
+              <div className="flex items-center justify-between rounded-md border p-4 opacity-50">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-base font-medium">
+                      Automated Contract Sync
+                    </Label>
+                    <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically sync contract signatures from supported e-sign platforms
+                  </p>
+                </div>
+                <Switch
+                  checked={false}
+                  disabled={true}
+                  data-testid="switch-automated-sync"
+                />
+              </div>
+              <Alert className="mt-3 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+                <AlertDescription className="text-blue-700 dark:text-blue-300">
+                  Suggestion: Use DocuSeal for your manual contracts now to make the transition to our Automated Sync seamless in the future.
+                </AlertDescription>
+              </Alert>
+            </div>
           </CardContent>
         </Card>
 

@@ -35,7 +35,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users, Unlock } from 'lucide-react';
+import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users, Unlock, Archive, AlertTriangle, Trash2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
 import { isAthleteAccessLocked } from '@shared/schema';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -59,6 +61,8 @@ export default function RosterPage() {
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [athleteSearchOpen, setAthleteSearchOpen] = useState(false);
+  const [endSeasonDialogOpen, setEndSeasonDialogOpen] = useState(false);
+  const [selectedForArchive, setSelectedForArchive] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const { data: athletes = [] } = useQuery<Athlete[]>({ queryKey: ['/api/athletes'] });
@@ -141,6 +145,18 @@ export default function RosterPage() {
     },
   });
 
+  const releaseAthleteMutation = useMutation({
+    mutationFn: async (athleteId: string) => {
+      return apiRequest('POST', `/api/athletes/${athleteId}/release`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to release athlete.', variant: 'destructive' });
+    },
+  });
+
   const athleteActiveContracts = useMemo(() => {
     const map = new Map<string, AthleteContract>();
     athleteContracts
@@ -148,6 +164,27 @@ export default function RosterPage() {
       .forEach(c => map.set(c.athlete_id, c));
     return map;
   }, [athleteContracts]);
+
+  // Find athletes with expired or expiring contracts for end-of-season workflow
+  const athletesForEndOfSeason = useMemo(() => {
+    const today = new Date();
+    const thirtyDaysFromNow = new Date(today);
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    
+    return athletes.filter(athlete => {
+      const contract = athleteActiveContracts.get(athlete.id);
+      if (!contract?.end_date) return false;
+      const endDate = new Date(contract.end_date);
+      return endDate <= thirtyDaysFromNow; // Contract expires within 30 days
+    }).map(athlete => {
+      const contract = athleteActiveContracts.get(athlete.id);
+      return {
+        athlete,
+        contract,
+        isExpired: contract?.end_date ? new Date(contract.end_date) < today : false,
+      };
+    });
+  }, [athletes, athleteActiveContracts]);
 
   const getContractsForProgram = (programId: string) => {
     return programContracts.filter(c => c.program_id === programId);
@@ -197,9 +234,10 @@ export default function RosterPage() {
   const groupedByTeam = useMemo(() => {
     const map = new Map<string, EnrichedRosterEntry[]>();
     filteredRoster.forEach(entry => {
-      const existing = map.get(entry.team_id) || [];
+      const teamId = entry.team_id || 'unassigned';
+      const existing = map.get(teamId) || [];
       existing.push(entry);
-      map.set(entry.team_id, existing);
+      map.set(teamId, existing);
     });
     return map;
   }, [filteredRoster]);
@@ -228,13 +266,131 @@ export default function RosterPage() {
           <h1 className="text-2xl font-bold tracking-tight">Master Roster</h1>
           <p className="text-muted-foreground">Manage athlete assignments and contracts</p>
         </div>
-        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-assign-athlete">
-              <UserPlus className="h-4 w-4 mr-2" />
-              Assign Athlete
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2 flex-wrap">
+          <Dialog open={endSeasonDialogOpen} onOpenChange={setEndSeasonDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-end-of-season">
+                <Archive className="h-4 w-4 mr-2" />
+                End of Season
+                {athletesForEndOfSeason.length > 0 && (
+                  <Badge variant="destructive" className="ml-2">{athletesForEndOfSeason.length}</Badge>
+                )}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Archive className="h-5 w-5" />
+                  End of Season Management
+                </DialogTitle>
+                <DialogDescription>
+                  Review athletes with expiring or expired contracts. Release them to allow transfer to other clubs, or remove them from rosters.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-4 max-h-96 overflow-y-auto">
+                {athletesForEndOfSeason.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Archive className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No athletes with expiring contracts.</p>
+                    <p className="text-sm">Athletes will appear here when their contracts are within 30 days of expiring.</p>
+                  </div>
+                ) : (
+                  <>
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>{athletesForEndOfSeason.filter(a => a.isExpired).length}</strong> athlete(s) have expired contracts. 
+                        Consider releasing them to allow transfers to other clubs.
+                      </AlertDescription>
+                    </Alert>
+                    <div className="space-y-2">
+                      {athletesForEndOfSeason.map(({ athlete, contract, isExpired }) => (
+                        <div key={athlete.id} className="flex items-center justify-between p-3 rounded-md border">
+                          <div className="flex items-center gap-3">
+                            <Checkbox 
+                              checked={selectedForArchive.has(athlete.id)}
+                              onCheckedChange={(checked) => {
+                                const newSet = new Set(selectedForArchive);
+                                if (checked) {
+                                  newSet.add(athlete.id);
+                                } else {
+                                  newSet.delete(athlete.id);
+                                }
+                                setSelectedForArchive(newSet);
+                              }}
+                              data-testid={`checkbox-archive-${athlete.id}`}
+                            />
+                            <Avatar className="h-8 w-8">
+                              <AvatarFallback className="text-xs">
+                                {getInitials(`${athlete.first_name} ${athlete.last_name}`)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-medium">{athlete.first_name} {athlete.last_name}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                <span>Class of {athlete.graduation_year || 'N/A'}</span>
+                                {contract?.end_date && (
+                                  <>
+                                    <span>|</span>
+                                    <span>Contract ends: {new Date(contract.end_date).toLocaleDateString()}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isExpired ? (
+                              <Badge variant="destructive">Expired</Badge>
+                            ) : (
+                              <Badge variant="secondary">Expiring Soon</Badge>
+                            )}
+                            {athlete.is_released ? (
+                              <Badge variant="outline" className="text-green-600">Released</Badge>
+                            ) : (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => releaseAthleteMutation.mutate(athlete.id)}
+                                disabled={releaseAthleteMutation.isPending}
+                                data-testid={`button-release-${athlete.id}`}
+                              >
+                                <Unlock className="h-3 w-3 mr-1" />
+                                Release
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedForArchive.size > 0 && (
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => {
+                            selectedForArchive.forEach(id => releaseAthleteMutation.mutate(id));
+                            toast({ title: 'Athletes Released', description: `${selectedForArchive.size} athlete(s) have been released.` });
+                            setSelectedForArchive(new Set());
+                          }}
+                          data-testid="button-release-selected"
+                        >
+                          <Unlock className="h-4 w-4 mr-2" />
+                          Release Selected ({selectedForArchive.size})
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-assign-athlete">
+                <UserPlus className="h-4 w-4 mr-2" />
+                Assign Athlete
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Assign Athlete to Team</DialogTitle>
@@ -329,6 +485,7 @@ export default function RosterPage() {
           </DialogContent>
         </Dialog>
       </div>
+    </div>
 
       <Card>
         <CardHeader>

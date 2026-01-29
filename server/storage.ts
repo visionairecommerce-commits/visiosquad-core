@@ -85,6 +85,9 @@ export interface Athlete {
   tags: string[];
   paid_through_date?: string;
   is_locked: boolean;
+  is_released: boolean;
+  released_at?: string;
+  released_by?: string;
   email?: string;
   has_login: boolean;
   created_at: string;
@@ -419,10 +422,13 @@ export interface IStorage {
   getAthletes(clubId: string): Promise<Athlete[]>;
   getAthlete(clubId: string, athleteId: string): Promise<Athlete | undefined>;
   getAthletesByParent(clubId: string, parentId: string): Promise<Athlete[]>;
+  getAthletesByParentAcrossClubs(parentId: string): Promise<Athlete[]>;
   getUnassignedAthletes(clubId: string, programId: string): Promise<Athlete[]>;
-  createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete>;
+  createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete>;
   updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
+  releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void>;
+  revokeAthleteRelease(clubId: string, athleteId: string): Promise<void>;
 
   // Roster
   assignAthleteToTeam(clubId: string, athleteId: string, teamId: string, programId: string): Promise<AthleteTeamRoster>;
@@ -534,6 +540,8 @@ export interface IStorage {
   deleteBulletinPost(clubId: string, postId: string): Promise<void>;
   markBulletinRead(clubId: string, postId: string, userId: string, isHidden?: boolean): Promise<BulletinRead>;
   updateBulletinHidden(clubId: string, postId: string, userId: string, isHidden: boolean): Promise<BulletinRead>;
+  getBulletinReadReceipts(clubId: string, postId: string): Promise<{ user_id: string; full_name: string; read_at: string }[]>;
+  getChannelReadReceipts(channelId: string): Promise<{ user_id: string; full_name: string; last_read_at: string | null }[]>;
   
   // ============ PUSH NOTIFICATIONS ============
   
@@ -1138,12 +1146,13 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete> {
+  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete> {
     const newAthlete: Athlete = {
       ...athlete,
       id: randomUUID(),
       club_id: clubId,
       is_locked: false,
+      is_released: false,
       has_login: false,
       created_at: new Date().toISOString(),
     };
@@ -1167,6 +1176,30 @@ export class MemStorage implements IStorage {
       athlete.is_locked = false;
       this.athletes.set(athleteId, athlete);
     }
+  }
+
+  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void> {
+    const athlete = this.athletes.get(athleteId);
+    if (athlete?.club_id === clubId) {
+      athlete.is_released = true;
+      athlete.released_at = new Date().toISOString();
+      athlete.released_by = releasedBy;
+      this.athletes.set(athleteId, athlete);
+    }
+  }
+
+  async revokeAthleteRelease(clubId: string, athleteId: string): Promise<void> {
+    const athlete = this.athletes.get(athleteId);
+    if (athlete?.club_id === clubId) {
+      athlete.is_released = false;
+      athlete.released_at = undefined;
+      athlete.released_by = undefined;
+      this.athletes.set(athleteId, athlete);
+    }
+  }
+
+  async getAthletesByParentAcrossClubs(parentId: string): Promise<Athlete[]> {
+    return Array.from(this.athletes.values()).filter(a => a.parent_id === parentId);
   }
 
   // Roster

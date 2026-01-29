@@ -616,7 +616,7 @@ export class DatabaseStorage implements IStorage {
     return allAthletes.filter(a => !assignedIds.has(a.id));
   }
 
-  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'has_login' | 'created_at'>): Promise<Athlete> {
+  async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete> {
     const [a] = await db.insert(athletesTable).values({
       club_id: clubId,
       parent_id: athlete.parent_id,
@@ -627,6 +627,7 @@ export class DatabaseStorage implements IStorage {
       tags: athlete.tags || [],
       paid_through_date: athlete.paid_through_date,
       is_locked: false,
+      is_released: false,
       has_login: false,
     }).returning();
     return this.mapAthlete(a);
@@ -642,6 +643,32 @@ export class DatabaseStorage implements IStorage {
     await db.update(athletesTable)
       .set({ paid_through_date: paidThroughDate, is_locked: false })
       .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
+  }
+
+  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void> {
+    await db.update(athletesTable)
+      .set({ 
+        is_released: true, 
+        released_at: new Date(),
+        released_by: releasedBy 
+      })
+      .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
+  }
+
+  async revokeAthleteRelease(clubId: string, athleteId: string): Promise<void> {
+    await db.update(athletesTable)
+      .set({ 
+        is_released: false, 
+        released_at: null,
+        released_by: null 
+      })
+      .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
+  }
+
+  async getAthletesByParentAcrossClubs(parentId: string): Promise<Athlete[]> {
+    const athletes = await db.select().from(athletesTable)
+      .where(eq(athletesTable.parent_id, parentId));
+    return athletes.map(a => this.mapAthlete(a));
   }
 
   // Roster
@@ -1005,6 +1032,9 @@ export class DatabaseStorage implements IStorage {
       tags: a.tags || [],
       paid_through_date: a.paid_through_date ?? undefined,
       is_locked: a.is_locked,
+      is_released: a.is_released ?? false,
+      released_at: a.released_at?.toISOString?.() ?? a.released_at ?? undefined,
+      released_by: a.released_by ?? undefined,
       email: a.email ?? undefined,
       has_login: a.has_login ?? false,
       created_at: a.created_at?.toISOString?.() ?? a.created_at,
@@ -1894,6 +1924,44 @@ export class DatabaseStorage implements IStorage {
 
   async updateBulletinHidden(clubId: string, postId: string, userId: string, isHidden: boolean): Promise<BulletinRead> {
     return this.markBulletinRead(clubId, postId, userId, isHidden);
+  }
+
+  async getBulletinReadReceipts(clubId: string, postId: string): Promise<{ user_id: string; full_name: string; read_at: string }[]> {
+    const { data: reads, error } = await supabase
+      .from('bulletin_reads')
+      .select(`
+        user_id,
+        read_at,
+        profiles!bulletin_reads_user_id_fkey(full_name)
+      `)
+      .eq('post_id', postId);
+    
+    if (error) throw error;
+    
+    return (reads || []).map((r: any) => ({
+      user_id: r.user_id,
+      full_name: r.profiles?.full_name || 'Unknown User',
+      read_at: r.read_at,
+    }));
+  }
+
+  async getChannelReadReceipts(channelId: string): Promise<{ user_id: string; full_name: string; last_read_at: string | null }[]> {
+    const { data: participants, error } = await supabase
+      .from('channel_participants')
+      .select(`
+        user_id,
+        last_read_at,
+        profiles!channel_participants_user_id_fkey(full_name)
+      `)
+      .eq('channel_id', channelId);
+    
+    if (error) throw error;
+    
+    return (participants || []).map((p: any) => ({
+      user_id: p.user_id,
+      full_name: p.profiles?.full_name || 'Unknown User',
+      last_read_at: p.last_read_at,
+    }));
   }
 
   // ============ PUSH NOTIFICATIONS ============

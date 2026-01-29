@@ -1517,6 +1517,80 @@ export async function registerRoutes(
     }
   });
 
+  // Release athlete (allows parent to transfer to another club)
+  app.post('/api/athletes/:athleteId/release', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      await storage.releaseAthlete(clubId, athleteId, userId);
+      
+      res.json({ 
+        success: true, 
+        message: 'Athlete has been released and can now transfer to another club'
+      });
+    } catch (error) {
+      console.error('Error releasing athlete:', error);
+      res.status(500).json({ error: 'Failed to release athlete' });
+    }
+  });
+
+  // Revoke athlete release
+  app.post('/api/athletes/:athleteId/revoke-release', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      await storage.revokeAthleteRelease(clubId, athleteId);
+      
+      res.json({ 
+        success: true, 
+        message: 'Athlete release has been revoked'
+      });
+    } catch (error) {
+      console.error('Error revoking athlete release:', error);
+      res.status(500).json({ error: 'Failed to revoke athlete release' });
+    }
+  });
+
+  // Check if parent has unreleased athletes before joining a new club
+  // Uses authenticated user's ID - does not accept arbitrary parent_id
+  app.post('/api/auth/check-transfer-eligibility', async (req, res) => {
+    try {
+      const { target_club_id } = req.body;
+      const { userId } = getAuthContext(req);
+      
+      if (!userId) {
+        return res.json({ eligible: true, unreleased_athletes: [] });
+      }
+      
+      // Get all athletes for the authenticated parent across all clubs
+      const allAthletes = await storage.getAthletesByParentAcrossClubs(userId);
+      
+      // Find unreleased athletes in other clubs
+      const unreleasedAthletes = allAthletes.filter(
+        a => a.club_id !== target_club_id && !a.is_released
+      );
+      
+      if (unreleasedAthletes.length > 0) {
+        return res.json({
+          eligible: false,
+          unreleased_athletes: unreleasedAthletes.map(a => ({
+            id: a.id,
+            name: `${a.first_name} ${a.last_name}`,
+            club_id: a.club_id
+          })),
+          message: 'To join a new club, you must first be released by your current club. Please contact your current club director to be released.'
+        });
+      }
+      
+      res.json({ eligible: true, unreleased_athletes: [] });
+    } catch (error) {
+      console.error('Error checking transfer eligibility:', error);
+      res.status(500).json({ error: 'Failed to check transfer eligibility' });
+    }
+  });
+
   // ============ ROSTER ============
   app.get('/api/teams/:teamId/roster', async (req, res) => {
     try {
@@ -3068,6 +3142,40 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error updating bulletin hidden status:', error);
       res.status(500).json({ error: 'Failed to update bulletin hidden status' });
+    }
+  });
+
+  // Get bulletin read receipts (who viewed)
+  app.get('/api/bulletin/:postId/receipts', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { postId } = req.params;
+      
+      const receipts = await storage.getBulletinReadReceipts(clubId, postId);
+      res.json(receipts);
+    } catch (error) {
+      console.error('Error fetching bulletin read receipts:', error);
+      res.status(500).json({ error: 'Failed to fetch read receipts' });
+    }
+  });
+
+  // Get channel read receipts (who viewed messages)
+  app.get('/api/chat/channels/:channelId/receipts', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { channelId } = req.params;
+      
+      // Verify channel belongs to requester's club (getChatChannel returns undefined if not in club)
+      const channel = await storage.getChatChannel(clubId, channelId);
+      if (!channel) {
+        return res.status(403).json({ error: 'Access denied to this channel' });
+      }
+      
+      const receipts = await storage.getChannelReadReceipts(channelId);
+      res.json(receipts);
+    } catch (error) {
+      console.error('Error fetching channel read receipts:', error);
+      res.status(500).json({ error: 'Failed to fetch read receipts' });
     }
   });
 

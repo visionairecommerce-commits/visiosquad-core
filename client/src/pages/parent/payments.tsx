@@ -12,7 +12,10 @@ import {
   Clock,
   DollarSign,
   Calendar,
+  Landmark,
+  Info,
 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format } from 'date-fns';
 
 interface Payment {
@@ -166,6 +169,13 @@ export default function ParentPaymentsPage() {
           <CardDescription>Manage your saved payment methods</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-700 dark:text-blue-300">
+              <strong>Save on fees!</strong> Credit Card payments include a 3% convenience fee. 
+              ACH (bank transfer) payments have <strong>0% fee</strong> - save money by paying directly from your bank account.
+            </AlertDescription>
+          </Alert>
           <div className="flex items-center justify-between p-4 rounded-md border">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
@@ -174,13 +184,18 @@ export default function ParentPaymentsPage() {
               <div>
                 <div className="font-medium">Visa ending in 4242</div>
                 <div className="text-sm text-muted-foreground">Expires 12/27</div>
+                <div className="text-xs text-chart-3">3% convenience fee applies</div>
               </div>
             </div>
             <Badge variant="secondary">Default</Badge>
           </div>
           <Button variant="outline" className="w-full" data-testid="button-add-payment-method">
             <CreditCard className="h-4 w-4 mr-2" />
-            Add Payment Method
+            Add Credit Card
+          </Button>
+          <Button variant="outline" className="w-full" data-testid="button-add-bank-account">
+            <Landmark className="h-4 w-4 mr-2" />
+            Add Bank Account (0% fee)
           </Button>
         </CardContent>
       </Card>

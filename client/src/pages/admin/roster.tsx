@@ -345,7 +345,9 @@ export default function RosterPage() {
                               <Badge variant="secondary">Expiring Soon</Badge>
                             )}
                             {athlete.is_released ? (
-                              <Badge variant="outline" className="text-green-600">Released</Badge>
+                              <Badge variant="outline" className={athlete.released_by ? "text-green-600" : "text-blue-600"}>
+                                {athlete.released_by ? "Manual Release" : "Auto-Released"}
+                              </Badge>
                             ) : (
                               <Button 
                                 size="sm" 

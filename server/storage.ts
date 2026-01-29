@@ -427,7 +427,7 @@ export interface IStorage {
   createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete>;
   updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
-  releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void>;
+  releaseAthlete(clubId: string, athleteId: string, releasedBy: string | null, releaseType?: 'manual' | 'automated'): Promise<{ contractIds: string[] }>;
   revokeAthleteRelease(clubId: string, athleteId: string): Promise<void>;
 
   // Roster
@@ -1178,14 +1178,15 @@ export class MemStorage implements IStorage {
     }
   }
 
-  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void> {
+  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string | null, releaseType: 'manual' | 'automated' = 'manual'): Promise<{ contractIds: string[] }> {
     const athlete = this.athletes.get(athleteId);
     if (athlete?.club_id === clubId) {
       athlete.is_released = true;
       athlete.released_at = new Date().toISOString();
-      athlete.released_by = releasedBy;
+      athlete.released_by = releasedBy ?? undefined;
       this.athletes.set(athleteId, athlete);
     }
+    return { contractIds: [] };
   }
 
   async revokeAthleteRelease(clubId: string, athleteId: string): Promise<void> {

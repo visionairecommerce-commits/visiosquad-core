@@ -645,7 +645,10 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
   }
 
-  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string): Promise<void> {
+  async releaseAthlete(clubId: string, athleteId: string, releasedBy: string | null, releaseType: 'manual' | 'automated' = 'manual'): Promise<{ contractIds: string[] }> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 1. Update athlete release status
     await db.update(athletesTable)
       .set({ 
         is_released: true, 
@@ -653,6 +656,31 @@ export class DatabaseStorage implements IStorage {
         released_by: releasedBy 
       })
       .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
+    
+    // 2. Get all active contracts for this athlete
+    const activeContracts = await db.select({ id: athleteContractsTable.id })
+      .from(athleteContractsTable)
+      .where(and(
+        eq(athleteContractsTable.athlete_id, athleteId),
+        eq(athleteContractsTable.status, 'active')
+      ));
+    
+    const contractIds = activeContracts.map(c => c.id);
+    
+    // 3. Update all active contracts: set end_date to today and status to expired
+    if (contractIds.length > 0) {
+      await db.update(athleteContractsTable)
+        .set({ 
+          end_date: today,
+          status: 'expired'
+        })
+        .where(and(
+          eq(athleteContractsTable.athlete_id, athleteId),
+          eq(athleteContractsTable.status, 'active')
+        ));
+    }
+    
+    return { contractIds };
   }
 
   async revokeAthleteRelease(clubId: string, athleteId: string): Promise<void> {

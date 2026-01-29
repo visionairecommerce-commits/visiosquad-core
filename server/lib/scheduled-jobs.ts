@@ -82,10 +82,13 @@ async function processExpiredContracts() {
 
     for (const contract of expiredContracts) {
       try {
-        // 1. Update contract status to expired (idempotent - only if still active)
-        const updateResult = await db
+        // 1. Update contract: set end_date to today and status to expired (idempotent)
+        await db
           .update(athleteContractsTable)
-          .set({ status: 'expired' })
+          .set({ 
+            end_date: today,  // Update contract_end_date to current timestamp
+            status: 'expired' 
+          })
           .where(
             and(
               eq(athleteContractsTable.id, contract.contractId),
@@ -105,13 +108,15 @@ async function processExpiredContracts() {
             )
           );
 
-        // 3. If no other active contracts, release the athlete
+        // 3. If no other active contracts, auto-release the athlete
+        // Note: released_by is set to null to indicate automated release (vs manual)
         if (otherActiveContracts.length === 0) {
           await db
             .update(athletesTable)
             .set({
               is_released: true,
               released_at: new Date(),
+              released_by: null,  // null indicates automated release
             })
             .where(
               and(
@@ -120,7 +125,7 @@ async function processExpiredContracts() {
               )
             );
 
-          console.log(`[Auto-Release Job] Released athlete ${contract.athleteId} - no active contracts remaining`);
+          console.log(`[Auto-Release Job] Auto-released athlete ${contract.athleteId} - no active contracts remaining`);
         }
 
         // 4. Attempt to cancel Helcim recurring payment for this contract

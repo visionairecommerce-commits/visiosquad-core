@@ -1518,16 +1518,33 @@ export async function registerRoutes(
   });
 
   // Release athlete (allows parent to transfer to another club)
+  // This performs three critical actions:
+  // 1. Sets is_released to true
+  // 2. Updates contract_end_date to current timestamp
+  // 3. Cancels any Helcim recurring payments
   app.post('/api/athletes/:athleteId/release', requireRole('admin'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const athleteId = req.params.athleteId as string;
       
-      await storage.releaseAthlete(clubId, athleteId, userId);
+      // Release athlete and get affected contract IDs
+      const { contractIds } = await storage.releaseAthlete(clubId, athleteId, userId, 'manual');
+      
+      // Cancel Helcim recurring payments for all affected contracts
+      const { cancelRecurringPayment } = await import('./lib/helcim');
+      let cancelledCount = 0;
+      for (const contractId of contractIds) {
+        const result = await cancelRecurringPayment(athleteId, contractId);
+        if (result.success && result.message !== 'No recurring payment plans found to cancel') {
+          cancelledCount++;
+        }
+      }
       
       res.json({ 
         success: true, 
-        message: 'Athlete has been released and can now transfer to another club'
+        message: 'Athlete has been released and can now transfer to another club',
+        contracts_expired: contractIds.length,
+        payments_cancelled: cancelledCount
       });
     } catch (error) {
       console.error('Error releasing athlete:', error);

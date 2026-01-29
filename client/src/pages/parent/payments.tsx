@@ -172,8 +172,9 @@ export default function ParentPaymentsPage() {
           <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-700 dark:text-blue-300">
-              <strong>Save on fees!</strong> Credit Card payments include a 3% convenience fee. 
-              ACH (bank transfer) payments have <strong>0% fee</strong> - save money by paying directly from your bank account.
+              A <strong>3% convenience fee</strong> is applied to Credit Card payments. 
+              A <strong>$1.00 processing fee</strong> is applied to ACH payments. 
+              These fees ensure the club receives 100% of your tuition.
             </AlertDescription>
           </Alert>
           <div className="flex items-center justify-between p-4 rounded-md border">
@@ -195,7 +196,7 @@ export default function ParentPaymentsPage() {
           </Button>
           <Button variant="outline" className="w-full" data-testid="button-add-bank-account">
             <Landmark className="h-4 w-4 mr-2" />
-            Add Bank Account (0% fee)
+            Add Bank Account ($1.00 fee)
           </Button>
         </CardContent>
       </Card>

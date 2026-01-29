@@ -3233,5 +3233,72 @@ export async function registerRoutes(
     }
   });
 
+  // ============ WEBHOOKS ============
+
+  // Helcim payment webhook - receives payment notifications from Helcim
+  app.post('/api/webhooks/helcim', async (req, res) => {
+    try {
+      console.log('[Helcim Webhook] Received event:', JSON.stringify(req.body, null, 2));
+      
+      const { event, transactionId, status, amount, invoiceNumber, customerCode } = req.body;
+      
+      // Handle different Helcim events
+      if (event === 'payment.completed' || status === 'APPROVED') {
+        // Payment successful - update payment status in database
+        console.log(`[Helcim Webhook] Payment completed: Transaction ${transactionId}, Amount $${amount}, Invoice ${invoiceNumber}`);
+        // TODO: Update payment record in database based on invoiceNumber
+      } else if (event === 'payment.failed' || status === 'DECLINED') {
+        // Payment failed - update payment status
+        console.log(`[Helcim Webhook] Payment failed: Transaction ${transactionId}, Invoice ${invoiceNumber}`);
+        // TODO: Update payment record and potentially notify parent
+      } else if (event === 'recurring.cancelled') {
+        // Recurring payment cancelled
+        console.log(`[Helcim Webhook] Recurring cancelled: Customer ${customerCode}`);
+        // TODO: Update contract status if needed
+      }
+      
+      res.json({ received: true });
+    } catch (error) {
+      console.error('[Helcim Webhook] Error processing webhook:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  });
+
+  // DocuSeal e-signature webhook - receives signing notifications from DocuSeal
+  app.post('/api/webhooks/docuseal', async (req, res) => {
+    try {
+      console.log('[DocuSeal Webhook] Received event:', JSON.stringify(req.body, null, 2));
+      
+      const { event_type, submission_id, submitter, completed_at, metadata } = req.body;
+      
+      // Handle different DocuSeal events
+      if (event_type === 'form.completed' || event_type === 'submission.completed') {
+        // Document fully signed by all parties
+        console.log(`[DocuSeal Webhook] Document completed: Submission ${submission_id}`);
+        
+        // Extract club, athlete, and contract info from metadata if provided
+        const clubId = metadata?.club_id;
+        const athleteId = metadata?.athlete_id;
+        const contractId = metadata?.contract_id;
+        
+        if (clubId && athleteId && contractId) {
+          // TODO: Update contract signature status in database
+          console.log(`[DocuSeal Webhook] Updating signature for athlete ${athleteId}, contract ${contractId}`);
+        }
+      } else if (event_type === 'form.viewed' || event_type === 'submitter.opened') {
+        // Document viewed but not yet signed
+        console.log(`[DocuSeal Webhook] Document viewed: Submission ${submission_id}`);
+      } else if (event_type === 'submitter.completed') {
+        // Individual submitter completed their signature
+        console.log(`[DocuSeal Webhook] Submitter completed: ${submitter?.email || submitter?.name}`);
+      }
+      
+      res.json({ received: true });
+    } catch (error) {
+      console.error('[DocuSeal Webhook] Error processing webhook:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  });
+
   return httpServer;
 }

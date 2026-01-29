@@ -140,14 +140,30 @@ export async function createBankToken(
 }
 
 export const CONVENIENCE_FEES = {
-  credit_card: 0.03,
-  ach: 0,
+  credit_card: 0.03,  // 3% surcharge for credit card
+  ach: 1.00,          // $1.00 flat fee for ACH
   cash: 0,
 } as const;
 
 export function calculateTotalWithFee(amount: number, method: 'credit_card' | 'ach' | 'cash'): number {
-  const fee = CONVENIENCE_FEES[method];
-  return amount * (1 + fee);
+  if (method === 'credit_card') {
+    // 3% surcharge for credit card
+    return amount * 1.03;
+  } else if (method === 'ach') {
+    // $1.00 flat fee for ACH
+    return amount + 1.00;
+  }
+  // No fee for cash
+  return amount;
+}
+
+export function getConvenienceFeeAmount(amount: number, method: 'credit_card' | 'ach' | 'cash'): number {
+  if (method === 'credit_card') {
+    return amount * 0.03;
+  } else if (method === 'ach') {
+    return 1.00;
+  }
+  return 0;
 }
 
 interface RecurringPaymentResponse {

@@ -1002,9 +1002,23 @@ export const generateClubCode = (): string => {
 // Convenience fee calculations
 export const calculateConvenienceFee = (amount: number, method: 'credit_card' | 'ach' | 'cash'): number => {
   if (method === 'credit_card') {
+    // 3% surcharge for credit card
     return amount * 1.03;
+  } else if (method === 'ach') {
+    // $1.00 flat fee for ACH
+    return amount + 1.00;
   }
+  // No fee for cash
   return amount;
+};
+
+export const getConvenienceFeeAmount = (amount: number, method: 'credit_card' | 'ach' | 'cash'): number => {
+  if (method === 'credit_card') {
+    return amount * 0.03;
+  } else if (method === 'ach') {
+    return 1.00;
+  }
+  return 0;
 };
 
 // Platform fee calculations

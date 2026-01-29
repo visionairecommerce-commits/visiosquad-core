@@ -149,3 +149,80 @@ export function calculateTotalWithFee(amount: number, method: 'credit_card' | 'a
   const fee = CONVENIENCE_FEES[method];
   return amount * (1 + fee);
 }
+
+interface RecurringPaymentResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export async function cancelRecurringPayment(
+  athleteId: string,
+  contractId: string
+): Promise<RecurringPaymentResponse> {
+  if (!HELCIM_API_TOKEN || !HELCIM_ACCOUNT_ID) {
+    return {
+      success: false,
+      error: 'Helcim credentials not configured - recurring payment cancellation skipped',
+    };
+  }
+
+  try {
+    // Helcim uses "recurring-plans" endpoint for managing subscriptions
+    // First, we need to find the plan associated with this athlete/contract
+    const searchResponse = await fetch(`${HELCIM_BASE_URL}/recurring-plans?invoiceNumber=${contractId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-token': HELCIM_API_TOKEN,
+        'account-id': HELCIM_ACCOUNT_ID,
+      },
+    });
+
+    if (!searchResponse.ok) {
+      return {
+        success: false,
+        error: 'No recurring payment found for this contract',
+      };
+    }
+
+    const plans = await searchResponse.json();
+    
+    // If no plans found, nothing to cancel
+    if (!plans || !Array.isArray(plans) || plans.length === 0) {
+      return {
+        success: true,
+        message: 'No recurring payment plans found to cancel',
+      };
+    }
+
+    // Cancel each recurring plan found
+    for (const plan of plans) {
+      if (plan.id && plan.status === 'active') {
+        const cancelResponse = await fetch(`${HELCIM_BASE_URL}/recurring-plans/${plan.id}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-token': HELCIM_API_TOKEN,
+            'account-id': HELCIM_ACCOUNT_ID,
+          },
+        });
+
+        if (!cancelResponse.ok) {
+          console.error(`Failed to cancel recurring plan ${plan.id}`);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Recurring payment(s) cancelled successfully',
+    };
+  } catch (error) {
+    console.error('Helcim recurring payment cancellation error:', error);
+    return {
+      success: false,
+      error: 'Failed to cancel recurring payment',
+    };
+  }
+}

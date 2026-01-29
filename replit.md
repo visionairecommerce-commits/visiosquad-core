@@ -42,7 +42,7 @@ Preferred communication style: Simple, everyday language.
 
 - **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
 - **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
-- **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, 0% for ACH). Requires billing card on file for clubs.
+- **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, $1.00 flat fee for ACH). Requires billing card on file for clubs.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
@@ -68,3 +68,10 @@ Preferred communication style: Simple, everyday language.
 - `date-fns`: Date utilities.
 - `zod`: Runtime type validation.
 - `resend`: Email API client.
+
+### Row Level Security (RLS)
+- **Enabled on all 30 tables** for database-level access control
+- **Multi-tenant isolation**: All tables filtered by `club_id`
+- **Role-based policies**: Admins have full club access, coaches have limited write access, parents access own data
+- **SafeSport compliance**: Parents can view channels/messages where their athletes participate
+- **Webhook endpoints**: `/api/webhooks/helcim` (payment notifications), `/api/webhooks/docuseal` (e-signature notifications)

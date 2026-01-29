@@ -216,13 +216,17 @@ export async function registerRoutes(
   app.post('/api/auth/create-club', async (req, res) => {
     try {
       if (!isSupabaseAdminConfigured()) {
+        console.error('[create-club] Supabase Admin not configured');
         return res.status(500).json({ error: 'Authentication service not configured' });
       }
       
+      console.log('[create-club] Received request body:', JSON.stringify(req.body));
       const data = createClubSchema.parse(req.body);
+      console.log('[create-club] Parsed data for email:', data.director_email);
       
       // Create the club first to get the club_id
       const club = await storage.createClubOnly(data.name);
+      console.log('[create-club] Created club:', club.id, club.name);
       
       // Create user via Supabase Auth
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -237,11 +241,12 @@ export async function registerRoutes(
       });
       
       if (authError) {
+        console.error('[create-club] Supabase auth error:', authError);
         // Rollback club creation
         await storage.deleteClub(club.id);
         // Provide clearer error messages for common issues
         let errorMessage = authError.message;
-        if (errorMessage.includes('already') || errorMessage.includes('Database error')) {
+        if (errorMessage.includes('already') || errorMessage.includes('Database error') || errorMessage.includes('duplicate')) {
           errorMessage = 'An account with this email already exists. Please use a different email or login instead.';
         }
         return res.status(400).json({ error: errorMessage });

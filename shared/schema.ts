@@ -275,11 +275,11 @@ export const athletesTable = pgTable("athletes", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Athlete team roster (dual-rostering support)
+// Athlete team roster (dual-rostering support, team_id optional for program-only enrollment)
 export const athleteTeamRostersTable = pgTable("athlete_team_rosters", {
   id: uuid("id").primaryKey().defaultRandom(),
   athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
-  team_id: uuid("team_id").references(() => teamsTable.id).notNull(),
+  team_id: uuid("team_id").references(() => teamsTable.id),
   program_id: uuid("program_id").references(() => programsTable.id).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   contract_signed: boolean("contract_signed").default(false).notNull(),
@@ -577,7 +577,7 @@ export interface Athlete {
 export interface AthleteTeamRoster {
   id: string;
   athlete_id: string;
-  team_id: string;
+  team_id: string | null;
   program_id: string;
   club_id: string;
   contract_signed: boolean;

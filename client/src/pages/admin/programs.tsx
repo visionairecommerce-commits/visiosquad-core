@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ interface Program {
 export default function ProgramsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: programs = [], isLoading } = useQuery<Program[]>({
     queryKey: ['/api/programs'],
@@ -249,13 +251,23 @@ export default function ProgramsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="flex items-center gap-4">
                   <Badge variant="secondary" className="gap-1">
                     <DollarSign className="h-3 w-3" />
                     ${program.monthly_fee}/mo
                   </Badge>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setLocation(`/programs/${program.id}/roster`)}
+                  data-testid={`button-view-roster-${program.id}`}
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  View Roster
+                </Button>
               </CardContent>
             </Card>
           ))}

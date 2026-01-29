@@ -93,7 +93,7 @@ export interface Athlete {
 export interface AthleteTeamRoster {
   id: string;
   athlete_id: string;
-  team_id: string;
+  team_id: string | null;
   program_id: string;
   club_id: string;
   contract_signed: boolean;
@@ -426,7 +426,9 @@ export interface IStorage {
 
   // Roster
   assignAthleteToTeam(clubId: string, athleteId: string, teamId: string, programId: string): Promise<AthleteTeamRoster>;
+  assignAthleteToProgram(clubId: string, athleteId: string, programId: string, contractSigned?: boolean): Promise<AthleteTeamRoster>;
   getTeamRoster(clubId: string, teamId: string): Promise<AthleteTeamRoster[]>;
+  getProgramRoster(clubId: string, programId: string): Promise<AthleteTeamRoster[]>;
   getRoster(clubId: string): Promise<AthleteTeamRoster[]>;
   updateRosterContractStatus(clubId: string, rosterId: string, contractSigned: boolean): Promise<AthleteTeamRoster>;
   removeFromRoster(clubId: string, rosterId: string): Promise<void>;
@@ -1188,9 +1190,41 @@ export class MemStorage implements IStorage {
     return newRoster;
   }
 
+  async assignAthleteToProgram(clubId: string, athleteId: string, programId: string, contractSigned: boolean = false): Promise<AthleteTeamRoster> {
+    // Check if already enrolled in program (without a team)
+    const existing = Array.from(this.roster.values()).find(
+      r => r.club_id === clubId && r.athlete_id === athleteId && r.program_id === programId && r.team_id === null
+    );
+    if (existing) {
+      // Update contract_signed status if needed
+      if (contractSigned && !existing.contract_signed) {
+        existing.contract_signed = true;
+        this.roster.set(existing.id, existing);
+      }
+      return existing;
+    }
+    const newRoster: AthleteTeamRoster = {
+      id: randomUUID(),
+      athlete_id: athleteId,
+      team_id: null,
+      program_id: programId,
+      club_id: clubId,
+      contract_signed: contractSigned,
+      created_at: new Date().toISOString(),
+    };
+    this.roster.set(newRoster.id, newRoster);
+    return newRoster;
+  }
+
   async getTeamRoster(clubId: string, teamId: string): Promise<AthleteTeamRoster[]> {
     return Array.from(this.roster.values()).filter(
       r => r.club_id === clubId && r.team_id === teamId
+    );
+  }
+
+  async getProgramRoster(clubId: string, programId: string): Promise<AthleteTeamRoster[]> {
+    return Array.from(this.roster.values()).filter(
+      r => r.club_id === clubId && r.program_id === programId
     );
   }
 

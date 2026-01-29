@@ -1033,19 +1033,17 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Contract not available' });
       }
       
-      // Verify athlete is eligible for this contract (roster membership check)
-      const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
-      const programIds = rosters.map(r => r.program_id);
-      const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
+      // If contract is team-specific, check if athlete is on that team
+      if (programContract.team_id) {
+        const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
+        const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
+        if (!teamIds.includes(programContract.team_id)) {
+          return res.status(403).json({ error: 'Athlete is not on this team' });
+        }
+      }
       
-      // Contract must match athlete's program
-      if (!programIds.includes(programContract.program_id)) {
-        return res.status(403).json({ error: 'Athlete is not enrolled in this program' });
-      }
-      // If contract is team-specific, athlete must be on that team
-      if (programContract.team_id && !teamIds.includes(programContract.team_id)) {
-        return res.status(403).json({ error: 'Athlete is not on this team' });
-      }
+      // Auto-enroll athlete in program roster with contract_signed = true
+      await storage.assignAthleteToProgram(clubId, athleteId, programContract.program_id, true);
       
       // Cancel any existing active contracts
       const existingContracts = await storage.getAthleteContracts(clubId, athleteId);
@@ -1528,6 +1526,69 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching roster:', error);
       res.status(500).json({ error: 'Failed to fetch roster' });
+    }
+  });
+
+  // Get program roster with athlete details and status
+  app.get('/api/programs/:programId/roster', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const programId = req.params.programId;
+      
+      // Get roster entries for this program
+      const roster = await storage.getProgramRoster(clubId, programId);
+      
+      // Get all athletes, contracts, and program contracts for enrichment
+      const athletes = await storage.getAthletes(clubId);
+      const athleteMap = new Map(athletes.map(a => [a.id, a]));
+      
+      // Get all athlete contracts for payment status
+      const allContracts: { athleteId: string; contract: any }[] = [];
+      for (const entry of roster) {
+        const contracts = await storage.getAthleteContracts(clubId, entry.athlete_id);
+        const activeContract = contracts.find(c => c.status === 'active');
+        if (activeContract) {
+          allContracts.push({ athleteId: entry.athlete_id, contract: activeContract });
+        }
+      }
+      const contractMap = new Map(allContracts.map(c => [c.athleteId, c.contract]));
+      
+      // Enrich roster with athlete details and status
+      const enrichedRoster = roster.map(entry => {
+        const athlete = athleteMap.get(entry.athlete_id);
+        const contract = contractMap.get(entry.athlete_id);
+        
+        // Determine payment status
+        let paymentStatus: 'current' | 'overdue' | 'no_contract' = 'no_contract';
+        if (contract) {
+          if (athlete?.paid_through_date) {
+            const paidThrough = new Date(athlete.paid_through_date);
+            paymentStatus = paidThrough >= new Date() ? 'current' : 'overdue';
+          } else {
+            paymentStatus = 'overdue'; // Has contract but no payment recorded
+          }
+        }
+        
+        return {
+          ...entry,
+          athlete: athlete ? {
+            id: athlete.id,
+            first_name: athlete.first_name,
+            last_name: athlete.last_name,
+            date_of_birth: athlete.date_of_birth,
+            paid_through_date: athlete.paid_through_date,
+            is_locked: athlete.is_locked,
+          } : null,
+          contract_status: entry.contract_signed ? 'signed' : 'pending',
+          payment_status: paymentStatus,
+          payment_plan: contract?.payment_plan || null,
+        };
+      });
+      
+      res.json(enrichedRoster);
+    } catch (error) {
+      console.error('Error fetching program roster:', error);
+      res.status(500).json({ error: 'Failed to fetch program roster' });
     }
   });
 

@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from './lib/db';
 import { supabase } from './lib/supabase';
 import {
@@ -656,9 +656,47 @@ export class DatabaseStorage implements IStorage {
     return this.mapRoster(roster);
   }
 
+  async assignAthleteToProgram(clubId: string, athleteId: string, programId: string, contractSigned: boolean = false): Promise<AthleteTeamRoster> {
+    // Check if already enrolled in program (without a team)
+    const existing = await db.select().from(athleteTeamRostersTable)
+      .where(and(
+        eq(athleteTeamRostersTable.club_id, clubId),
+        eq(athleteTeamRostersTable.athlete_id, athleteId),
+        eq(athleteTeamRostersTable.program_id, programId),
+        isNull(athleteTeamRostersTable.team_id)
+      ));
+    
+    if (existing.length > 0) {
+      // Update contract_signed status if needed
+      if (contractSigned && !existing[0].contract_signed) {
+        const [updated] = await db.update(athleteTeamRostersTable)
+          .set({ contract_signed: true })
+          .where(eq(athleteTeamRostersTable.id, existing[0].id))
+          .returning();
+        return this.mapRoster(updated);
+      }
+      return this.mapRoster(existing[0]);
+    }
+    
+    const [roster] = await db.insert(athleteTeamRostersTable).values({
+      club_id: clubId,
+      athlete_id: athleteId,
+      team_id: null,
+      program_id: programId,
+      contract_signed: contractSigned,
+    }).returning();
+    return this.mapRoster(roster);
+  }
+
   async getTeamRoster(clubId: string, teamId: string): Promise<AthleteTeamRoster[]> {
     const roster = await db.select().from(athleteTeamRostersTable)
       .where(and(eq(athleteTeamRostersTable.club_id, clubId), eq(athleteTeamRostersTable.team_id, teamId)));
+    return roster.map(r => this.mapRoster(r));
+  }
+
+  async getProgramRoster(clubId: string, programId: string): Promise<AthleteTeamRoster[]> {
+    const roster = await db.select().from(athleteTeamRostersTable)
+      .where(and(eq(athleteTeamRostersTable.club_id, clubId), eq(athleteTeamRostersTable.program_id, programId)));
     return roster.map(r => this.mapRoster(r));
   }
 

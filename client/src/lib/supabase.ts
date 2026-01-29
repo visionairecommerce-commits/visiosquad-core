@@ -1,13 +1,49 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+let supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+let supabaseClient: SupabaseClient | null = null;
+let configLoaded = false;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials not found. Some features may not work.');
+async function loadConfigIfNeeded(): Promise<void> {
+  if (configLoaded) return;
+  if (supabaseUrl && supabaseAnonKey) {
+    configLoaded = true;
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/config');
+    if (response.ok) {
+      const config = await response.json();
+      supabaseUrl = config.supabaseUrl || supabaseUrl;
+      supabaseAnonKey = config.supabaseAnonKey || supabaseAnonKey;
+    }
+  } catch (error) {
+    console.error('Failed to fetch config:', error);
+  }
+  configLoaded = true;
 }
 
-export const supabase = createClient(
-  supabaseUrl || '',
-  supabaseAnonKey || ''
-);
+function getClient(): SupabaseClient {
+  if (!supabaseClient) {
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.warn('Supabase credentials not available. Auth features may not work.');
+    }
+    supabaseClient = createClient(supabaseUrl || 'https://placeholder.supabase.co', supabaseAnonKey || 'placeholder');
+  }
+  return supabaseClient;
+}
+
+export async function initSupabase(): Promise<void> {
+  await loadConfigIfNeeded();
+  if (supabaseUrl && supabaseAnonKey) {
+    supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+  }
+}
+
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    return getClient()[prop as keyof SupabaseClient];
+  }
+});

@@ -476,6 +476,15 @@ export async function registerRoutes(
     }
   });
 
+  // Public config endpoint - provides Supabase configuration at runtime
+  // This allows the frontend to get config even if VITE_ env vars aren't bundled at build time
+  app.get('/api/config', (req, res) => {
+    res.json({
+      supabaseUrl: process.env.SUPABASE_URL || '',
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
+    });
+  });
+
   // Get user's document signatures
   app.get('/api/documents/signatures', async (req, res) => {
     try {

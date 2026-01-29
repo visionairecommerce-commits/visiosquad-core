@@ -25,52 +25,64 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { cashPaymentSchema, type CashPayment, PLATFORM_FEES } from '@shared/schema';
-import { DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, Banknote } from 'lucide-react';
+import { DollarSign, CreditCard, AlertCircle, CheckCircle, Clock, Banknote, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format, addMonths } from 'date-fns';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface Payment {
   id: string;
-  athlete_name: string;
-  family_name: string;
+  athlete_id: string;
+  description: string;
   amount: number;
-  payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash';
-  status: 'completed' | 'pending' | 'failed';
-  date: string;
+  status: string;
+  created_at: string;
+  payment_method: string;
 }
 
 interface Athlete {
   id: string;
-  name: string;
-  family_name: string;
+  first_name: string;
+  last_name: string;
   paid_through_date: string | null;
 }
 
-const athletes: Athlete[] = [
-  { id: '1', name: 'Emma Wilson', family_name: 'Wilson', paid_through_date: '2026-02-15' },
-  { id: '2', name: 'Jake Thompson', family_name: 'Thompson', paid_through_date: '2026-01-10' },
-  { id: '3', name: 'Sophia Garcia', family_name: 'Garcia', paid_through_date: null },
-  { id: '4', name: 'Liam Martinez', family_name: 'Martinez', paid_through_date: '2026-01-05' },
-];
-
-const initialPayments: Payment[] = [
-  { id: '1', athlete_name: 'Emma Wilson', family_name: 'Wilson', amount: 150, payment_type: 'monthly', status: 'completed', date: '2026-01-20' },
-  { id: '2', athlete_name: 'Jake Thompson', family_name: 'Thompson', amount: 154.50, payment_type: 'monthly', status: 'completed', date: '2026-01-18' },
-  { id: '3', athlete_name: 'Sophia Garcia', family_name: 'Garcia', amount: 50, payment_type: 'clinic', status: 'pending', date: '2026-01-22' },
-  { id: '4', athlete_name: 'Liam Martinez', family_name: 'Martinez', amount: 150, payment_type: 'monthly', status: 'failed', date: '2026-01-15' },
-];
-
-const stats = [
-  { title: 'Monthly Revenue', value: '$12,450', icon: DollarSign, change: '+8%' },
-  { title: 'Platform Fees', value: '$127', icon: CreditCard, description: 'This month' },
-  { title: 'Pending', value: '$450', icon: Clock, description: '3 payments' },
-  { title: 'Failed', value: '$150', icon: AlertCircle, description: '1 payment' },
-];
-
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>(initialPayments);
   const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
+
+  const { data: payments = [], isLoading: paymentsLoading } = useQuery<Payment[]>({
+    queryKey: ['/api/payments'],
+  });
+
+  const { data: athletes = [], isLoading: athletesLoading } = useQuery<Athlete[]>({
+    queryKey: ['/api/athletes'],
+  });
+
+  const cashPaymentMutation = useMutation({
+    mutationFn: async (data: CashPayment) => {
+      const response = await apiRequest('POST', '/api/payments/cash', data);
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      const athlete = athletes.find(a => a.id === variables.athlete_id);
+      queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+      setDialogOpen(false);
+      form.reset();
+      toast({
+        title: 'Cash Payment Recorded',
+        description: athlete ? `${athlete.first_name} ${athlete.last_name} is now paid through ${format(addMonths(new Date(), variables.months), 'MMM yyyy')}.` : 'Payment recorded successfully.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Failed to record payment',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const form = useForm<CashPayment>({
     resolver: zodResolver(cashPaymentSchema),
@@ -81,29 +93,7 @@ export default function PaymentsPage() {
   });
 
   const onSubmit = (data: CashPayment) => {
-    const athlete = athletes.find(a => a.id === data.athlete_id);
-    if (!athlete) return;
-
-    const platformFee = PLATFORM_FEES.monthly * data.months;
-
-    const newPayment: Payment = {
-      id: String(payments.length + 1),
-      athlete_name: athlete.name,
-      family_name: athlete.family_name,
-      amount: 150 * data.months,
-      payment_type: 'cash',
-      status: 'completed',
-      date: format(new Date(), 'yyyy-MM-dd'),
-    };
-
-    setPayments([newPayment, ...payments]);
-    setDialogOpen(false);
-    form.reset();
-
-    toast({
-      title: 'Cash Payment Recorded',
-      description: `${athlete.name} is now paid through ${format(addMonths(new Date(), data.months), 'MMM yyyy')}. Platform fee of $${platformFee.toFixed(2)} recorded.`,
-    });
+    cashPaymentMutation.mutate(data);
   };
 
   const getStatusBadge = (status: string) => {
@@ -115,7 +105,7 @@ export default function PaymentsPage() {
       case 'failed':
         return <Badge variant="destructive" className="gap-1"><AlertCircle className="h-3 w-3" />Failed</Badge>;
       default:
-        return null;
+        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
@@ -128,13 +118,24 @@ export default function PaymentsPage() {
     }
   };
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
+  };
+
+  const getAthleteName = (athleteId: string) => {
+    const athlete = athletes.find(a => a.id === athleteId);
+    return athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Unknown';
   };
 
   const completedPayments = payments.filter(p => p.status === 'completed');
   const pendingPayments = payments.filter(p => p.status === 'pending');
   const failedPayments = payments.filter(p => p.status === 'failed');
+
+  const totalRevenue = completedPayments.reduce((sum, p) => sum + p.amount, 0);
+  const pendingAmount = pendingPayments.reduce((sum, p) => sum + p.amount, 0);
+  const failedAmount = failedPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  const isLoading = paymentsLoading || athletesLoading;
 
   return (
     <div className="space-y-6">
@@ -145,7 +146,7 @@ export default function PaymentsPage() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-mark-cash-paid">
+            <Button data-testid="button-mark-cash-paid" disabled={athletes.length === 0}>
               <Banknote className="h-4 w-4 mr-2" />
               Mark as Paid - Cash
             </Button>
@@ -174,7 +175,7 @@ export default function PaymentsPage() {
                         <SelectContent>
                           {athletes.map((athlete) => (
                             <SelectItem key={athlete.id} value={athlete.id}>
-                              {athlete.name}
+                              {athlete.first_name} {athlete.last_name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -216,7 +217,8 @@ export default function PaymentsPage() {
                   <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button type="submit" data-testid="button-submit-cash">
+                  <Button type="submit" disabled={cashPaymentMutation.isPending} data-testid="button-submit-cash">
+                    {cashPaymentMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                     Record Payment
                   </Button>
                 </DialogFooter>
@@ -227,25 +229,57 @@ export default function PaymentsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title}>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              {stat.change && (
-                <p className="text-xs text-accent">{stat.change} from last month</p>
-              )}
-              {stat.description && (
-                <p className="text-xs text-muted-foreground">{stat.description}</p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Revenue
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${totalRevenue.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">All completed payments</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Athletes
+            </CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{athletes.length}</div>
+            <p className="text-xs text-muted-foreground">Registered athletes</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pending
+            </CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${pendingAmount.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">{pendingPayments.length} payment{pendingPayments.length !== 1 ? 's' : ''}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Failed
+            </CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${failedAmount.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">{failedPayments.length} payment{failedPayments.length !== 1 ? 's' : ''}</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
@@ -275,32 +309,49 @@ export default function PaymentsPage() {
               <CardDescription>Complete payment history</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {payments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {getInitials(payment.athlete_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium flex items-center gap-2">
-                          {payment.athlete_name}
-                          {getTypeIcon(payment.payment_type)}
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : payments.length === 0 ? (
+                <div className="text-center py-8">
+                  <DollarSign className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">No payments recorded yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Payments will appear here once transactions are processed
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {payments.map((payment) => {
+                    const athlete = athletes.find(a => a.id === payment.athlete_id);
+                    return (
+                      <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {athlete ? getInitials(athlete.first_name, athlete.last_name) : '??'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium flex items-center gap-2">
+                              {getAthleteName(payment.athlete_id)}
+                              {getTypeIcon(payment.payment_method)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {payment.description} • {format(new Date(payment.created_at), 'MMM d, yyyy')}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          {payment.family_name} Family • {format(new Date(payment.date), 'MMM d, yyyy')}
+                        <div className="flex items-center gap-4">
+                          <span className="font-medium">${payment.amount.toFixed(2)}</span>
+                          {getStatusBadge(payment.status)}
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="font-medium">${payment.amount.toFixed(2)}</span>
-                      {getStatusBadge(payment.status)}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -312,31 +363,38 @@ export default function PaymentsPage() {
               <CardDescription>Payments awaiting confirmation</CardDescription>
             </CardHeader>
             <CardContent>
-              {pendingPayments.length === 0 ? (
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : pendingPayments.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No pending payments</p>
               ) : (
                 <div className="space-y-3">
-                  {pendingPayments.map((payment) => (
-                    <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                            {getInitials(payment.athlete_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{payment.athlete_name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(new Date(payment.date), 'MMM d, yyyy')}
+                  {pendingPayments.map((payment) => {
+                    const athlete = athletes.find(a => a.id === payment.athlete_id);
+                    return (
+                      <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {athlete ? getInitials(athlete.first_name, athlete.last_name) : '??'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{getAthleteName(payment.athlete_id)}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {format(new Date(payment.created_at), 'MMM d, yyyy')}
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-medium">${payment.amount.toFixed(2)}</span>
+                          {getStatusBadge(payment.status)}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium">${payment.amount.toFixed(2)}</span>
-                        {getStatusBadge(payment.status)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -350,34 +408,38 @@ export default function PaymentsPage() {
               <CardDescription>Payments that require attention</CardDescription>
             </CardHeader>
             <CardContent>
-              {failedPayments.length === 0 ? (
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : failedPayments.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No failed payments</p>
               ) : (
                 <div className="space-y-3">
-                  {failedPayments.map((payment) => (
-                    <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                            {getInitials(payment.athlete_name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{payment.athlete_name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(new Date(payment.date), 'MMM d, yyyy')}
+                  {failedPayments.map((payment) => {
+                    const athlete = athletes.find(a => a.id === payment.athlete_id);
+                    return (
+                      <div key={payment.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                              {athlete ? getInitials(athlete.first_name, athlete.last_name) : '??'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{getAthleteName(payment.athlete_id)}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {format(new Date(payment.created_at), 'MMM d, yyyy')}
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-medium">${payment.amount.toFixed(2)}</span>
+                          {getStatusBadge(payment.status)}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="font-medium">${payment.amount.toFixed(2)}</span>
-                        {getStatusBadge(payment.status)}
-                        <Button size="sm" variant="outline" data-testid={`button-retry-${payment.id}`}>
-                          Retry
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

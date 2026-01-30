@@ -1607,7 +1607,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteChannel(clubId: string, channelId: string): Promise<void> {
     // First verify the channel belongs to this club (multi-tenant safety)
-    const { data: channel, error: verifyError } = await supabaseAdmin
+    const { data: channel, error: verifyError } = await supabase
       .from('chat_channels')
       .select('id')
       .eq('id', channelId)
@@ -1619,7 +1619,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Delete messages first (due to foreign key constraint)
-    const { error: messagesError } = await supabaseAdmin
+    const { error: messagesError } = await supabase
       .from('messages')
       .delete()
       .eq('channel_id', channelId);
@@ -1630,7 +1630,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Delete participants
-    const { error: participantsError } = await supabaseAdmin
+    const { error: participantsError } = await supabase
       .from('channel_participants')
       .delete()
       .eq('channel_id', channelId);
@@ -1641,7 +1641,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Delete the channel itself
-    const { error: channelError } = await supabaseAdmin
+    const { error: channelError } = await supabase
       .from('chat_channels')
       .delete()
       .eq('id', channelId)

@@ -3248,6 +3248,8 @@ export async function registerRoutes(
       const { clubId, userId, userRole } = getAuthContext(req);
       const { channel_type, participant_ids, name, team_id, program_id, event_id, audience_type } = req.body;
       
+      console.log('[Chat Channel Create] Request:', { audience_type, channel_type, event_id, team_id, program_id });
+      
       let resolvedParticipantIds: string[] = participant_ids || [];
       
       // Resolve participants based on audience type (Telegram-style targeting)
@@ -3265,6 +3267,8 @@ export async function registerRoutes(
         resolvedParticipantIds = await storage.getEventAudienceUserIds(clubId, event_id);
       }
       // For 'individual' audience_type, use participant_ids as provided
+      
+      console.log('[Chat Channel Create] Resolved participants:', resolvedParticipantIds.length, 'users');
       
       // Validate participants belong to the same club
       const validation = await storage.validateChatParticipants(clubId, resolvedParticipantIds, userId);

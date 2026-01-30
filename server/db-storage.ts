@@ -1651,6 +1651,11 @@ export class DatabaseStorage implements IStorage {
     participantIds: string[],
     initiatorId: string
   ): Promise<{ valid: boolean; error?: string; autoAddParentIds?: string[] }> {
+    // Handle empty participant list (valid for group chats where creator is only member initially)
+    if (participantIds.length === 0) {
+      return { valid: true, autoAddParentIds: [] };
+    }
+    
     // Get all participant profiles
     const { data: profiles, error } = await supabase
       .from('profiles')

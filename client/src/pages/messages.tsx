@@ -36,6 +36,7 @@ import {
   CalendarDays
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 interface Team {
   id: string;
@@ -91,6 +92,7 @@ interface User {
 
 export default function MessagesPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedChannel, setSelectedChannel] = useState<ChatChannel | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
@@ -208,6 +210,13 @@ export default function MessagesPage() {
       setSelectedProgram('');
       setSelectedEvent('');
       setChatName('');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to create conversation',
+        description: error.message || 'Please try again or check that the event has registered athletes.',
+        variant: 'destructive',
+      });
     },
   });
 

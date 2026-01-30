@@ -7,7 +7,12 @@ import { sendSessionCancellationEmail, sendContractSignedNotification, sendPayme
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
-import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
+import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO, formatDistanceToNow } from "date-fns";
+
+// Helper to format time ago
+function formatTimeAgo(date: Date): string {
+  return formatDistanceToNow(date, { addSuffix: true });
+}
 
 // Role types for authorization
 type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
@@ -892,6 +897,188 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching upcoming sessions:', error);
       res.status(500).json({ error: 'Failed to fetch upcoming sessions' });
+    }
+  });
+
+  app.get('/api/dashboard/pending-payments', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const athletes = await storage.getAthletes(clubId);
+      const contracts = await storage.getAthleteContracts(clubId);
+      const programContracts = await storage.getProgramContracts(clubId);
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Find athletes with active contracts who are past due
+      const pendingPayments: Array<{
+        athleteId: string;
+        athleteName: string;
+        amount: string;
+        daysOverdue: number;
+        parentName?: string;
+      }> = [];
+      
+      for (const athlete of athletes) {
+        // Check if athlete has paid_through_date that is past due
+        if (athlete.paid_through_date) {
+          const paidThrough = new Date(athlete.paid_through_date);
+          if (paidThrough < today) {
+            // Find the active contract and its price
+            const activeContract = contracts.find(c => 
+              c.athlete_id === athlete.id && c.status === 'active'
+            );
+            
+            if (activeContract) {
+              const programContract = programContracts.find(c => c.id === activeContract.program_contract_id);
+              const monthlyPrice = activeContract.custom_price || programContract?.monthly_price || '0';
+              const daysOverdue = Math.floor((today.getTime() - paidThrough.getTime()) / (1000 * 60 * 60 * 24));
+              
+              pendingPayments.push({
+                athleteId: athlete.id,
+                athleteName: `${athlete.first_name} ${athlete.last_name}`,
+                amount: monthlyPrice,
+                daysOverdue,
+              });
+            }
+          }
+        }
+      }
+      
+      // Sort by days overdue descending, limit to 5
+      pendingPayments.sort((a, b) => b.daysOverdue - a.daysOverdue);
+      res.json(pendingPayments.slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching pending payments:', error);
+      res.status(500).json({ error: 'Failed to fetch pending payments' });
+    }
+  });
+
+  app.get('/api/dashboard/recent-activity', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      
+      const activities: Array<{
+        type: string;
+        message: string;
+        time: string;
+        timestamp: Date;
+      }> = [];
+      
+      // Get recent athletes (new registrations)
+      const athletes = await storage.getAthletes(clubId);
+      const recentAthletes = athletes
+        .filter(a => a.created_at)
+        .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+        .slice(0, 5);
+      
+      for (const athlete of recentAthletes) {
+        activities.push({
+          type: 'registration',
+          message: `${athlete.first_name} ${athlete.last_name} was registered`,
+          time: formatTimeAgo(new Date(athlete.created_at!)),
+          timestamp: new Date(athlete.created_at!),
+        });
+      }
+      
+      // Get recent payments
+      const payments = await storage.getPayments(clubId);
+      const recentPayments = payments
+        .filter(p => p.status === 'completed' && p.created_at)
+        .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+        .slice(0, 5);
+      
+      for (const payment of recentPayments) {
+        const athlete = athletes.find(a => a.id === payment.athlete_id);
+        const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Unknown';
+        activities.push({
+          type: 'payment',
+          message: `Payment of $${parseFloat(payment.amount).toFixed(2)} received for ${athleteName}`,
+          time: formatTimeAgo(new Date(payment.created_at!)),
+          timestamp: new Date(payment.created_at!),
+        });
+      }
+      
+      // Get recent sessions created
+      const sessions = await storage.getSessions(clubId);
+      const recentSessions = sessions
+        .filter(s => s.created_at)
+        .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+        .slice(0, 5);
+      
+      const teams = await storage.getTeams(clubId);
+      for (const session of recentSessions) {
+        const team = teams.find(t => t.id === session.team_id);
+        const sessionName = session.title || team?.name || 'Session';
+        activities.push({
+          type: 'session',
+          message: `${sessionName} was scheduled`,
+          time: formatTimeAgo(new Date(session.created_at!)),
+          timestamp: new Date(session.created_at!),
+        });
+      }
+      
+      // Get recent events created
+      const events = await storage.getEvents(clubId);
+      const recentEvents = events
+        .filter(e => e.created_at)
+        .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())
+        .slice(0, 5);
+      
+      for (const event of recentEvents) {
+        activities.push({
+          type: 'event',
+          message: `${event.title} (${event.event_type}) was created`,
+          time: formatTimeAgo(new Date(event.created_at!)),
+          timestamp: new Date(event.created_at!),
+        });
+      }
+      
+      // Sort all activities by timestamp descending and take top 5
+      activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      res.json(activities.slice(0, 5).map(({ type, message, time }) => ({ type, message, time })));
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+      res.status(500).json({ error: 'Failed to fetch recent activity' });
+    }
+  });
+
+  app.get('/api/dashboard/revenue', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const payments = await storage.getPayments(clubId);
+      
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+      
+      // Calculate this month's revenue
+      const thisMonthRevenue = payments
+        .filter(p => p.status === 'completed' && new Date(p.created_at!) >= startOfMonth)
+        .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+      
+      // Calculate last month's revenue for comparison
+      const lastMonthRevenue = payments
+        .filter(p => {
+          const date = new Date(p.created_at!);
+          return p.status === 'completed' && date >= startOfLastMonth && date <= endOfLastMonth;
+        })
+        .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+      
+      // Calculate change percentage
+      let changePercent = 0;
+      if (lastMonthRevenue > 0) {
+        changePercent = Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100);
+      }
+      
+      res.json({
+        monthlyRevenue: thisMonthRevenue.toFixed(2),
+        changePercent,
+      });
+    } catch (error) {
+      console.error('Error fetching revenue:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue' });
     }
   });
 

@@ -20,12 +20,20 @@ import {
   CreditCard,
   Loader2,
   MapPin,
+  AlertCircle,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 
 interface DashboardStats {
   totalAthletes: number;
   activePrograms: number;
   thisWeekSessions: number;
+}
+
+interface RevenueStats {
+  monthlyRevenue: string;
+  changePercent: number;
 }
 
 interface UpcomingSession {
@@ -35,6 +43,19 @@ interface UpcomingSession {
   endTime: string;
   location: string;
   teamName?: string;
+}
+
+interface PendingPayment {
+  athleteId: string;
+  athleteName: string;
+  amount: string;
+  daysOverdue: number;
+}
+
+interface RecentActivity {
+  type: string;
+  message: string;
+  time: string;
 }
 
 interface BillingStatus {
@@ -58,8 +79,23 @@ export default function AdminDashboard() {
     enabled: !!club?.id,
   });
 
+  const { data: revenue, isLoading: revenueLoading } = useQuery<RevenueStats>({
+    queryKey: ['/api/dashboard/revenue'],
+    enabled: !!club?.id,
+  });
+
   const { data: upcomingSessions = [], isLoading: sessionsLoading } = useQuery<UpcomingSession[]>({
     queryKey: ['/api/dashboard/upcoming-sessions'],
+    enabled: !!club?.id,
+  });
+
+  const { data: pendingPayments = [], isLoading: paymentsLoading } = useQuery<PendingPayment[]>({
+    queryKey: ['/api/dashboard/pending-payments'],
+    enabled: !!club?.id,
+  });
+
+  const { data: recentActivity = [], isLoading: activityLoading } = useQuery<RecentActivity[]>({
+    queryKey: ['/api/dashboard/recent-activity'],
     enabled: !!club?.id,
   });
 
@@ -196,7 +232,7 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -247,6 +283,36 @@ export default function AdminDashboard() {
               <div className="text-2xl font-bold" data-testid="stat-sessions-week">
                 {stats?.thisWeekSessions ?? 0}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Monthly Revenue
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {revenueLoading ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold" data-testid="stat-monthly-revenue">
+                  ${revenue?.monthlyRevenue ?? '0.00'}
+                </div>
+                {revenue && revenue.changePercent !== 0 && (
+                  <div className={`flex items-center text-xs ${revenue.changePercent > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {revenue.changePercent > 0 ? (
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                    )}
+                    {revenue.changePercent > 0 ? '+' : ''}{revenue.changePercent}% from last month
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -307,40 +373,88 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
-              <CardDescription>Common tasks</CardDescription>
+              <CardTitle className="text-lg">Pending Payments</CardTitle>
+              <CardDescription>Overdue balances</CardDescription>
             </div>
+            <Link href="/payments">
+              <Button variant="ghost" size="sm" data-testid="link-view-all-payments">
+                View All
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-2">
-              <Link href="/schedule">
-                <Button variant="outline" className="w-full justify-start" data-testid="action-schedule-session">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Schedule a Session
-                </Button>
-              </Link>
-              <Link href="/athletes">
-                <Button variant="outline" className="w-full justify-start" data-testid="action-view-athletes">
-                  <Users className="h-4 w-4 mr-2" />
-                  View All Athletes
-                </Button>
-              </Link>
-              <Link href="/programs">
-                <Button variant="outline" className="w-full justify-start" data-testid="action-manage-programs">
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  Manage Programs
-                </Button>
-              </Link>
-              <Link href="/payments">
-                <Button variant="outline" className="w-full justify-start" data-testid="action-view-payments">
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  View Payments
-                </Button>
-              </Link>
-            </div>
+            {paymentsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : pendingPayments.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No pending payments
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {pendingPayments.map((payment) => (
+                  <div
+                    key={payment.athleteId}
+                    className="flex items-center justify-between p-3 rounded-md bg-muted/50"
+                    data-testid={`pending-payment-${payment.athleteId}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <div>
+                        <div className="font-medium">{payment.athleteName}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {payment.daysOverdue} day{payment.daysOverdue !== 1 ? 's' : ''} overdue
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-medium">
+                      ${parseFloat(payment.amount).toFixed(2)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Recent Activity</CardTitle>
+          <CardDescription>Latest updates from your club</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activityLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : recentActivity.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No recent activity
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map((activity, i) => (
+                <div key={i} className="flex items-center gap-4 py-2" data-testid={`activity-${i}`}>
+                  <div className={`h-2 w-2 rounded-full ${
+                    activity.type === 'payment' ? 'bg-green-500' :
+                    activity.type === 'registration' ? 'bg-blue-500' :
+                    activity.type === 'event' ? 'bg-purple-500' :
+                    activity.type === 'session' ? 'bg-orange-500' :
+                    'bg-primary'
+                  }`} />
+                  <div className="flex-1">
+                    <p className="text-sm">{activity.message}</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{activity.time}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

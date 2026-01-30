@@ -32,7 +32,7 @@ import {
   MessageSquare,
   Megaphone,
 } from 'lucide-react';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747335793.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747467171.png';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },

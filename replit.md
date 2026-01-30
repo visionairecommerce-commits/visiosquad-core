@@ -1,8 +1,8 @@
-# VisioSport - Sports Management Platform
+# VisioSquad - Sports Management Platform
 
 ## Overview
 
-VisioSport is a multi-tenant SaaS platform designed for comprehensive management of athletic programs. It streamlines team management, scheduling, payment processing, and athlete registrations for Club Admins, Coaches, and Parents. The platform aims to centralize sports club operations, offering a robust solution for diverse athletic organizations.
+VisioSquad is a multi-tenant SaaS platform designed for comprehensive management of athletic programs. It streamlines team management, scheduling, payment processing, and athlete registrations for Club Admins, Coaches, and Parents. The platform aims to centralize sports club operations, offering a robust solution for diverse athletic organizations.
 
 ## User Preferences
 

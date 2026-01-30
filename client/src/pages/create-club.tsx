@@ -55,7 +55,7 @@ export default function CreateClubPage() {
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Trophy className="h-10 w-10 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">VisioSport</h1>
+            <h1 className="text-3xl font-bold tracking-tight">VisioSquad</h1>
           </div>
         </div>
 
@@ -73,7 +73,7 @@ export default function CreateClubPage() {
             </Button>
             <CardTitle>Create Your Club</CardTitle>
             <CardDescription>
-              Set up your sports organization on VisioSport
+              Set up your sports organization on VisioSquad
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

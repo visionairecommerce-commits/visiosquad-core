@@ -1,4 +1,4 @@
-# VisioSport Design Guidelines
+# VisioSquad Design Guidelines
 
 ## Design Approach
 **System-Based with Modern SaaS Enhancement**: Material Design foundation enhanced with patterns from Linear (data clarity), Notion (information hierarchy), and Stripe (professional restraint). Focus on data density without overwhelming users.

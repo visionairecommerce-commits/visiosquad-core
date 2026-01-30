@@ -101,7 +101,7 @@ export function AppSidebar() {
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
           <Trophy className="h-6 w-6 text-primary" />
           <div>
-            <div className="font-semibold text-sm">VisioSport</div>
+            <div className="font-semibold text-sm">VisioSquad</div>
             <div className="text-xs text-muted-foreground">{club?.name || 'Sports Club'}</div>
           </div>
         </Link>

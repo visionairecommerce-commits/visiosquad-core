@@ -31,7 +31,7 @@ export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
 
   try {
     const { data, error } = await resend.emails.send({
-      from: options.from || 'VisioSport <notifications@visiosport.com>',
+      from: options.from || 'VisioSquad <notifications@visiosquad.com>',
       to: Array.isArray(options.to) ? options.to : [options.to],
       subject: options.subject,
       html: options.html,
@@ -67,7 +67,7 @@ export async function sendSessionCancellationEmail(
       <p>We apologize for any inconvenience this may cause.</p>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #6b7280; font-size: 12px;">
-        This is an automated message from VisioSport. Please do not reply to this email.
+        This is an automated message from VisioSquad. Please do not reply to this email.
       </p>
     </div>
   `;
@@ -98,7 +98,7 @@ export async function sendContractSignedNotification(
       </div>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #6b7280; font-size: 12px;">
-        This is an automated message from VisioSport.
+        This is an automated message from VisioSquad.
       </p>
     </div>
   `;
@@ -128,7 +128,7 @@ export async function sendPaymentConfirmation(
       </div>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #6b7280; font-size: 12px;">
-        This is an automated message from VisioSport.
+        This is an automated message from VisioSquad.
       </p>
     </div>
   `;

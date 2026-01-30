@@ -80,7 +80,7 @@ export default function AdminDashboard() {
   };
 
   const openSmsInvite = () => {
-    const message = `Join ${club?.name} on VisioSport! Use code ${club?.join_code} or click here to sign the waiver and register: ${getInviteLink()}`;
+    const message = `Join ${club?.name} on VisioSquad! Use code ${club?.join_code} or click here to sign the waiver and register: ${getInviteLink()}`;
     const smsUrl = `sms:?body=${encodeURIComponent(message)}`;
     window.open(smsUrl, '_blank');
   };

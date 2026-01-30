@@ -48,7 +48,7 @@ export default function OnboardingPage() {
   };
 
   const openSmsInvite = () => {
-    const message = `Join ${club?.name} on VisioSport! Use code ${club?.join_code} or click here to sign the waiver and register: ${getInviteLink()}`;
+    const message = `Join ${club?.name} on VisioSquad! Use code ${club?.join_code} or click here to sign the waiver and register: ${getInviteLink()}`;
     const smsUrl = `sms:?body=${encodeURIComponent(message)}`;
     window.open(smsUrl, '_blank');
   };
@@ -72,7 +72,7 @@ export default function OnboardingPage() {
       <header className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           <Trophy className="h-6 w-6 text-primary" />
-          <span className="font-semibold">VisioSport</span>
+          <span className="font-semibold">VisioSquad</span>
         </div>
         <Button
           variant="ghost"

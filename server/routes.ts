@@ -823,6 +823,78 @@ export async function registerRoutes(
     }
   });
 
+  // ============ DASHBOARD ============
+  app.get('/api/dashboard/stats', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      
+      // Get real data counts
+      const athletes = await storage.getAthletes(clubId);
+      const programs = await storage.getPrograms(clubId);
+      const sessions = await storage.getSessions(clubId);
+      
+      // Calculate sessions this week
+      const now = new Date();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 7);
+      
+      const thisWeekSessions = sessions.filter(s => {
+        const sessionDate = new Date(s.start_time);
+        return sessionDate >= startOfWeek && sessionDate < endOfWeek && s.status !== 'cancelled';
+      });
+      
+      res.json({
+        totalAthletes: athletes.length,
+        activePrograms: programs.filter(p => p.is_active).length,
+        thisWeekSessions: thisWeekSessions.length,
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+    }
+  });
+
+  app.get('/api/dashboard/upcoming-sessions', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const sessions = await storage.getSessions(clubId);
+      const teams = await storage.getTeams(clubId);
+      const facilities = await storage.getFacilities(clubId);
+      
+      const now = new Date();
+      const nextWeek = new Date(now);
+      nextWeek.setDate(now.getDate() + 7);
+      
+      const upcomingSessions = sessions
+        .filter(s => {
+          const sessionDate = new Date(s.start_time);
+          return sessionDate >= now && sessionDate <= nextWeek && s.status !== 'cancelled';
+        })
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+        .slice(0, 5)
+        .map(s => {
+          const team = teams.find(t => t.id === s.team_id);
+          const facility = facilities.find(f => f.id === s.facility_id);
+          return {
+            id: s.id,
+            title: s.title || team?.name || 'Session',
+            startTime: s.start_time,
+            endTime: s.end_time,
+            location: facility?.name || 'TBD',
+            teamName: team?.name,
+          };
+        });
+      
+      res.json(upcomingSessions);
+    } catch (error) {
+      console.error('Error fetching upcoming sessions:', error);
+      res.status(500).json({ error: 'Failed to fetch upcoming sessions' });
+    }
+  });
+
   // ============ PROGRAMS ============
   app.get('/api/programs', requireAuth, async (req, res) => {
     try {

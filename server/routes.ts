@@ -9,26 +9,54 @@ import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO } from "date-fns";
 
-// Demo club ID for tenant isolation
-const DEMO_CLUB_ID = 'demo-club-1';
-
 // Role types for authorization
 type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
 
-// Demo auth middleware - extracts role from header for demo mode
-// In production, this would validate JWT/session and extract user info
-function getAuthContext(req: Request): { clubId: string; role: UserRole; userId: string; athleteId?: string } {
-  const role = (req.headers['x-user-role'] as UserRole) || 'admin';
-  const userId = (req.headers['x-user-id'] as string) || 'demo-admin';
-  const clubId = (req.headers['x-club-id'] as string) || DEMO_CLUB_ID;
-  const athleteId = req.headers['x-athlete-id'] as string | undefined;
-  return { clubId, role, userId, athleteId };
+// Auth context result type
+interface AuthContext {
+  clubId: string;
+  role: UserRole;
+  userId: string;
+  athleteId?: string;
+  isAuthenticated: boolean;
 }
 
-// Role-based access control middleware
+// Auth middleware - extracts user context from headers
+// Headers are set by the frontend after Supabase auth
+function getAuthContext(req: Request): AuthContext {
+  const role = req.headers['x-user-role'] as UserRole | undefined;
+  const userId = req.headers['x-user-id'] as string | undefined;
+  const clubId = req.headers['x-club-id'] as string | undefined;
+  const athleteId = req.headers['x-athlete-id'] as string | undefined;
+  
+  // Check if user is authenticated (has required headers)
+  const isAuthenticated = !!(role && userId && clubId);
+  
+  return {
+    clubId: clubId || '',
+    role: role || 'parent',
+    userId: userId || '',
+    athleteId,
+    isAuthenticated
+  };
+}
+
+// Middleware to require authentication
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const { isAuthenticated } = getAuthContext(req);
+  if (!isAuthenticated) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  next();
+}
+
+// Role-based access control middleware (also requires auth)
 function requireRole(...allowedRoles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const { role } = getAuthContext(req);
+    const { role, isAuthenticated } = getAuthContext(req);
+    if (!isAuthenticated) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
     if (!allowedRoles.includes(role)) {
       return res.status(403).json({ error: 'Access denied', required: allowedRoles });
     }
@@ -491,7 +519,7 @@ export async function registerRoutes(
   });
 
   // Get user's document signatures
-  app.get('/api/documents/signatures', async (req, res) => {
+  app.get('/api/documents/signatures', requireAuth, async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const signatures = await storage.getUserSignatures(clubId, userId);
@@ -781,7 +809,7 @@ export async function registerRoutes(
   });
 
   // Get current user's club info (for Share section)
-  app.get('/api/my-club', async (req, res) => {
+  app.get('/api/my-club', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const club = await storage.getClub(clubId);
@@ -796,7 +824,7 @@ export async function registerRoutes(
   });
 
   // ============ PROGRAMS ============
-  app.get('/api/programs', async (req, res) => {
+  app.get('/api/programs', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const programs = await storage.getPrograms(clubId);
@@ -836,7 +864,7 @@ export async function registerRoutes(
 
   // ============ PROGRAM CONTRACTS ============
   // Get all contracts for a program (or all program contracts)
-  app.get('/api/program-contracts', async (req, res) => {
+  app.get('/api/program-contracts', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const programId = req.query.program_id as string | undefined;
@@ -849,7 +877,7 @@ export async function registerRoutes(
   });
 
   // Get a specific program contract
-  app.get('/api/program-contracts/:id', async (req, res) => {
+  app.get('/api/program-contracts/:id', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const contract = await storage.getProgramContract(clubId, req.params.id as string);
@@ -1102,7 +1130,7 @@ export async function registerRoutes(
     athlete_id: z.string().min(1),
   });
 
-  app.get('/api/events', async (req, res) => {
+  app.get('/api/events', requireAuth, async (req, res) => {
     try {
       const { clubId, role, userId } = getAuthContext(req);
       const programId = req.query.program_id as string | undefined;
@@ -1121,7 +1149,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/events/:id', async (req, res) => {
+  app.get('/api/events/:id', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const event = await storage.getEvent(clubId, req.params.id);
@@ -1184,7 +1212,7 @@ export async function registerRoutes(
   });
 
   // Event rosters
-  app.get('/api/events/:id/rosters', async (req, res) => {
+  app.get('/api/events/:id/rosters', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const rosters = await storage.getEventRosters(clubId, req.params.id as string);
@@ -1237,7 +1265,7 @@ export async function registerRoutes(
   });
 
   // Event coaches
-  app.get('/api/events/:id/coaches', async (req, res) => {
+  app.get('/api/events/:id/coaches', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const coaches = await storage.getEventCoaches(clubId, req.params.id as string);
@@ -1333,7 +1361,7 @@ export async function registerRoutes(
   });
 
   // Get events for an athlete (parent view)
-  app.get('/api/athletes/:athleteId/events', async (req, res) => {
+  app.get('/api/athletes/:athleteId/events', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const events = await storage.getEventsForAthlete(clubId, req.params.athleteId);
@@ -1345,7 +1373,7 @@ export async function registerRoutes(
   });
 
   // ============ TEAMS ============
-  app.get('/api/teams', async (req, res) => {
+  app.get('/api/teams', requireAuth, async (req, res) => {
     try {
       const { clubId, role, userId } = getAuthContext(req);
       let teams;
@@ -1448,7 +1476,7 @@ export async function registerRoutes(
   });
 
   // ============ ATHLETES ============
-  app.get('/api/athletes', async (req, res) => {
+  app.get('/api/athletes', requireAuth, async (req, res) => {
     try {
       const { clubId, role, userId } = getAuthContext(req);
       const parentId = req.query.parent_id as string | undefined;
@@ -1623,7 +1651,7 @@ export async function registerRoutes(
   });
 
   // ============ ROSTER ============
-  app.get('/api/teams/:teamId/roster', async (req, res) => {
+  app.get('/api/teams/:teamId/roster', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const roster = await storage.getTeamRoster(clubId, req.params.teamId);
@@ -1998,7 +2026,7 @@ export async function registerRoutes(
   });
 
   // ============ FACILITIES ============
-  app.get('/api/facilities', async (req, res) => {
+  app.get('/api/facilities', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const facilities = await storage.getFacilities(clubId);
@@ -2053,7 +2081,7 @@ export async function registerRoutes(
   });
 
   // ============ COURTS ============
-  app.get('/api/courts', async (req, res) => {
+  app.get('/api/courts', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const facilityId = req.query.facility_id as string | undefined;
@@ -2109,7 +2137,7 @@ export async function registerRoutes(
   });
 
   // ============ SESSIONS ============
-  app.get('/api/sessions', async (req, res) => {
+  app.get('/api/sessions', requireAuth, async (req, res) => {
     try {
       const { clubId, role, userId } = getAuthContext(req);
       let sessions = await storage.getSessions(clubId);
@@ -2125,7 +2153,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/sessions/:id', async (req, res) => {
+  app.get('/api/sessions/:id', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const session = await storage.getSession(clubId, req.params.id);
@@ -2414,7 +2442,7 @@ export async function registerRoutes(
   });
 
   // Get sessions for a specific athlete (access-controlled by program/team registration)
-  app.get('/api/athletes/:athleteId/sessions', async (req, res) => {
+  app.get('/api/athletes/:athleteId/sessions', requireAuth, async (req, res) => {
     try {
       const { clubId, role, userId } = getAuthContext(req);
       const { athleteId } = req.params;
@@ -2436,7 +2464,7 @@ export async function registerRoutes(
   });
 
   // ============ REGISTRATIONS ============
-  app.get('/api/sessions/:sessionId/registrations', async (req, res) => {
+  app.get('/api/sessions/:sessionId/registrations', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const registrations = await storage.getSessionRegistrations(clubId, req.params.sessionId);
@@ -2447,7 +2475,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get('/api/athletes/:athleteId/registrations', async (req, res) => {
+  app.get('/api/athletes/:athleteId/registrations', requireAuth, async (req, res) => {
     try {
       const { clubId } = getAuthContext(req);
       const registrations = await storage.getAthleteRegistrations(clubId, req.params.athleteId);

@@ -1,6 +1,6 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from './lib/db';
-import { supabase } from './lib/supabase';
+import { supabaseAdmin as supabase } from './lib/supabase';
 import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,

@@ -32,7 +32,8 @@ import {
   Loader2,
   User as UserIcon,
   Building2,
-  UserSquare2
+  UserSquare2,
+  CalendarDays
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -45,6 +46,13 @@ interface Team {
 interface Program {
   id: string;
   name: string;
+}
+
+interface Event {
+  id: string;
+  title: string;
+  event_type: string;
+  start_date: string;
 }
 
 interface ChatChannel {
@@ -87,11 +95,12 @@ export default function MessagesPage() {
   const [messageInput, setMessageInput] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [selectedRecipient, setSelectedRecipient] = useState<string>('');
-  const [audienceType, setAudienceType] = useState<'individual' | 'roster' | 'team' | 'program'>('individual');
+  const [audienceType, setAudienceType] = useState<'individual' | 'roster' | 'team' | 'program' | 'event'>('individual');
   const [selectionMode, setSelectionMode] = useState<'person' | 'athlete'>('athlete');
   const [selectedAthlete, setSelectedAthlete] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [selectedProgram, setSelectedProgram] = useState<string>('');
+  const [selectedEvent, setSelectedEvent] = useState<string>('');
   const [chatName, setChatName] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -132,6 +141,11 @@ export default function MessagesPage() {
     enabled: user?.role === 'admin' || user?.role === 'coach',
   });
 
+  const { data: events = [] } = useQuery<Event[]>({
+    queryKey: ['/api/events'],
+    enabled: user?.role === 'admin' || user?.role === 'coach',
+  });
+
   const clubUsers = [
     ...coaches.map(c => ({ ...c, userType: 'coach' })),
     ...(user?.role === 'admin' || user?.role === 'coach' 
@@ -154,10 +168,11 @@ export default function MessagesPage() {
 
   const createChannelMutation = useMutation({
     mutationFn: async (data: { 
-      audienceType: 'individual' | 'roster' | 'team' | 'program';
+      audienceType: 'individual' | 'roster' | 'team' | 'program' | 'event';
       participantIds?: string[];
       teamId?: string;
       programId?: string;
+      eventId?: string;
       name?: string;
     }) => {
       // Map audience_type to valid channel_type enum values
@@ -167,6 +182,7 @@ export default function MessagesPage() {
           case 'roster': return 'group'; // roster uses group channel type
           case 'team': return 'team';
           case 'program': return 'program';
+          case 'event': return 'event';
           default: return 'group';
         }
       };
@@ -177,6 +193,7 @@ export default function MessagesPage() {
         participant_ids: data.participantIds || [],
         team_id: data.teamId,
         program_id: data.programId,
+        event_id: data.eventId,
         name: data.name,
       });
     },
@@ -189,6 +206,7 @@ export default function MessagesPage() {
       setAudienceType('individual');
       setSelectedTeam('');
       setSelectedProgram('');
+      setSelectedEvent('');
       setChatName('');
     },
   });
@@ -266,6 +284,13 @@ export default function MessagesPage() {
         programId: selectedProgram,
         name: chatName || `${program?.name || 'Program'} Chat`,
       });
+    } else if (audienceType === 'event' && selectedEvent) {
+      const event = events.find(e => e.id === selectedEvent);
+      createChannelMutation.mutate({
+        audienceType: 'event',
+        eventId: selectedEvent,
+        name: chatName || `${event?.title || 'Event'} Chat`,
+      });
     }
   };
 
@@ -280,6 +305,7 @@ export default function MessagesPage() {
     }
     if (audienceType === 'team' || audienceType === 'roster') return !!selectedTeam;
     if (audienceType === 'program') return !!selectedProgram;
+    if (audienceType === 'event') return !!selectedEvent;
     return false;
   };
 
@@ -287,6 +313,7 @@ export default function MessagesPage() {
     if (channel.name) return channel.name;
     if (channel.channel_type === 'direct') return 'Direct Message';
     if (channel.channel_type === 'team') return 'Team Chat';
+    if (channel.channel_type === 'event') return 'Event Chat';
     return 'Group Chat';
   };
 
@@ -327,6 +354,7 @@ export default function MessagesPage() {
                         setSelectedRecipient('');
                         setSelectedTeam('');
                         setSelectedProgram('');
+                        setSelectedEvent('');
                       }}
                     >
                       <SelectTrigger data-testid="select-audience-type">
@@ -355,6 +383,12 @@ export default function MessagesPage() {
                           <div className="flex items-center gap-2">
                             <Building2 className="h-4 w-4" />
                             Full Program
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="event">
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="h-4 w-4" />
+                            Event Roster
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -499,6 +533,27 @@ export default function MessagesPage() {
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       All parents of athletes in this program and all coaches will receive messages.
+                    </p>
+                  </div>
+                )}
+
+                {audienceType === 'event' && (
+                  <div className="space-y-2">
+                    <Label>Select Event</Label>
+                    <Select value={selectedEvent} onValueChange={setSelectedEvent}>
+                      <SelectTrigger data-testid="select-event">
+                        <SelectValue placeholder="Select an event..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {events.map((event) => (
+                          <SelectItem key={event.id} value={event.id}>
+                            {event.title} ({event.event_type})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      All parents of athletes registered for this event and assigned coaches will receive messages.
                     </p>
                   </div>
                 )}

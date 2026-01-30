@@ -88,15 +88,17 @@ export const chatChannelsTable = pgTable("chat_channels", {
   id: uuid("id").primaryKey().defaultRandom(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   name: text("name"), // Optional name for group chats
-  channel_type: text("channel_type", { enum: ["direct", "team", "program", "group"] }).notNull(),
-  audience_type: text("audience_type", { enum: ["individual", "roster", "team", "program"] }).default("individual"), // Telegram-style targeting
+  channel_type: text("channel_type", { enum: ["direct", "team", "program", "group", "event"] }).notNull(),
+  audience_type: text("audience_type", { enum: ["individual", "roster", "team", "program", "event"] }).default("individual"), // Telegram-style targeting
   team_id: uuid("team_id"), // Optional - for team/roster channels
   program_id: uuid("program_id"), // Optional - for program channels
+  event_id: uuid("event_id"), // Optional - for event roster channels
   created_by: uuid("created_by").references(() => profilesTable.id).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   clubIdIdx: index("chat_channels_club_id_idx").on(table.club_id),
   teamIdIdx: index("chat_channels_team_id_idx").on(table.team_id),
+  eventIdIdx: index("chat_channels_event_id_idx").on(table.event_id),
 }));
 
 // Channel participants table
@@ -136,9 +138,10 @@ export const messagesTable = pgTable("messages", {
 export const bulletinPostsTable = pgTable("bulletin_posts", {
   id: uuid("id").primaryKey().defaultRandom(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
-  audience_type: text("audience_type", { enum: ["club", "roster", "team", "program"] }).default("club"), // Telegram-style targeting
+  audience_type: text("audience_type", { enum: ["club", "roster", "team", "program", "event"] }).default("club"), // Telegram-style targeting
   team_id: uuid("team_id"), // Optional - for team/roster-specific posts
   program_id: uuid("program_id"), // Optional - for program-specific posts
+  event_id: uuid("event_id"), // Optional - for event-specific posts
   author_id: uuid("author_id").references(() => profilesTable.id).notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -148,6 +151,7 @@ export const bulletinPostsTable = pgTable("bulletin_posts", {
 }, (table) => ({
   clubIdIdx: index("bulletin_posts_club_id_idx").on(table.club_id),
   teamIdIdx: index("bulletin_posts_team_id_idx").on(table.team_id),
+  eventIdIdx: index("bulletin_posts_event_id_idx").on(table.event_id),
   createdAtIdx: index("bulletin_posts_created_at_idx").on(table.created_at),
 }));
 
@@ -849,7 +853,7 @@ export const insertEventCoachSchema = z.object({
 
 export const createChatChannelSchema = z.object({
   name: z.string().optional(),
-  channel_type: z.enum(["direct", "team", "program", "group"]),
+  channel_type: z.enum(["direct", "team", "program", "group", "event"]),
   team_id: z.string().optional(),
   program_id: z.string().optional(),
   participant_ids: z.array(z.string()).min(1, "At least one participant required"),

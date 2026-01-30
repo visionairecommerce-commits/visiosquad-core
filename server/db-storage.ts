@@ -1530,9 +1530,9 @@ export class DatabaseStorage implements IStorage {
   async createChatChannel(
     clubId: string,
     createdBy: string,
-    channelType: 'direct' | 'team' | 'program' | 'group',
+    channelType: 'direct' | 'team' | 'program' | 'group' | 'event',
     participantIds: string[],
-    options?: { name?: string; teamId?: string; programId?: string }
+    options?: { name?: string; teamId?: string; programId?: string; eventId?: string }
   ): Promise<ChatChannel> {
     const { data, error } = await supabase
       .from('chat_channels')
@@ -1543,6 +1543,7 @@ export class DatabaseStorage implements IStorage {
         name: options?.name,
         team_id: options?.teamId,
         program_id: options?.programId,
+        event_id: options?.eventId,
       })
       .select()
       .single();
@@ -1798,6 +1799,54 @@ export class DatabaseStorage implements IStorage {
     return Array.from(userIds);
   }
 
+  // Get all user IDs for an event roster (parents of athletes registered for the event + assigned coaches)
+  async getEventAudienceUserIds(clubId: string, eventId: string): Promise<string[]> {
+    const userIds = new Set<string>();
+    
+    // Get all athletes registered for this event
+    const { data: eventRoster } = await supabase
+      .from('event_rosters')
+      .select('athlete_id')
+      .eq('club_id', clubId)
+      .eq('event_id', eventId);
+    
+    if (eventRoster && eventRoster.length > 0) {
+      const athleteIds = eventRoster.map((r: any) => r.athlete_id);
+      
+      // Get parent IDs for these athletes
+      const { data: athletes } = await supabase
+        .from('athletes')
+        .select('parent_id')
+        .in('id', athleteIds);
+      
+      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+    }
+    
+    // Get coaches assigned to this event
+    const { data: eventCoaches } = await supabase
+      .from('event_coaches')
+      .select('coach_id')
+      .eq('club_id', clubId)
+      .eq('event_id', eventId);
+    
+    (eventCoaches || []).forEach((c: any) => userIds.add(c.coach_id));
+    
+    // Add all coaches in the club (they should see event communications)
+    const { data: coaches } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('role', 'coach');
+    
+    (coaches || []).forEach((c: any) => userIds.add(c.id));
+    
+    // Add director
+    const directorId = await this.getDirectorId(clubId);
+    if (directorId) userIds.add(directorId);
+    
+    return Array.from(userIds);
+  }
+
   // Get all user IDs in a club (for club-wide posts)
   async getClubAudienceUserIds(clubId: string): Promise<string[]> {
     const { data: users } = await supabase
@@ -1813,7 +1862,7 @@ export class DatabaseStorage implements IStorage {
   async createBulletinPost(
     clubId: string,
     authorId: string,
-    post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program'; teamId?: string; programId?: string; isPinned?: boolean }
+    post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program' | 'event'; teamId?: string; programId?: string; eventId?: string; isPinned?: boolean }
   ): Promise<BulletinPost> {
     const { data, error } = await supabase
       .from('bulletin_posts')
@@ -1825,6 +1874,7 @@ export class DatabaseStorage implements IStorage {
         audience_type: post.audienceType || 'club',
         team_id: post.teamId,
         program_id: post.programId,
+        event_id: post.eventId,
         is_pinned: post.isPinned || false,
       })
       .select()

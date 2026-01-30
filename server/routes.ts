@@ -2885,7 +2885,7 @@ export async function registerRoutes(
   app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
     try {
       const { clubId, userId, userRole } = getAuthContext(req);
-      const { channel_type, participant_ids, name, team_id, program_id, audience_type } = req.body;
+      const { channel_type, participant_ids, name, team_id, program_id, event_id, audience_type } = req.body;
       
       let resolvedParticipantIds: string[] = participant_ids || [];
       
@@ -2899,6 +2899,9 @@ export async function registerRoutes(
       } else if (audience_type === 'program' && program_id) {
         // Get all users in the program
         resolvedParticipantIds = await storage.getProgramAudienceUserIds(clubId, program_id);
+      } else if (audience_type === 'event' && event_id) {
+        // Get all users in the event roster (parents of registered athletes + assigned coaches)
+        resolvedParticipantIds = await storage.getEventAudienceUserIds(clubId, event_id);
       }
       // For 'individual' audience_type, use participant_ids as provided
       
@@ -2911,6 +2914,7 @@ export async function registerRoutes(
       // Create the channel with audience_type stored
       const effectiveChannelType = audience_type === 'team' ? 'team' : 
                                    audience_type === 'program' ? 'program' : 
+                                   audience_type === 'event' ? 'event' :
                                    audience_type === 'roster' ? 'group' : channel_type;
       
       const channel = await storage.createChatChannel(
@@ -2918,7 +2922,7 @@ export async function registerRoutes(
         userId,
         effectiveChannelType,
         resolvedParticipantIds,
-        { name, teamId: team_id, programId: program_id }
+        { name, teamId: team_id, programId: program_id, eventId: event_id }
       );
       
       // Add all participants (including the creator)
@@ -3086,7 +3090,7 @@ export async function registerRoutes(
   app.post('/api/bulletin', requireRole('admin', 'coach'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
-      const { title, content, team_id, program_id, is_pinned, audience_type } = req.body;
+      const { title, content, team_id, program_id, event_id, is_pinned, audience_type } = req.body;
       
       if (!title || !content) {
         return res.status(400).json({ error: 'Title and content are required' });
@@ -3098,6 +3102,7 @@ export async function registerRoutes(
         audienceType: audience_type || 'club',
         teamId: team_id,
         programId: program_id,
+        eventId: event_id,
         isPinned: is_pinned,
       });
       
@@ -3113,6 +3118,9 @@ export async function registerRoutes(
       } else if (audience_type === 'program' && program_id) {
         // Send to all users in the program
         allUserIds = await storage.getProgramAudienceUserIds(clubId, program_id);
+      } else if (audience_type === 'event' && event_id) {
+        // Send to all users registered for the event
+        allUserIds = await storage.getEventAudienceUserIds(clubId, event_id);
       } else {
         // Default: Send to entire club
         allUserIds = await storage.getClubAudienceUserIds(clubId);

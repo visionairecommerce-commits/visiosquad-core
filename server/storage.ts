@@ -508,9 +508,9 @@ export interface IStorage {
   createChatChannel(
     clubId: string, 
     createdBy: string, 
-    channelType: 'direct' | 'team' | 'program' | 'group',
+    channelType: 'direct' | 'team' | 'program' | 'group' | 'event',
     participantIds: string[],
-    options?: { name?: string; teamId?: string; programId?: string }
+    options?: { name?: string; teamId?: string; programId?: string; eventId?: string }
   ): Promise<ChatChannel>;
   getChatChannels(clubId: string, userId: string): Promise<ChatChannel[]>;
   getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined>;
@@ -529,11 +529,12 @@ export interface IStorage {
   // Audience resolution for Telegram-style targeting
   getTeamAudienceUserIds(clubId: string, teamId: string): Promise<string[]>;
   getProgramAudienceUserIds(clubId: string, programId: string): Promise<string[]>;
+  getEventAudienceUserIds(clubId: string, eventId: string): Promise<string[]>;
   getClubAudienceUserIds(clubId: string): Promise<string[]>;
 
   // ============ BULLETIN BOARD ============
   
-  createBulletinPost(clubId: string, authorId: string, post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program'; teamId?: string; programId?: string; isPinned?: boolean }): Promise<BulletinPost>;
+  createBulletinPost(clubId: string, authorId: string, post: { title: string; content: string; audienceType?: 'club' | 'roster' | 'team' | 'program' | 'event'; teamId?: string; programId?: string; eventId?: string; isPinned?: boolean }): Promise<BulletinPost>;
   getBulletinPosts(clubId: string, userId: string, filters?: { teamId?: string; programId?: string }): Promise<(BulletinPost & { isRead: boolean; isHidden: boolean; author: User })[]>;
   getBulletinPost(clubId: string, postId: string): Promise<BulletinPost | undefined>;
   updateBulletinPost(clubId: string, postId: string, data: { title?: string; content?: string; isPinned?: boolean }): Promise<BulletinPost>;

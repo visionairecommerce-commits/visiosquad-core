@@ -47,10 +47,10 @@ Preferred communication style: Simple, everyday language.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
 - **SafeSport Communication Hub**: Real-time messaging (Supabase Realtime) and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats, director oversight option). Features Telegram-style audience targeting:
-  - **Audience Types**: Individual (1-on-1 with parent), Roster (specific team roster), Team (all parents + coaches in team), Program (all users in program), Club (everyone in club for bulletins)
-  - **Audience Resolution**: `getTeamAudienceUserIds`, `getProgramAudienceUserIds`, `getClubAudienceUserIds` methods resolve participants based on audience type
-  - **SafeSport Compliance**: Parents are automatically included via audience resolution methods when targeting teams/programs
-  - **Channel Types**: `direct` for individual, `group` for roster, `team` for team-wide, `program` for program-wide
+  - **Audience Types**: Individual (1-on-1 with parent), Roster (specific team roster), Team (all parents + coaches in team), Program (all users in program), Event (parents of athletes registered for an event + assigned coaches), Club (everyone in club for bulletins)
+  - **Audience Resolution**: `getTeamAudienceUserIds`, `getProgramAudienceUserIds`, `getEventAudienceUserIds`, `getClubAudienceUserIds` methods resolve participants based on audience type
+  - **SafeSport Compliance**: Parents are automatically included via audience resolution methods when targeting teams/programs/events
+  - **Channel Types**: `direct` for individual, `group` for roster, `team` for team-wide, `program` for program-wide, `event` for event roster communications
 - **Push Notifications**: Firebase Cloud Messaging (FCM) for new messages and bulletin posts. Batch sends to all users in selected audience.
 
 ## External Dependencies

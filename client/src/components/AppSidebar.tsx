@@ -15,7 +15,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  Trophy,
   LayoutDashboard,
   Users,
   Calendar,
@@ -33,6 +32,7 @@ import {
   MessageSquare,
   Megaphone,
 } from 'lucide-react';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -99,12 +99,14 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border p-4">
         <Link href="/" className="flex items-center gap-2" data-testid="link-home">
-          <Trophy className="h-6 w-6 text-primary" />
-          <div>
-            <div className="font-semibold text-sm">VisioSquad</div>
-            <div className="text-xs text-muted-foreground">{club?.name || 'Sports Club'}</div>
-          </div>
+          <img 
+            src={visioSquadLogo} 
+            alt="VisioSquad" 
+            className="h-8 w-auto dark:invert"
+            data-testid="img-sidebar-logo"
+          />
         </Link>
+        <div className="text-xs text-muted-foreground mt-1">{club?.name || 'Sports Club'}</div>
       </SidebarHeader>
 
       <SidebarContent>

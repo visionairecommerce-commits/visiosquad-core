@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { Trophy, ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
 
 export default function CreateClubPage() {
   const [clubName, setClubName] = useState('');
@@ -52,10 +53,14 @@ export default function CreateClubPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Trophy className="h-10 w-10 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">VisioSquad</h1>
+        <div className="text-center space-y-4 mb-2">
+          <div className="flex items-center justify-center">
+            <img 
+              src={visioSquadLogo} 
+              alt="VisioSquad - Connect. Communicate. Compete." 
+              className="h-16 w-auto dark:invert"
+              data-testid="img-logo"
+            />
           </div>
         </div>
 

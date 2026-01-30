@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { Trophy, Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut } from 'lucide-react';
+import { Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
 
 type OnboardingStep = 'documents' | 'complete';
 
@@ -71,8 +72,12 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
-          <Trophy className="h-6 w-6 text-primary" />
-          <span className="font-semibold">VisioSquad</span>
+          <img 
+            src={visioSquadLogo} 
+            alt="VisioSquad" 
+            className="h-8 w-auto dark:invert"
+            data-testid="img-onboarding-logo"
+          />
         </div>
         <Button
           variant="ghost"

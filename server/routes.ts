@@ -3295,27 +3295,89 @@ export async function registerRoutes(
     try {
       console.log('[DocuSeal Webhook] Received event:', JSON.stringify(req.body, null, 2));
       
-      const { event_type, submission_id, submitter, completed_at, metadata } = req.body;
+      const { event_type, submission_id, submitter, completed_at, metadata, data } = req.body;
       
-      // Handle different DocuSeal events
-      if (event_type === 'form.completed' || event_type === 'submission.completed') {
-        // Document fully signed by all parties
+      // Handle submission.completed event - contract has been signed
+      if (event_type === 'submission.completed' || event_type === 'form.completed') {
         console.log(`[DocuSeal Webhook] Document completed: Submission ${submission_id}`);
         
-        // Extract club, athlete, and contract info from metadata if provided
+        // Get submitter email from various possible locations in the payload
+        const signerEmail = submitter?.email || data?.submitter?.email || metadata?.email;
         const clubId = metadata?.club_id;
         const athleteId = metadata?.athlete_id;
-        const contractId = metadata?.contract_id;
+        const programId = metadata?.program_id;
         
-        if (clubId && athleteId && contractId) {
-          // TODO: Update contract signature status in database
-          console.log(`[DocuSeal Webhook] Updating signature for athlete ${athleteId}, contract ${contractId}`);
+        if (signerEmail) {
+          console.log(`[DocuSeal Webhook] Processing signature for email: ${signerEmail}`);
+          
+          // Find the parent profile by email
+          const { data: profile, error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .select('id, club_id')
+            .eq('email', signerEmail.toLowerCase())
+            .single();
+          
+          if (profile && !profileError) {
+            const parentClubId = clubId || profile.club_id;
+            
+            // Find all athletes belonging to this parent
+            const { data: athletes } = await supabaseAdmin
+              .from('athletes')
+              .select('id')
+              .eq('parent_id', profile.id)
+              .eq('club_id', parentClubId);
+            
+            if (athletes && athletes.length > 0) {
+              const athleteIds = athleteId ? [athleteId] : athletes.map(a => a.id);
+              
+              // Update contract_signed for all roster entries for these athletes
+              const { error: updateError } = await supabaseAdmin
+                .from('athlete_team_rosters')
+                .update({ contract_signed: true })
+                .in('athlete_id', athleteIds)
+                .eq('club_id', parentClubId);
+              
+              if (updateError) {
+                console.error('[DocuSeal Webhook] Error updating roster contract status:', updateError);
+              } else {
+                console.log(`[DocuSeal Webhook] Successfully updated contract_signed for ${athleteIds.length} athlete(s)`);
+              }
+              
+              // Also record in club_signatures table
+              await supabaseAdmin
+                .from('club_signatures')
+                .insert({
+                  club_id: parentClubId,
+                  user_id: profile.id,
+                  document_type: 'contract',
+                  document_version: 1,
+                  signed_name: submitter?.name || signerEmail,
+                });
+              
+              console.log(`[DocuSeal Webhook] Recorded signature in club_signatures for ${signerEmail}`);
+            }
+          } else {
+            console.log(`[DocuSeal Webhook] No profile found for email: ${signerEmail}`);
+          }
+        } else if (athleteId && clubId) {
+          // Fallback: use metadata if email not available
+          console.log(`[DocuSeal Webhook] Using metadata - athlete: ${athleteId}, club: ${clubId}`);
+          
+          const { error: updateError } = await supabaseAdmin
+            .from('athlete_team_rosters')
+            .update({ contract_signed: true })
+            .eq('athlete_id', athleteId)
+            .eq('club_id', clubId);
+          
+          if (updateError) {
+            console.error('[DocuSeal Webhook] Error updating roster:', updateError);
+          } else {
+            console.log(`[DocuSeal Webhook] Updated contract_signed for athlete ${athleteId}`);
+          }
         }
       } else if (event_type === 'form.viewed' || event_type === 'submitter.opened') {
-        // Document viewed but not yet signed
         console.log(`[DocuSeal Webhook] Document viewed: Submission ${submission_id}`);
       } else if (event_type === 'submitter.completed') {
-        // Individual submitter completed their signature
         console.log(`[DocuSeal Webhook] Submitter completed: ${submitter?.email || submitter?.name}`);
       }
       

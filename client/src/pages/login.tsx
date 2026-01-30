@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, Users, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_17_13_PM_1769746673765.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747335793.png';
 
 type AuthMode = 'signin' | 'create-account';
 type AccountType = 'director' | 'member' | null;
@@ -57,15 +57,13 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-4 mb-6">
-          <div className="flex items-center justify-center">
-            <img 
-              src={visioSquadLogo} 
-              alt="VisioSquad - Connect. Communicate. Compete." 
-              className="h-32 md:h-40 w-auto dark:invert"
-              data-testid="img-logo"
-            />
-          </div>
+        <div className="text-center mb-6">
+          <img 
+            src={visioSquadLogo} 
+            alt="VisioSquad - Connect. Communicate. Compete." 
+            className="w-full h-auto dark:invert"
+            data-testid="img-logo"
+          />
         </div>
 
         {mode === 'signin' && (

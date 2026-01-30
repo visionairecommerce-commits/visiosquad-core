@@ -32,7 +32,7 @@ import {
   MessageSquare,
   Megaphone,
 } from 'lucide-react';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_17_13_PM_1769746673765.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747335793.png';
 
 const adminMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
@@ -98,15 +98,15 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border p-4">
-        <Link href="/" className="flex items-center gap-2" data-testid="link-home">
+        <Link href="/" data-testid="link-home">
           <img 
             src={visioSquadLogo} 
             alt="VisioSquad" 
-            className="h-12 w-auto dark:invert"
+            className="w-full h-auto dark:invert"
             data-testid="img-sidebar-logo"
           />
         </Link>
-        <div className="text-xs text-muted-foreground mt-1">{club?.name || 'Sports Club'}</div>
+        <div className="text-xs text-muted-foreground mt-2">{club?.name || 'Sports Club'}</div>
       </SidebarHeader>
 
       <SidebarContent>

@@ -1730,13 +1730,17 @@ export class DatabaseStorage implements IStorage {
     if (roster && roster.length > 0) {
       const athleteIds = roster.map((r: any) => r.athlete_id);
       
-      // Get parent IDs for these athletes
+      // Get parent IDs AND athlete user_ids for these athletes
       const { data: athletes } = await supabase
         .from('athletes')
-        .select('parent_id')
+        .select('parent_id, user_id')
         .in('id', athleteIds);
       
-      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+      (athletes || []).forEach((a: any) => {
+        userIds.add(a.parent_id);
+        // Also add athlete's own account if they have one
+        if (a.user_id) userIds.add(a.user_id);
+      });
     }
     
     // Get team's assigned coaches
@@ -1766,7 +1770,7 @@ export class DatabaseStorage implements IStorage {
     return Array.from(userIds);
   }
 
-  // Get all user IDs for a program (all parents of athletes in any team in the program + coaches)
+  // Get all user IDs for a program (parents + athletes with accounts + coaches)
   async getProgramAudienceUserIds(clubId: string, programId: string): Promise<string[]> {
     const userIds = new Set<string>();
     
@@ -1780,13 +1784,17 @@ export class DatabaseStorage implements IStorage {
     if (roster && roster.length > 0) {
       const athleteIds = roster.map((r: any) => r.athlete_id);
       
-      // Get parent IDs for these athletes
+      // Get parent IDs AND athlete user_ids for these athletes
       const { data: athletes } = await supabase
         .from('athletes')
-        .select('parent_id')
+        .select('parent_id, user_id')
         .in('id', athleteIds);
       
-      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+      (athletes || []).forEach((a: any) => {
+        userIds.add(a.parent_id);
+        // Also add athlete's own account if they have one
+        if (a.user_id) userIds.add(a.user_id);
+      });
     }
     
     // Add all coaches in the club
@@ -1805,7 +1813,7 @@ export class DatabaseStorage implements IStorage {
     return Array.from(userIds);
   }
 
-  // Get all user IDs for an event roster (parents of athletes registered for the event + assigned coaches)
+  // Get all user IDs for an event roster (parents + athletes with accounts + assigned coaches)
   async getEventAudienceUserIds(clubId: string, eventId: string): Promise<string[]> {
     const userIds = new Set<string>();
     
@@ -1819,13 +1827,17 @@ export class DatabaseStorage implements IStorage {
     if (eventRoster && eventRoster.length > 0) {
       const athleteIds = eventRoster.map((r: any) => r.athlete_id);
       
-      // Get parent IDs for these athletes
+      // Get parent IDs AND athlete user_ids for these athletes
       const { data: athletes } = await supabase
         .from('athletes')
-        .select('parent_id')
+        .select('parent_id, user_id')
         .in('id', athleteIds);
       
-      (athletes || []).forEach((a: any) => userIds.add(a.parent_id));
+      (athletes || []).forEach((a: any) => {
+        userIds.add(a.parent_id);
+        // Also add athlete's own account if they have one
+        if (a.user_id) userIds.add(a.user_id);
+      });
     }
     
     // Get coaches assigned to this event

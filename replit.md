@@ -31,9 +31,13 @@ Preferred communication style: Simple, everyday language.
 ### Authentication & Authorization
 - **Auth Provider**: Supabase Auth (JWT session tokens)
 - **Multi-tenant Onboarding**: Club code-based registration
-- **Role-Based Access**: Admin/Director, Coach, Parent roles for UI and API protection (`X-User-Role`, `X-User-Id`, `X-Club-Id` headers)
+- **Role-Based Access**: Admin/Director, Coach, Parent, Athlete roles for UI and API protection (`X-User-Role`, `X-User-Id`, `X-Club-Id`, `X-Athlete-Id` headers)
 - **Director Onboarding**: Club creation, waiver setup, club code generation.
 - **Parent/Coach Join Flow**: Club code entry, waiver e-signature, account creation.
+- **Athlete Login Capability**: Parents create athlete profiles first, then can optionally set up login credentials for athletes. Athletes with accounts:
+  - Have their own dashboard showing their schedule and team info
+  - Receive direct push notifications for team/program/event communications
+  - Are included in channel participant lists via `user_id` field linking athlete to profile
 - **E-Signatures**: Stored in `club_signatures` table, tracks waiver and contract signing status.
 - **Contract Compliance**: Tracks and verifies parent contract signatures (digital/paper), with a dedicated verification page for directors/coaches.
 - **Settings Dashboard (Directors Only)**: Manage club identity, join codes, waiver text, contract signing links, forms, and facilities.
@@ -47,7 +51,7 @@ Preferred communication style: Simple, everyday language.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
 - **SafeSport Communication Hub**: Real-time messaging (Supabase Realtime) and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats, director oversight option). Features Telegram-style audience targeting:
-  - **Audience Types**: Individual (1-on-1 with parent), Roster (specific team roster), Team (all parents + coaches in team), Program (all users in program), Event (parents of athletes registered for an event + assigned coaches), Club (everyone in club for bulletins)
+  - **Audience Types**: Individual (1-on-1 with parent), Roster (specific team roster), Team (all parents + coaches + athletes with accounts in team), Program (all users in program), Event (parents + athletes with accounts registered for an event + assigned coaches), Club (everyone in club for bulletins)
   - **Audience Resolution**: `getTeamAudienceUserIds`, `getProgramAudienceUserIds`, `getEventAudienceUserIds`, `getClubAudienceUserIds` methods resolve participants based on audience type
   - **SafeSport Compliance**: Parents are automatically included via audience resolution methods when targeting teams/programs/events
   - **Channel Types**: `direct` for individual, `group` for roster, `team` for team-wide, `program` for program-wide, `event` for event roster communications

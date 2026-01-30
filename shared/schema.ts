@@ -296,6 +296,7 @@ export const athletesTable = pgTable("athletes", {
   // Athlete login credentials (optional - set by parent)
   email: text("email").unique(), // Athlete's login email
   has_login: boolean("has_login").default(false).notNull(), // Whether athlete can log in
+  user_id: uuid("user_id").references(() => profilesTable.id), // Athlete's own user profile (when they have login)
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

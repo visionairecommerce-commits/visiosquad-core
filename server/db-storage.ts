@@ -1065,6 +1065,7 @@ export class DatabaseStorage implements IStorage {
       released_by: a.released_by ?? undefined,
       email: a.email ?? undefined,
       has_login: a.has_login ?? false,
+      user_id: a.user_id ?? undefined,
       created_at: a.created_at?.toISOString?.() ?? a.created_at,
     };
   }

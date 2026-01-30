@@ -90,6 +90,7 @@ export interface Athlete {
   released_by?: string;
   email?: string;
   has_login: boolean;
+  user_id?: string; // Athlete's own user profile (when they have login)
   created_at: string;
 }
 

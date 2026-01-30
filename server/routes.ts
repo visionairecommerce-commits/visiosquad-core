@@ -3249,6 +3249,12 @@ export async function registerRoutes(
 
   // ============ WEBHOOKS ============
 
+  // Helcim webhook validation - responds to GET requests for URL verification
+  app.get('/api/webhooks/helcim', (req, res) => {
+    console.log('[Helcim Webhook] Validation request received');
+    res.json({ status: 'ok', message: 'Helcim webhook endpoint ready' });
+  });
+
   // Helcim payment webhook - receives payment notifications from Helcim
   app.post('/api/webhooks/helcim', async (req, res) => {
     try {
@@ -3276,6 +3282,12 @@ export async function registerRoutes(
       console.error('[Helcim Webhook] Error processing webhook:', error);
       res.status(500).json({ error: 'Webhook processing failed' });
     }
+  });
+
+  // DocuSeal webhook validation - responds to GET requests for URL verification
+  app.get('/api/webhooks/docuseal', (req, res) => {
+    console.log('[DocuSeal Webhook] Validation request received');
+    res.json({ status: 'ok', message: 'DocuSeal webhook endpoint ready' });
   });
 
   // DocuSeal e-signature webhook - receives signing notifications from DocuSeal

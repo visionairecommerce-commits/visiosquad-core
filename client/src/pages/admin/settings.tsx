@@ -10,13 +10,242 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink, HelpCircle, Shield, MessageSquare } from 'lucide-react';
+import { Copy, Plus, Pencil, Trash2, Building2, FileText, MapPin, Palette, RefreshCw, Check, CreditCard, AlertTriangle, Loader2, Landmark, Users, Link, ExternalLink, HelpCircle, Shield, MessageSquare, Calendar } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { Club, Facility, ClubForm, Program, Team } from '@shared/schema';
+
+interface Season {
+  id: string;
+  club_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  chat_data_deleted: boolean;
+  created_at: string;
+}
+
+function SeasonsCard() {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingSeason, setEditingSeason] = useState<Season | null>(null);
+  const [seasonName, setSeasonName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  
+  const { data: seasons = [], isLoading } = useQuery<Season[]>({
+    queryKey: ['/api/seasons'],
+  });
+  
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; start_date: string; end_date: string }) => {
+      return apiRequest('POST', '/api/seasons', data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seasons'] });
+      toast({ title: 'Season created successfully!' });
+      resetForm();
+    },
+    onError: () => {
+      toast({ title: 'Failed to create season', variant: 'destructive' });
+    },
+  });
+  
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; name?: string; start_date?: string; end_date?: string }) => {
+      return apiRequest('PATCH', `/api/seasons/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seasons'] });
+      toast({ title: 'Season updated successfully!' });
+      resetForm();
+    },
+    onError: () => {
+      toast({ title: 'Failed to update season', variant: 'destructive' });
+    },
+  });
+  
+  const activateMutation = useMutation({
+    mutationFn: async (seasonId: string) => {
+      return apiRequest('POST', `/api/seasons/${seasonId}/activate`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seasons'] });
+      toast({ title: 'Season activated! All chat data will be deleted when this season ends.' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to activate season', variant: 'destructive' });
+    },
+  });
+  
+  const deleteMutation = useMutation({
+    mutationFn: async (seasonId: string) => {
+      return apiRequest('DELETE', `/api/seasons/${seasonId}`, undefined);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/seasons'] });
+      toast({ title: 'Season deleted successfully!' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to delete season', variant: 'destructive' });
+    },
+  });
+  
+  const resetForm = () => {
+    setDialogOpen(false);
+    setEditingSeason(null);
+    setSeasonName('');
+    setStartDate('');
+    setEndDate('');
+  };
+  
+  const handleEdit = (season: Season) => {
+    setEditingSeason(season);
+    setSeasonName(season.name);
+    setStartDate(season.start_date.split('T')[0]);
+    setEndDate(season.end_date.split('T')[0]);
+    setDialogOpen(true);
+  };
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingSeason) {
+      updateMutation.mutate({ id: editingSeason.id, name: seasonName, start_date: startDate, end_date: endDate });
+    } else {
+      createMutation.mutate({ name: seasonName, start_date: startDate, end_date: endDate });
+    }
+  };
+  
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Seasons
+          </CardTitle>
+          <CardDescription>
+            Define club seasons for automatic chat data cleanup
+          </CardDescription>
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setDialogOpen(open); }}>
+          <DialogTrigger asChild>
+            <Button size="sm" data-testid="button-add-season">
+              <Plus className="h-4 w-4 mr-1" /> Add Season
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingSeason ? 'Edit Season' : 'Create Season'}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="seasonName">Season Name</Label>
+                <Input
+                  id="seasonName"
+                  value={seasonName}
+                  onChange={(e) => setSeasonName(e.target.value)}
+                  placeholder="e.g., Fall 2026"
+                  required
+                  data-testid="input-season-name"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    required
+                    data-testid="input-season-start"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endDate">End Date</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    required
+                    data-testid="input-season-end"
+                  />
+                </div>
+              </div>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  All chat messages (except event chats) will be automatically deleted when the season ends to manage storage.
+                </AlertDescription>
+              </Alert>
+              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-save-season">
+                {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {editingSeason ? 'Update Season' : 'Create Season'}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading seasons...
+          </div>
+        ) : seasons.length === 0 ? (
+          <div className="text-center py-4 text-muted-foreground">
+            <p className="text-sm">No seasons defined yet. Create one to enable automatic chat cleanup.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {seasons.map((season) => (
+              <div key={season.id} className="flex items-center justify-between p-3 rounded-md border" data-testid={`season-item-${season.id}`}>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{season.name}</p>
+                    {season.is_active && <Badge variant="default">Active</Badge>}
+                    {season.chat_data_deleted && <Badge variant="secondary">Cleaned</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {formatDate(season.start_date)} — {formatDate(season.end_date)}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  {!season.is_active && !season.chat_data_deleted && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => activateMutation.mutate(season.id)}
+                      disabled={activateMutation.isPending}
+                      data-testid={`button-activate-season-${season.id}`}
+                    >
+                      Set Active
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(season)} data-testid={`button-edit-season-${season.id}`}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(season.id)} disabled={deleteMutation.isPending || season.is_active} data-testid={`button-delete-season-${season.id}`}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function CommunicationSettingsCard() {
   const { toast } = useToast();
@@ -987,6 +1216,8 @@ export default function SettingsPage() {
         </Card>
 
         <CommunicationSettingsCard />
+
+        <SeasonsCard />
 
         <Card className="md:col-span-2">
           <CardHeader>

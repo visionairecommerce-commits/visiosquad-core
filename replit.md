@@ -52,6 +52,11 @@ Preferred communication style: Simple, everyday language.
   - **SafeSport Compliance**: Parents are automatically included via audience resolution methods when targeting teams/programs/events
   - **Channel Types**: `direct` for individual, `group` for roster, `team` for team-wide, `program` for program-wide, `event` for event roster communications
 - **Push Notifications**: Firebase Cloud Messaging (FCM) for new messages and bulletin posts. Batch sends to all users in selected audience.
+- **Seasons & Data Retention**: Directors define club seasons with start/end dates. Automatic data cleanup:
+  - **Event Chat Cleanup**: Messages in event-specific chats are automatically deleted 24 hours after the event ends
+  - **Season-End Cleanup**: All chat data (except event chats) is automatically deleted when a season ends
+  - **Scheduled Jobs**: Runs hourly for event cleanup, daily at 2 AM for season cleanup
+  - **UI**: Directors manage seasons in Settings → Seasons section
 
 ## External Dependencies
 

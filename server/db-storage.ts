@@ -15,7 +15,7 @@ import type {
   Facility, Court, Session, Registration, Payment, PlatformLedger,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
-  PushSubscription as PushSub
+  PushSubscription as PushSub, Season
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -2099,6 +2099,135 @@ export class DatabaseStorage implements IStorage {
       .update({ is_active: false })
       .eq('fcm_token', fcmToken);
     if (error) throw error;
+  }
+
+  // ============ SEASONS ============
+
+  async getSeasons(clubId: string): Promise<Season[]> {
+    const { data, error } = await supabase
+      .from('seasons')
+      .select('*')
+      .eq('club_id', clubId)
+      .order('start_date', { ascending: false });
+    if (error) throw error;
+    return (data || []).map((s: any) => this.mapSeason(s));
+  }
+
+  async getSeason(clubId: string, seasonId: string): Promise<Season | undefined> {
+    const { data, error } = await supabase
+      .from('seasons')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('id', seasonId)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? this.mapSeason(data) : undefined;
+  }
+
+  async getActiveSeason(clubId: string): Promise<Season | undefined> {
+    const { data, error } = await supabase
+      .from('seasons')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('is_active', true)
+      .single();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? this.mapSeason(data) : undefined;
+  }
+
+  async createSeason(clubId: string, season: { name: string; start_date: Date; end_date: Date }): Promise<Season> {
+    const { data, error } = await supabase
+      .from('seasons')
+      .insert({
+        club_id: clubId,
+        name: season.name,
+        start_date: season.start_date.toISOString(),
+        end_date: season.end_date.toISOString(),
+        is_active: false,
+        chat_data_deleted: false,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapSeason(data);
+  }
+
+  async updateSeason(clubId: string, seasonId: string, updates: { name?: string; start_date?: Date; end_date?: Date }): Promise<Season> {
+    const updateData: any = {};
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.start_date !== undefined) updateData.start_date = updates.start_date.toISOString();
+    if (updates.end_date !== undefined) updateData.end_date = updates.end_date.toISOString();
+    
+    const { data, error } = await supabase
+      .from('seasons')
+      .update(updateData)
+      .eq('club_id', clubId)
+      .eq('id', seasonId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapSeason(data);
+  }
+
+  async setActiveSeason(clubId: string, seasonId: string): Promise<Season> {
+    // First, deactivate all seasons for this club
+    await supabase
+      .from('seasons')
+      .update({ is_active: false })
+      .eq('club_id', clubId);
+    
+    // Then activate the selected season
+    const { data, error } = await supabase
+      .from('seasons')
+      .update({ is_active: true })
+      .eq('club_id', clubId)
+      .eq('id', seasonId)
+      .select()
+      .single();
+    if (error) throw error;
+    
+    // Update the club's current_season_id
+    await supabase
+      .from('clubs')
+      .update({ current_season_id: seasonId })
+      .eq('id', clubId);
+    
+    return this.mapSeason(data);
+  }
+
+  async deleteSeason(clubId: string, seasonId: string): Promise<void> {
+    // Check if this is the active season
+    const season = await this.getSeason(clubId, seasonId);
+    if (season?.is_active) {
+      throw new Error('Cannot delete the active season. Please activate a different season first.');
+    }
+    
+    // Clear current_season_id if it references this season
+    await supabase
+      .from('clubs')
+      .update({ current_season_id: null })
+      .eq('id', clubId)
+      .eq('current_season_id', seasonId);
+    
+    const { error } = await supabase
+      .from('seasons')
+      .delete()
+      .eq('club_id', clubId)
+      .eq('id', seasonId);
+    if (error) throw error;
+  }
+
+  private mapSeason(s: any): Season {
+    return {
+      id: s.id,
+      club_id: s.club_id,
+      name: s.name,
+      start_date: s.start_date,
+      end_date: s.end_date,
+      is_active: s.is_active,
+      chat_data_deleted: s.chat_data_deleted,
+      created_at: s.created_at,
+    };
   }
 
   // ============ MAPPING HELPERS ============

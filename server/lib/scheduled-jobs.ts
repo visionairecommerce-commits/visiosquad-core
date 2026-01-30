@@ -1,36 +1,64 @@
 import cron from 'node-cron';
 import { db } from './db';
-import { athleteContractsTable, athletesTable } from '@shared/schema';
-import { eq, lte, and, isNotNull, ne, sql } from 'drizzle-orm';
+import { 
+  athleteContractsTable, 
+  athletesTable, 
+  eventsTable, 
+  chatChannelsTable, 
+  channelParticipantsTable, 
+  messagesTable,
+  seasonsTable
+} from '@shared/schema';
+import { eq, lte, and, isNotNull, ne, sql, inArray } from 'drizzle-orm';
 import { cancelRecurringPayment } from './helcim';
 
-// Advisory lock ID for preventing concurrent cron job execution
+// Advisory lock IDs for preventing concurrent cron job execution
 const AUTO_RELEASE_LOCK_ID = 1234567890;
+const EVENT_CHAT_CLEANUP_LOCK_ID = 1234567891;
+const SEASON_CHAT_CLEANUP_LOCK_ID = 1234567892;
 
 export function initializeScheduledJobs() {
   console.log('[Scheduled Jobs] Initializing scheduled jobs...');
 
-  // Run every day at midnight (00:00)
+  // Run every day at midnight (00:00) - Contract expiration check
   cron.schedule('0 0 * * *', async () => {
     console.log('[Auto-Release Job] Running daily contract expiration check...');
-    await runWithLock(processExpiredContracts);
+    await runWithLock(AUTO_RELEASE_LOCK_ID, processExpiredContracts);
+  });
+
+  // Run every hour - Event chat cleanup (24 hours after event ends)
+  cron.schedule('0 * * * *', async () => {
+    console.log('[Event Chat Cleanup] Running hourly event chat cleanup...');
+    await runWithLock(EVENT_CHAT_CLEANUP_LOCK_ID, cleanupExpiredEventChats);
+  });
+
+  // Run every day at 2 AM - Season-end chat cleanup
+  cron.schedule('0 2 * * *', async () => {
+    console.log('[Season Chat Cleanup] Running daily season-end chat cleanup...');
+    await runWithLock(SEASON_CHAT_CLEANUP_LOCK_ID, cleanupEndedSeasonChats);
   });
 
   // Also run immediately on startup for testing/catchup (with slight delay)
   setTimeout(async () => {
     console.log('[Auto-Release Job] Running initial contract expiration check...');
-    await runWithLock(processExpiredContracts);
+    await runWithLock(AUTO_RELEASE_LOCK_ID, processExpiredContracts);
+    
+    console.log('[Event Chat Cleanup] Running initial event chat cleanup...');
+    await runWithLock(EVENT_CHAT_CLEANUP_LOCK_ID, cleanupExpiredEventChats);
+    
+    console.log('[Season Chat Cleanup] Running initial season-end chat cleanup...');
+    await runWithLock(SEASON_CHAT_CLEANUP_LOCK_ID, cleanupEndedSeasonChats);
   }, 10000);
 
   console.log('[Scheduled Jobs] Scheduled jobs initialized');
 }
 
 // Run a function with PostgreSQL advisory lock to prevent concurrent execution
-async function runWithLock(fn: () => Promise<void>) {
+async function runWithLock(lockId: number, fn: () => Promise<void>) {
   try {
     // Try to acquire advisory lock (non-blocking)
     const lockResult = await db.execute(
-      sql`SELECT pg_try_advisory_lock(${AUTO_RELEASE_LOCK_ID}) as acquired`
+      sql`SELECT pg_try_advisory_lock(${lockId}) as acquired`
     );
     
     const acquired = lockResult.rows?.[0]?.acquired === true;
@@ -44,7 +72,7 @@ async function runWithLock(fn: () => Promise<void>) {
       await fn();
     } finally {
       // Always release the lock when done
-      await db.execute(sql`SELECT pg_advisory_unlock(${AUTO_RELEASE_LOCK_ID})`);
+      await db.execute(sql`SELECT pg_advisory_unlock(${lockId})`);
     }
   } catch (error) {
     console.error('[Scheduled Jobs] Error acquiring lock:', error);
@@ -146,5 +174,131 @@ async function processExpiredContracts() {
     console.log(`[Auto-Release Job] Completed: ${processedCount} processed, ${errorCount} errors`);
   } catch (error) {
     console.error('[Auto-Release Job] Error in processExpiredContracts:', error);
+  }
+}
+
+// Clean up chat data for events that ended more than 24 hours ago
+async function cleanupExpiredEventChats() {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    // Find all event channels where the event has ended more than 24 hours ago
+    const expiredEventChannels = await db
+      .select({
+        channelId: chatChannelsTable.id,
+        eventId: chatChannelsTable.event_id,
+        eventTitle: eventsTable.title,
+      })
+      .from(chatChannelsTable)
+      .innerJoin(eventsTable, eq(chatChannelsTable.event_id, eventsTable.id))
+      .where(
+        and(
+          isNotNull(chatChannelsTable.event_id),
+          lte(eventsTable.end_time, twentyFourHoursAgo)
+        )
+      );
+
+    console.log(`[Event Chat Cleanup] Found ${expiredEventChannels.length} expired event channels to clean up`);
+
+    let deletedChannels = 0;
+    let deletedMessages = 0;
+    let deletedParticipants = 0;
+
+    for (const channel of expiredEventChannels) {
+      try {
+        // Delete messages first (child records)
+        const msgResult = await db
+          .delete(messagesTable)
+          .where(eq(messagesTable.channel_id, channel.channelId));
+        
+        // Delete participants (child records)
+        const partResult = await db
+          .delete(channelParticipantsTable)
+          .where(eq(channelParticipantsTable.channel_id, channel.channelId));
+        
+        // Delete the channel itself
+        await db
+          .delete(chatChannelsTable)
+          .where(eq(chatChannelsTable.id, channel.channelId));
+
+        deletedChannels++;
+        console.log(`[Event Chat Cleanup] Cleaned up channel for event: ${channel.eventTitle}`);
+      } catch (channelError) {
+        console.error(`[Event Chat Cleanup] Error cleaning up channel ${channel.channelId}:`, channelError);
+      }
+    }
+
+    console.log(`[Event Chat Cleanup] Completed: ${deletedChannels} channels deleted`);
+  } catch (error) {
+    console.error('[Event Chat Cleanup] Error in cleanupExpiredEventChats:', error);
+  }
+}
+
+// Clean up all chat data for seasons that have ended
+async function cleanupEndedSeasonChats() {
+  try {
+    const now = new Date();
+    
+    // Find all seasons that have ended but haven't been cleaned up yet
+    const endedSeasons = await db
+      .select()
+      .from(seasonsTable)
+      .where(
+        and(
+          lte(seasonsTable.end_date, now),
+          eq(seasonsTable.chat_data_deleted, false)
+        )
+      );
+
+    console.log(`[Season Chat Cleanup] Found ${endedSeasons.length} ended seasons to clean up`);
+
+    for (const season of endedSeasons) {
+      try {
+        // Get all non-event channels for this club (event channels are cleaned up separately)
+        // We delete: direct, team, program, group channels
+        const clubChannels = await db
+          .select({ id: chatChannelsTable.id })
+          .from(chatChannelsTable)
+          .where(
+            and(
+              eq(chatChannelsTable.club_id, season.club_id),
+              sql`${chatChannelsTable.event_id} IS NULL` // Only non-event channels
+            )
+          );
+
+        const channelIds = clubChannels.map(c => c.id);
+        
+        if (channelIds.length > 0) {
+          // Delete messages first
+          await db
+            .delete(messagesTable)
+            .where(inArray(messagesTable.channel_id, channelIds));
+          
+          // Delete participants
+          await db
+            .delete(channelParticipantsTable)
+            .where(inArray(channelParticipantsTable.channel_id, channelIds));
+          
+          // Delete channels
+          await db
+            .delete(chatChannelsTable)
+            .where(inArray(chatChannelsTable.id, channelIds));
+        }
+
+        // Mark season as cleaned up
+        await db
+          .update(seasonsTable)
+          .set({ chat_data_deleted: true })
+          .where(eq(seasonsTable.id, season.id));
+
+        console.log(`[Season Chat Cleanup] Cleaned up ${channelIds.length} channels for season: ${season.name}`);
+      } catch (seasonError) {
+        console.error(`[Season Chat Cleanup] Error cleaning up season ${season.id}:`, seasonError);
+      }
+    }
+
+    console.log(`[Season Chat Cleanup] Completed: ${endedSeasons.length} seasons processed`);
+  } catch (error) {
+    console.error('[Season Chat Cleanup] Error in cleanupEndedSeasonChats:', error);
   }
 }

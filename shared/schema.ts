@@ -31,8 +31,24 @@ export const clubsTable = pgTable("clubs", {
   billing_method: text("billing_method", { enum: ["card", "bank"] }),
   coaches_can_bill: boolean("coaches_can_bill").default(false).notNull(),
   communication_settings: jsonb("communication_settings").$type<CommunicationSettings>().default({ include_director_in_chats: false }),
+  current_season_id: uuid("current_season_id"), // Reference to active season (set after seasons table created)
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Seasons table - defines club seasons for automatic data cleanup
+export const seasonsTable = pgTable("seasons", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  name: text("name").notNull(), // e.g., "Fall 2025", "Spring 2026"
+  start_date: timestamp("start_date").notNull(),
+  end_date: timestamp("end_date").notNull(),
+  is_active: boolean("is_active").default(false).notNull(),
+  chat_data_deleted: boolean("chat_data_deleted").default(false).notNull(), // Flag to track if cleanup ran
+  created_at: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  clubIdIdx: index("seasons_club_id_idx").on(table.club_id),
+  activeIdx: index("seasons_active_idx").on(table.club_id, table.is_active),
+}));
 
 // Profiles (users) table - linked to Supabase Auth
 export const profilesTable = pgTable("profiles", {
@@ -992,6 +1008,11 @@ export type RegisterPushToken = z.infer<typeof registerPushTokenSchema>;
 
 // Communication settings types
 export type UpdateCommunicationSettings = z.infer<typeof updateCommunicationSettingsSchema>;
+
+// Season types
+export type Season = typeof seasonsTable.$inferSelect;
+export const insertSeasonSchema = createInsertSchema(seasonsTable).omit({ id: true, created_at: true, chat_data_deleted: true });
+export type InsertSeason = z.infer<typeof insertSeasonSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

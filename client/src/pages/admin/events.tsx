@@ -448,6 +448,9 @@ export default function EventsPage() {
                     ? 'Update the event details below.'
                     : 'Fill in the details to create a new event.'}
                 </DialogDescription>
+                <div className="mt-2 p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
+                  <strong>Data Retention:</strong> Event chat messages are automatically deleted 24 hours after the event ends to keep storage manageable.
+                </div>
               </DialogHeader>
               
               <div className="space-y-4 py-4">

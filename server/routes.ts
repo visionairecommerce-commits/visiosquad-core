@@ -2867,6 +2867,108 @@ export async function registerRoutes(
     }
   });
 
+  // ============ SEASONS ============
+
+  // Get all seasons for the club
+  app.get('/api/seasons', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const seasons = await storage.getSeasons(clubId);
+      res.json(seasons);
+    } catch (error) {
+      console.error('Error getting seasons:', error);
+      res.status(500).json({ error: 'Failed to get seasons' });
+    }
+  });
+
+  // Get active season
+  app.get('/api/seasons/active', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const season = await storage.getActiveSeason(clubId);
+      res.json(season || null);
+    } catch (error) {
+      console.error('Error getting active season:', error);
+      res.status(500).json({ error: 'Failed to get active season' });
+    }
+  });
+
+  // Create a new season
+  app.post('/api/seasons', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { name, start_date, end_date } = req.body;
+      
+      if (!name || !start_date || !end_date) {
+        return res.status(400).json({ error: 'Name, start date, and end date are required' });
+      }
+      
+      const startDate = new Date(start_date);
+      const endDate = new Date(end_date);
+      
+      if (endDate <= startDate) {
+        return res.status(400).json({ error: 'End date must be after start date' });
+      }
+      
+      const season = await storage.createSeason(clubId, { name, start_date: startDate, end_date: endDate });
+      res.status(201).json(season);
+    } catch (error) {
+      console.error('Error creating season:', error);
+      res.status(500).json({ error: 'Failed to create season' });
+    }
+  });
+
+  // Update a season
+  app.patch('/api/seasons/:seasonId', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { seasonId } = req.params;
+      const { name, start_date, end_date } = req.body;
+      
+      const updates: { name?: string; start_date?: Date; end_date?: Date } = {};
+      if (name !== undefined) updates.name = name;
+      if (start_date !== undefined) updates.start_date = new Date(start_date);
+      if (end_date !== undefined) updates.end_date = new Date(end_date);
+      
+      const season = await storage.updateSeason(clubId, seasonId, updates);
+      res.json(season);
+    } catch (error) {
+      console.error('Error updating season:', error);
+      res.status(500).json({ error: 'Failed to update season' });
+    }
+  });
+
+  // Set active season
+  app.post('/api/seasons/:seasonId/activate', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { seasonId } = req.params;
+      
+      const season = await storage.setActiveSeason(clubId, seasonId);
+      res.json(season);
+    } catch (error) {
+      console.error('Error activating season:', error);
+      res.status(500).json({ error: 'Failed to activate season' });
+    }
+  });
+
+  // Delete a season
+  app.delete('/api/seasons/:seasonId', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { seasonId } = req.params;
+      
+      await storage.deleteSeason(clubId, seasonId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error deleting season:', error);
+      if (error.message?.includes('Cannot delete the active season')) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: 'Failed to delete season' });
+    }
+  });
+
   // ============ MESSAGING SYSTEM ============
 
   // Get user's chat channels

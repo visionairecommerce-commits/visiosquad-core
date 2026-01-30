@@ -549,6 +549,28 @@ export interface IStorage {
   registerPushToken(userId: string, fcmToken: string, deviceType?: 'web' | 'ios' | 'android'): Promise<PushSubscription>;
   getPushTokensForUsers(userIds: string[]): Promise<string[]>;
   deactivatePushToken(fcmToken: string): Promise<void>;
+  
+  // ============ SEASONS ============
+  
+  getSeasons(clubId: string): Promise<Season[]>;
+  getSeason(clubId: string, seasonId: string): Promise<Season | undefined>;
+  getActiveSeason(clubId: string): Promise<Season | undefined>;
+  createSeason(clubId: string, season: { name: string; start_date: Date; end_date: Date }): Promise<Season>;
+  updateSeason(clubId: string, seasonId: string, data: { name?: string; start_date?: Date; end_date?: Date }): Promise<Season>;
+  setActiveSeason(clubId: string, seasonId: string): Promise<Season>;
+  deleteSeason(clubId: string, seasonId: string): Promise<void>;
+}
+
+// Season interface
+export interface Season {
+  id: string;
+  club_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  chat_data_deleted: boolean;
+  created_at: string;
 }
 
 // In-memory storage implementation

@@ -62,7 +62,7 @@ export default function LoginPage() {
             <img 
               src={visioSquadLogo} 
               alt="VisioSquad - Connect. Communicate. Compete." 
-              className="h-24 md:h-28 w-auto dark:invert"
+              className="h-32 md:h-40 w-auto dark:invert"
               data-testid="img-logo"
             />
           </div>

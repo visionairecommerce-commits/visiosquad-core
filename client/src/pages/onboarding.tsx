@@ -75,7 +75,7 @@ export default function OnboardingPage() {
           <img 
             src={visioSquadLogo} 
             alt="VisioSquad" 
-            className="h-8 w-auto dark:invert"
+            className="h-12 w-auto dark:invert"
             data-testid="img-onboarding-logo"
           />
         </div>

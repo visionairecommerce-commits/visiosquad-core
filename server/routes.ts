@@ -3339,9 +3339,10 @@ export async function registerRoutes(
       }
       
       res.json(channel);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating chat channel:', error);
-      res.status(500).json({ error: 'Failed to create chat channel' });
+      console.error('Error details:', error?.message, error?.code, error?.details);
+      res.status(500).json({ error: 'Failed to create chat channel', details: error?.message });
     }
   });
 

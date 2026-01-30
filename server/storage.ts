@@ -517,6 +517,7 @@ export interface IStorage {
   getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined>;
   getChannelParticipants(channelId: string): Promise<ChannelParticipant[]>;
   addChannelParticipant(channelId: string, userId: string, role: string, athleteId?: string, isDirectorAutoAdded?: boolean): Promise<ChannelParticipant>;
+  deleteChannel(clubId: string, channelId: string): Promise<void>;
   
   // Messages
   sendMessage(channelId: string, senderId: string, content: string, messageType?: 'text' | 'system'): Promise<Message>;

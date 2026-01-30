@@ -3347,6 +3347,26 @@ export async function registerRoutes(
     }
   });
 
+  // Delete a chat channel (Director only)
+  app.delete('/api/chat/channels/:channelId', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { channelId } = req.params;
+      
+      // Verify the channel exists and belongs to this club
+      const channel = await storage.getChatChannel(clubId, channelId);
+      if (!channel) {
+        return res.status(404).json({ error: 'Channel not found' });
+      }
+      
+      await storage.deleteChannel(clubId, channelId);
+      res.json({ success: true, message: 'Conversation deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting chat channel:', error);
+      res.status(500).json({ error: 'Failed to delete conversation' });
+    }
+  });
+
   // Get messages for a channel
   app.get('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent'), async (req, res) => {
     try {

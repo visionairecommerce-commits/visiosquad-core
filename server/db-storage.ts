@@ -1605,6 +1605,51 @@ export class DatabaseStorage implements IStorage {
     return this.mapChannelParticipant(data);
   }
 
+  async deleteChannel(clubId: string, channelId: string): Promise<void> {
+    // First verify the channel belongs to this club (multi-tenant safety)
+    const { data: channel, error: verifyError } = await supabaseAdmin
+      .from('chat_channels')
+      .select('id')
+      .eq('id', channelId)
+      .eq('club_id', clubId)
+      .single();
+    
+    if (verifyError || !channel) {
+      throw new Error('Channel not found or does not belong to this club');
+    }
+    
+    // Delete messages first (due to foreign key constraint)
+    const { error: messagesError } = await supabaseAdmin
+      .from('messages')
+      .delete()
+      .eq('channel_id', channelId);
+    
+    if (messagesError) {
+      console.error('Error deleting messages:', messagesError);
+      throw messagesError;
+    }
+    
+    // Delete participants
+    const { error: participantsError } = await supabaseAdmin
+      .from('channel_participants')
+      .delete()
+      .eq('channel_id', channelId);
+    
+    if (participantsError) {
+      console.error('Error deleting participants:', participantsError);
+      throw participantsError;
+    }
+    
+    // Delete the channel itself
+    const { error: channelError } = await supabaseAdmin
+      .from('chat_channels')
+      .delete()
+      .eq('id', channelId)
+      .eq('club_id', clubId);
+    
+    if (channelError) throw channelError;
+  }
+
   async sendMessage(channelId: string, senderId: string, content: string, messageType: 'text' | 'system' = 'text'): Promise<Message> {
     const { data, error } = await supabase
       .from('messages')

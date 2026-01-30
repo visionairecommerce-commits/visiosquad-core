@@ -33,8 +33,20 @@ import {
   User as UserIcon,
   Building2,
   UserSquare2,
-  CalendarDays
+  CalendarDays,
+  Trash2
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 
@@ -215,6 +227,27 @@ export default function MessagesPage() {
       toast({
         title: 'Failed to create conversation',
         description: error.message || 'Please try again or check that the event has registered athletes.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteChannelMutation = useMutation({
+    mutationFn: async (channelId: string) => {
+      return apiRequest('DELETE', `/api/chat/channels/${channelId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chat/channels'] });
+      setSelectedChannel(null);
+      toast({
+        title: 'Conversation deleted',
+        description: 'The conversation has been permanently deleted for all users.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to delete conversation',
+        description: error.message || 'Please try again.',
         variant: 'destructive',
       });
     },
@@ -636,13 +669,51 @@ export default function MessagesPage() {
         {selectedChannel ? (
           <>
             <CardHeader className="pb-2 border-b">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">
                   {getChannelDisplayName(selectedChannel)}
                 </CardTitle>
-                <Badge variant="secondary">
-                  {participants.length} participant{participants.length !== 1 ? 's' : ''}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">
+                    {participants.length} participant{participants.length !== 1 ? 's' : ''}
+                  </Badge>
+                  {user?.role === 'admin' && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          data-testid="button-delete-channel"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete this conversation for all users.
+                            All messages will be lost and cannot be recovered.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => deleteChannelMutation.mutate(selectedChannel.id)}
+                            className="bg-destructive text-destructive-foreground"
+                            data-testid="button-confirm-delete"
+                          >
+                            {deleteChannelMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : null}
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="flex-1 p-0 overflow-hidden flex flex-col">

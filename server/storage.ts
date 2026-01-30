@@ -426,7 +426,7 @@ export interface IStorage {
   getAthletesByParentAcrossClubs(parentId: string): Promise<Athlete[]>;
   getUnassignedAthletes(clubId: string, programId: string): Promise<Athlete[]>;
   createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete>;
-  updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void>;
+  updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login' | 'user_id'>>): Promise<void>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
   releaseAthlete(clubId: string, athleteId: string, releasedBy: string | null, releaseType?: 'manual' | 'automated'): Promise<{ contractIds: string[] }>;
   revokeAthleteRelease(clubId: string, athleteId: string): Promise<void>;
@@ -1184,11 +1184,12 @@ export class MemStorage implements IStorage {
     return newAthlete;
   }
 
-  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void> {
+  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login' | 'user_id'>>): Promise<void> {
     const athlete = this.athletes.get(athleteId);
     if (athlete) {
       if (updates.email !== undefined) athlete.email = updates.email;
       if (updates.has_login !== undefined) athlete.has_login = updates.has_login;
+      if (updates.user_id !== undefined) athlete.user_id = updates.user_id;
       this.athletes.set(athleteId, athlete);
     }
   }

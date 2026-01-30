@@ -633,7 +633,7 @@ export class DatabaseStorage implements IStorage {
     return this.mapAthlete(a);
   }
 
-  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login'>>): Promise<void> {
+  async updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login' | 'user_id'>>): Promise<void> {
     await db.update(athletesTable)
       .set(updates)
       .where(eq(athletesTable.id, athleteId));

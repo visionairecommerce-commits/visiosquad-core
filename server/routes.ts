@@ -587,10 +587,11 @@ export async function registerRoutes(
         athlete_id: athleteId,
       });
       
-      // Update athlete with login info
+      // Update athlete with login info and link to user account
       await storage.updateAthlete(athleteId, {
         email,
         has_login: true,
+        user_id: authData.user.id,
       });
       
       res.json({ success: true, message: 'Athlete login created successfully' });

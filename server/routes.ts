@@ -3282,6 +3282,17 @@ export async function registerRoutes(
                                    audience_type === 'event' ? 'event' :
                                    audience_type === 'roster' ? 'group' : channel_type;
       
+      console.log('[Chat Channel Create] Creating channel:', {
+        clubId,
+        userId,
+        effectiveChannelType,
+        name,
+        teamId: team_id,
+        programId: program_id,
+        eventId: event_id,
+        participantCount: resolvedParticipantIds.length
+      });
+      
       const channel = await storage.createChatChannel(
         clubId,
         userId,

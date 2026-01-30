@@ -460,7 +460,7 @@ export async function registerRoutes(
   });
 
   // Sign documents (e-signature)
-  app.post('/api/auth/sign-documents', async (req, res) => {
+  app.post('/api/auth/sign-documents', requireAuth, async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const data = signDocumentSchema.parse(req.body);

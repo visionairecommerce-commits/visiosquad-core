@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, Users, Loader2, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_17_13_PM_1769746673765.png';
 
 type AuthMode = 'signin' | 'create-account';
 type AccountType = 'director' | 'member' | null;

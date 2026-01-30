@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_17_13_PM_1769746673765.png';
 
 type OnboardingStep = 'documents' | 'complete';
 

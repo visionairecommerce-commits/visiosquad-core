@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_10_32_PM_1769746263904.png';
+import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_17_13_PM_1769746673765.png';
 
 export default function CreateClubPage() {
   const [clubName, setClubName] = useState('');

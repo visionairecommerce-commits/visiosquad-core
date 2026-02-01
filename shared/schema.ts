@@ -9,10 +9,14 @@ export type CommunicationSettings = {
   include_director_in_chats: boolean;
 };
 
+// Sport types for clubs
+export type SportType = 'soccer' | 'football' | 'basketball' | 'indoor_volleyball' | 'beach_volleyball';
+
 // Clubs table
 export const clubsTable = pgTable("clubs", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  sport: text("sport", { enum: ["soccer", "football", "basketball", "indoor_volleyball", "beach_volleyball"] }),
   logo_url: text("logo_url"),
   address: text("address"),
   join_code: text("join_code").notNull().unique(),
@@ -290,13 +294,20 @@ export const athletesTable = pgTable("athletes", {
   paid_through_date: text("paid_through_date"),
   is_locked: boolean("is_locked").default(false).notNull(),
   // Release status for club transfers
-  is_released: boolean("is_released").default(false).notNull(), // Whether parent can transfer to another club
-  released_at: timestamp("released_at"), // When athlete was released
-  released_by: uuid("released_by").references(() => profilesTable.id), // Director who released the athlete
+  is_released: boolean("is_released").default(false).notNull(),
+  released_at: timestamp("released_at"),
+  released_by: uuid("released_by").references(() => profilesTable.id),
   // Athlete login credentials (optional - set by parent)
-  email: text("email").unique(), // Athlete's login email
-  has_login: boolean("has_login").default(false).notNull(), // Whether athlete can log in
-  user_id: uuid("user_id").references(() => profilesTable.id), // Athlete's own user profile (when they have login)
+  email: text("email").unique(),
+  has_login: boolean("has_login").default(false).notNull(),
+  user_id: uuid("user_id").references(() => profilesTable.id),
+  // Membership numbers (for volleyball sports)
+  volleyball_life_number: text("volleyball_life_number"),
+  avp_number: text("avp_number"),
+  bvca_number: text("bvca_number"),
+  aau_number: text("aau_number"),
+  bvne_number: text("bvne_number"),
+  p1440_number: text("p1440_number"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -448,6 +459,7 @@ export type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
 export interface Club {
   id: string;
   name: string;
+  sport?: SportType;
   logo_url?: string;
   address?: string;
   join_code: string;
@@ -599,6 +611,13 @@ export interface Athlete {
   released_by?: string;
   email?: string;
   has_login: boolean;
+  user_id?: string;
+  volleyball_life_number?: string;
+  avp_number?: string;
+  bvca_number?: string;
+  aau_number?: string;
+  bvne_number?: string;
+  p1440_number?: string;
   created_at: string;
 }
 

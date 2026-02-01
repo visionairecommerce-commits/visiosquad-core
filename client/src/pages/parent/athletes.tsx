@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { isAthleteAccessLocked } from '@shared/schema';
 import { useAthlete } from '@/contexts/AthleteContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Plus, AlertCircle, CheckCircle, Calendar, GraduationCap, Key, User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -25,6 +26,7 @@ import type { Athlete } from '@shared/schema';
 
 export default function AthletesPage() {
   const { setActiveAthlete } = useAthlete();
+  const { club } = useAuth();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
@@ -277,71 +279,73 @@ export default function AthletesPage() {
                 </div>
               </div>
               
-              <div className="border-t pt-4 mt-4">
-                <p className="text-sm font-medium text-muted-foreground mb-3">Membership Numbers (Optional)</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="volleyball_life">Volleyball Life</Label>
-                    <Input
-                      id="volleyball_life"
-                      placeholder="Membership #"
-                      value={formData.volleyball_life_number}
-                      onChange={(e) => setFormData({ ...formData, volleyball_life_number: e.target.value })}
-                      data-testid="input-athlete-volleyball-life"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="avp">AVP</Label>
-                    <Input
-                      id="avp"
-                      placeholder="Membership #"
-                      value={formData.avp_number}
-                      onChange={(e) => setFormData({ ...formData, avp_number: e.target.value })}
-                      data-testid="input-athlete-avp"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="bvca">BVCA</Label>
-                    <Input
-                      id="bvca"
-                      placeholder="Membership #"
-                      value={formData.bvca_number}
-                      onChange={(e) => setFormData({ ...formData, bvca_number: e.target.value })}
-                      data-testid="input-athlete-bvca"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="aau">AAU</Label>
-                    <Input
-                      id="aau"
-                      placeholder="Membership #"
-                      value={formData.aau_number}
-                      onChange={(e) => setFormData({ ...formData, aau_number: e.target.value })}
-                      data-testid="input-athlete-aau"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="bvne">BVNE</Label>
-                    <Input
-                      id="bvne"
-                      placeholder="Membership #"
-                      value={formData.bvne_number}
-                      onChange={(e) => setFormData({ ...formData, bvne_number: e.target.value })}
-                      data-testid="input-athlete-bvne"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="p1440">p1440</Label>
-                    <Input
-                      id="p1440"
-                      placeholder="Membership #"
-                      value={formData.p1440_number}
-                      onChange={(e) => setFormData({ ...formData, p1440_number: e.target.value })}
-                      data-testid="input-athlete-p1440"
-                    />
+              {club?.sport === 'beach_volleyball' && (
+                <div className="border-t pt-4 mt-4">
+                  <p className="text-sm font-medium text-muted-foreground mb-3">Membership Numbers (Optional)</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="volleyball_life">Volleyball Life</Label>
+                      <Input
+                        id="volleyball_life"
+                        placeholder="Membership #"
+                        value={formData.volleyball_life_number}
+                        onChange={(e) => setFormData({ ...formData, volleyball_life_number: e.target.value })}
+                        data-testid="input-athlete-volleyball-life"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="avp">AVP</Label>
+                      <Input
+                        id="avp"
+                        placeholder="Membership #"
+                        value={formData.avp_number}
+                        onChange={(e) => setFormData({ ...formData, avp_number: e.target.value })}
+                        data-testid="input-athlete-avp"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="bvca">BVCA</Label>
+                      <Input
+                        id="bvca"
+                        placeholder="Membership #"
+                        value={formData.bvca_number}
+                        onChange={(e) => setFormData({ ...formData, bvca_number: e.target.value })}
+                        data-testid="input-athlete-bvca"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="aau">AAU</Label>
+                      <Input
+                        id="aau"
+                        placeholder="Membership #"
+                        value={formData.aau_number}
+                        onChange={(e) => setFormData({ ...formData, aau_number: e.target.value })}
+                        data-testid="input-athlete-aau"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="bvne">BVNE</Label>
+                      <Input
+                        id="bvne"
+                        placeholder="Membership #"
+                        value={formData.bvne_number}
+                        onChange={(e) => setFormData({ ...formData, bvne_number: e.target.value })}
+                        data-testid="input-athlete-bvne"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="p1440">p1440</Label>
+                      <Input
+                        id="p1440"
+                        placeholder="Membership #"
+                        value={formData.p1440_number}
+                        onChange={(e) => setFormData({ ...formData, p1440_number: e.target.value })}
+                        data-testid="input-athlete-p1440"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel

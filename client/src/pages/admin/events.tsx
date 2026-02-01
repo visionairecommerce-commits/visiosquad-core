@@ -50,6 +50,7 @@ import {
   UserPlus,
   X,
   Search,
+  Download,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -340,6 +341,32 @@ export default function EventsPage() {
     : [];
 
   const rosterEvent = events.find(e => e.id === rosterEventId);
+
+  const handleExportRoster = async () => {
+    if (!rosterEventId) return;
+    try {
+      const response = await fetch(`/api/events/${rosterEventId}/roster/export`, {
+        headers: {
+          'X-User-Role': localStorage.getItem('visiosport_role') || '',
+          'X-User-Id': localStorage.getItem('visiosport_user_id') || '',
+          'X-Club-Id': localStorage.getItem('visiosport_club_id') || '',
+        },
+      });
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'roster.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: 'Roster exported successfully' });
+    } catch (error) {
+      toast({ title: 'Failed to export roster', variant: 'destructive' });
+    }
+  };
 
   const handleOpenCreate = () => {
     setEditingEvent(null);
@@ -892,19 +919,31 @@ export default function EventsPage() {
 
       <Dialog open={!!rosterEventId} onOpenChange={(open) => { if (!open) { setRosterEventId(null); setAthleteSearchQuery(''); } }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              {rosterEvent?.title} - Roster
-            </DialogTitle>
-            <DialogDescription>
-              {rosterEvent && (
-                <>
-                  {format(new Date(rosterEvent.start_time), 'EEEE, MMMM d • h:mm a')}
-                  {rosterEvent.location && ` • ${rosterEvent.location}`}
-                </>
-              )}
-            </DialogDescription>
+          <DialogHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                {rosterEvent?.title} - Roster
+              </DialogTitle>
+              <DialogDescription>
+                {rosterEvent && (
+                  <>
+                    {format(new Date(rosterEvent.start_time), 'EEEE, MMMM d • h:mm a')}
+                    {rosterEvent.location && ` • ${rosterEvent.location}`}
+                  </>
+                )}
+              </DialogDescription>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleExportRoster}
+              disabled={eventRosters.length === 0}
+              data-testid="button-export-event-roster"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
           </DialogHeader>
 
           <div className="space-y-4">

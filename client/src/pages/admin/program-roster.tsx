@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, Users, FileCheck, CreditCard, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, FileCheck, CreditCard, AlertCircle, CheckCircle2, Clock, Loader2, Download } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 
 interface Program {
@@ -46,6 +47,32 @@ interface ProgramRosterEntry {
 export default function ProgramRosterPage() {
   const { programId } = useParams<{ programId: string }>();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const handleExport = async () => {
+    try {
+      const response = await fetch(`/api/programs/${programId}/roster/export`, {
+        headers: {
+          'X-User-Role': localStorage.getItem('visiosport_role') || '',
+          'X-User-Id': localStorage.getItem('visiosport_user_id') || '',
+          'X-Club-Id': localStorage.getItem('visiosport_club_id') || '',
+        },
+      });
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'roster.csv';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: 'Roster exported successfully' });
+    } catch (error) {
+      toast({ title: 'Failed to export roster', variant: 'destructive' });
+    }
+  };
 
   const { data: programs = [] } = useQuery<Program[]>({
     queryKey: ['/api/programs'],
@@ -121,23 +148,34 @@ export default function ProgramRosterPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setLocation('/programs')}
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">
-            {program?.name || 'Program'} Roster
-          </h1>
-          <p className="text-muted-foreground">
-            View athletes enrolled in this program with their contract and payment status
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation('/programs')}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">
+              {program?.name || 'Program'} Roster
+            </h1>
+            <p className="text-muted-foreground">
+              View athletes enrolled in this program with their contract and payment status
+            </p>
+          </div>
         </div>
+        <Button 
+          variant="outline" 
+          onClick={handleExport}
+          disabled={roster.length === 0}
+          data-testid="button-export-roster"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">

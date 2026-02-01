@@ -349,6 +349,7 @@ export interface IStorage {
   getClubByJoinCode(joinCode: string): Promise<Club | undefined>;
   getClub(clubId: string): Promise<Club | undefined>;
   updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club>;
+  updateClubSport(clubId: string, sport: string): Promise<Club>;
   updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club>;
   updateClubBillingCard(clubId: string, cardToken: string, lastFour: string, customerCode?: string): Promise<Club>;
   updateClubBillingBank(clubId: string, bankToken: string, lastFour: string): Promise<Club>;
@@ -756,6 +757,14 @@ export class MemStorage implements IStorage {
     if (settings.name !== undefined) club.name = settings.name;
     if (settings.address !== undefined) club.address = settings.address;
     if (settings.logo_url !== undefined) club.logo_url = settings.logo_url;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async updateClubSport(clubId: string, sport: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    (club as any).sport = sport;
     this.clubs.set(clubId, club);
     return club;
   }

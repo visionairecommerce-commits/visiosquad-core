@@ -24,7 +24,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { insertTeamSchema, type InsertTeam } from '@shared/schema';
-import { Plus, Users, MoreVertical, Edit, Trash2, UserCircle } from 'lucide-react';
+import { Plus, Users, MoreVertical, Edit, Trash2, UserCircle, Download } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -149,6 +149,31 @@ export default function TeamsPage() {
 
   const handleDelete = (id: string) => {
     deleteTeamMutation.mutate(id);
+  };
+
+  const handleExportRoster = async (teamId: string, teamName: string) => {
+    try {
+      const response = await fetch(`/api/teams/${teamId}/roster/export`, {
+        headers: {
+          'X-User-Role': localStorage.getItem('visiosport_role') || '',
+          'X-User-Id': localStorage.getItem('visiosport_user_id') || '',
+          'X-Club-Id': localStorage.getItem('visiosport_club_id') || '',
+        },
+      });
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || `${teamName}_roster.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast({ title: 'Roster exported successfully' });
+    } catch (error) {
+      toast({ title: 'Failed to export roster', variant: 'destructive' });
+    }
   };
 
   const getProgramName = (programId: string) => {
@@ -353,6 +378,10 @@ export default function TeamsPage() {
                     <DropdownMenuItem onClick={() => handleEdit(team)}>
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExportRoster(team.id, team.name)}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export Roster
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-destructive"

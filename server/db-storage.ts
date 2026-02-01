@@ -77,6 +77,14 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(club);
   }
 
+  async updateClubSport(clubId: string, sport: string): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({ sport })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
   async updateClubDocuments(clubId: string, contractPdfUrl: string | undefined, waiverContent: string): Promise<Club> {
     const club = await this.getClub(clubId);
     const [updated] = await db.update(clubsTable)
@@ -622,6 +630,7 @@ export class DatabaseStorage implements IStorage {
       parent_id: athlete.parent_id,
       first_name: athlete.first_name,
       last_name: athlete.last_name,
+      email: athlete.email || null,
       date_of_birth: athlete.date_of_birth,
       graduation_year: athlete.graduation_year,
       tags: athlete.tags || [],
@@ -629,6 +638,12 @@ export class DatabaseStorage implements IStorage {
       is_locked: false,
       is_released: false,
       has_login: false,
+      volleyball_life_number: athlete.volleyball_life_number || null,
+      avp_number: athlete.avp_number || null,
+      bvca_number: athlete.bvca_number || null,
+      aau_number: athlete.aau_number || null,
+      bvne_number: athlete.bvne_number || null,
+      p1440_number: athlete.p1440_number || null,
     }).returning();
     return this.mapAthlete(a);
   }

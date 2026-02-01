@@ -94,9 +94,16 @@ const createTeamSchema = z.object({
 const createAthleteSchema = z.object({
   first_name: z.string().min(1),
   last_name: z.string().min(1),
+  email: z.string().email().optional().or(z.literal('')),
   date_of_birth: z.string().min(1),
   graduation_year: z.number().min(2020).max(2040),
   parent_id: z.string().optional(),
+  volleyball_life_number: z.string().optional(),
+  avp_number: z.string().optional(),
+  bvca_number: z.string().optional(),
+  aau_number: z.string().optional(),
+  bvne_number: z.string().optional(),
+  p1440_number: z.string().optional(),
   tags: z.array(z.string()).default([]),
 });
 
@@ -665,6 +672,24 @@ export async function registerRoutes(
         console.error('Error updating club settings:', error);
         res.status(500).json({ error: 'Failed to update settings' });
       }
+    }
+  });
+
+  // Update club sport (Director only)
+  app.patch('/api/clubs/sport', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { sport } = req.body;
+      
+      if (!['soccer', 'football', 'basketball', 'indoor_volleyball', 'beach_volleyball'].includes(sport)) {
+        return res.status(400).json({ error: 'Invalid sport selection' });
+      }
+      
+      const club = await storage.updateClubSport(clubId, sport);
+      res.json(club);
+    } catch (error) {
+      console.error('Error updating club sport:', error);
+      res.status(500).json({ error: 'Failed to update sport' });
     }
   });
 
@@ -1775,10 +1800,17 @@ export async function registerRoutes(
       const athlete = await storage.createAthlete(clubId, {
         first_name: data.first_name,
         last_name: data.last_name,
+        email: data.email || undefined,
         date_of_birth: data.date_of_birth,
         graduation_year: data.graduation_year,
         parent_id: parentId,
         tags: [],
+        volleyball_life_number: data.volleyball_life_number,
+        avp_number: data.avp_number,
+        bvca_number: data.bvca_number,
+        aau_number: data.aau_number,
+        bvne_number: data.bvne_number,
+        p1440_number: data.p1440_number,
       });
       res.status(201).json(athlete);
     } catch (error) {
@@ -2053,6 +2085,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error removing from roster:', error);
       res.status(500).json({ error: 'Failed to remove from roster' });
+    }
+  });
+
+  // Helper function to generate CSV content
+  const generateRosterCSV = (athletes: any[]) => {
+    const headers = [
+      'First Name',
+      'Last Name',
+      'Email',
+      'Date of Birth',
+      'HS Graduation Year',
+      'Volleyball Life #',
+      'AVP #',
+      'BVCA #',
+      'AAU #',
+      'BVNE #',
+      'p1440 #'
+    ];
+    
+    const rows = athletes.map(a => [
+      a.first_name || '',
+      a.last_name || '',
+      a.email || '',
+      a.date_of_birth || '',
+      a.graduation_year?.toString() || '',
+      a.volleyball_life_number || '',
+      a.avp_number || '',
+      a.bvca_number || '',
+      a.aau_number || '',
+      a.bvne_number || '',
+      a.p1440_number || ''
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+    
+    return csvContent;
+  };
+
+  // Export program roster as CSV
+  app.get('/api/programs/:programId/roster/export', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const programId = req.params.programId;
+      
+      const roster = await storage.getProgramRoster(clubId, programId);
+      const athletes = await storage.getAthletes(clubId);
+      const program = await storage.getProgram(clubId, programId);
+      
+      const rosterAthletes = roster.map(entry => {
+        const athlete = athletes.find(a => a.id === entry.athlete_id);
+        return athlete;
+      }).filter(Boolean);
+      
+      const csvContent = generateRosterCSV(rosterAthletes);
+      const filename = `${program?.name || 'program'}_roster_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (error) {
+      console.error('Error exporting program roster:', error);
+      res.status(500).json({ error: 'Failed to export roster' });
+    }
+  });
+
+  // Export team roster as CSV
+  app.get('/api/teams/:teamId/roster/export', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const teamId = req.params.teamId;
+      
+      const roster = await storage.getTeamRoster(clubId, teamId);
+      const athletes = await storage.getAthletes(clubId);
+      const team = await storage.getTeam(clubId, teamId);
+      
+      const rosterAthletes = roster.map(entry => {
+        const athlete = athletes.find(a => a.id === entry.athlete_id);
+        return athlete;
+      }).filter(Boolean);
+      
+      const csvContent = generateRosterCSV(rosterAthletes);
+      const filename = `${team?.name || 'team'}_roster_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (error) {
+      console.error('Error exporting team roster:', error);
+      res.status(500).json({ error: 'Failed to export roster' });
+    }
+  });
+
+  // Export event roster as CSV
+  app.get('/api/events/:eventId/roster/export', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const eventId = req.params.eventId;
+      
+      const eventRoster = await storage.getEventRoster(clubId, eventId);
+      const athletes = await storage.getAthletes(clubId);
+      const event = await storage.getEvent(clubId, eventId);
+      
+      const rosterAthletes = eventRoster.map(entry => {
+        const athlete = athletes.find(a => a.id === entry.athlete_id);
+        return athlete;
+      }).filter(Boolean);
+      
+      const csvContent = generateRosterCSV(rosterAthletes);
+      const filename = `${event?.title || 'event'}_roster_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csvContent);
+    } catch (error) {
+      console.error('Error exporting event roster:', error);
+      res.status(500).json({ error: 'Failed to export roster' });
     }
   });
 

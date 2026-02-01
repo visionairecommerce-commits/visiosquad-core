@@ -32,8 +32,15 @@ export default function AthletesPage() {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    email: '',
     date_of_birth: '',
     graduation_year: new Date().getFullYear() + 10,
+    volleyball_life_number: '',
+    avp_number: '',
+    bvca_number: '',
+    aau_number: '',
+    bvne_number: '',
+    p1440_number: '',
   });
   const [loginFormData, setLoginFormData] = useState({
     email: '',
@@ -55,8 +62,15 @@ export default function AthletesPage() {
       setFormData({
         first_name: '',
         last_name: '',
+        email: '',
         date_of_birth: '',
         graduation_year: new Date().getFullYear() + 10,
+        volleyball_life_number: '',
+        avp_number: '',
+        bvca_number: '',
+        aau_number: '',
+        bvne_number: '',
+        p1440_number: '',
       });
       toast({
         title: 'Athlete Added',
@@ -200,10 +214,10 @@ export default function AthletesPage() {
                 Add a child to your family account.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name</Label>
+                  <Label htmlFor="first_name">First Name *</Label>
                   <Input
                     id="first_name"
                     placeholder="First name"
@@ -214,7 +228,7 @@ export default function AthletesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name</Label>
+                  <Label htmlFor="last_name">Last Name *</Label>
                   <Input
                     id="last_name"
                     placeholder="Last name"
@@ -225,9 +239,20 @@ export default function AthletesPage() {
                   />
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email Address</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="athlete@example.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  data-testid="input-athlete-email"
+                />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="date_of_birth">Date of Birth</Label>
+                  <Label htmlFor="date_of_birth">Date of Birth *</Label>
                   <Input
                     id="date_of_birth"
                     type="date"
@@ -238,7 +263,7 @@ export default function AthletesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="graduation_year">Graduation Year</Label>
+                  <Label htmlFor="graduation_year">HS Graduation Year *</Label>
                   <Input
                     id="graduation_year"
                     type="number"
@@ -249,6 +274,72 @@ export default function AthletesPage() {
                     required
                     data-testid="input-athlete-graduation-year"
                   />
+                </div>
+              </div>
+              
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-3">Membership Numbers (Optional)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="volleyball_life">Volleyball Life</Label>
+                    <Input
+                      id="volleyball_life"
+                      placeholder="Membership #"
+                      value={formData.volleyball_life_number}
+                      onChange={(e) => setFormData({ ...formData, volleyball_life_number: e.target.value })}
+                      data-testid="input-athlete-volleyball-life"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="avp">AVP</Label>
+                    <Input
+                      id="avp"
+                      placeholder="Membership #"
+                      value={formData.avp_number}
+                      onChange={(e) => setFormData({ ...formData, avp_number: e.target.value })}
+                      data-testid="input-athlete-avp"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bvca">BVCA</Label>
+                    <Input
+                      id="bvca"
+                      placeholder="Membership #"
+                      value={formData.bvca_number}
+                      onChange={(e) => setFormData({ ...formData, bvca_number: e.target.value })}
+                      data-testid="input-athlete-bvca"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="aau">AAU</Label>
+                    <Input
+                      id="aau"
+                      placeholder="Membership #"
+                      value={formData.aau_number}
+                      onChange={(e) => setFormData({ ...formData, aau_number: e.target.value })}
+                      data-testid="input-athlete-aau"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bvne">BVNE</Label>
+                    <Input
+                      id="bvne"
+                      placeholder="Membership #"
+                      value={formData.bvne_number}
+                      onChange={(e) => setFormData({ ...formData, bvne_number: e.target.value })}
+                      data-testid="input-athlete-bvne"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="p1440">p1440</Label>
+                    <Input
+                      id="p1440"
+                      placeholder="Membership #"
+                      value={formData.p1440_number}
+                      onChange={(e) => setFormData({ ...formData, p1440_number: e.target.value })}
+                      data-testid="input-athlete-p1440"
+                    />
+                  </div>
                 </div>
               </div>
               <DialogFooter>

@@ -27,19 +27,22 @@ export function WaiverEnforcementModal() {
   const [agreedToWaiver, setAgreedToWaiver] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
-  const { data: waiverStatus, isLoading } = useQuery<WaiverStatus>({
+  const { data: waiverStatus, isLoading, isError, refetch } = useQuery<WaiverStatus>({
     queryKey: ['/api/my-waiver-status'],
     enabled: !!user && (user.role === 'parent' || user.role === 'coach'),
     refetchOnWindowFocus: true,
+    retry: 2,
   });
 
   useEffect(() => {
-    if (waiverStatus && waiverStatus.waiver_required && !waiverStatus.waiver_signed_for_current_season) {
+    if (isError) {
+      setIsOpen(true);
+    } else if (waiverStatus && waiverStatus.waiver_required && !waiverStatus.waiver_signed_for_current_season) {
       setIsOpen(true);
     } else {
       setIsOpen(false);
     }
-  }, [waiverStatus]);
+  }, [waiverStatus, isError]);
 
   const signWaiverMutation = useMutation({
     mutationFn: async () => {
@@ -74,7 +77,36 @@ export function WaiverEnforcementModal() {
     signWaiverMutation.mutate();
   };
 
-  if (isLoading || !waiverStatus?.waiver_required) {
+  if (isLoading) {
+    return null;
+  }
+
+  if (isError) {
+    return (
+      <Dialog open={isOpen} onOpenChange={() => {}}>
+        <DialogContent 
+          className="max-w-md"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              Unable to Verify Waiver Status
+            </DialogTitle>
+            <DialogDescription>
+              We couldn't verify your waiver status. Please try again or contact your club administrator.
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => refetch()} data-testid="button-retry-waiver-check">
+            Try Again
+          </Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (!waiverStatus?.waiver_required) {
     return null;
   }
 

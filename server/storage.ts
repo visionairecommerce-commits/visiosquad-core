@@ -211,7 +211,24 @@ export interface ProgramContract {
   initiation_fee?: number;
   sessions_per_week: number;
   contract_document_url?: string;
+  docuseal_template_id?: string;
   is_active: boolean;
+  created_at: string;
+}
+
+export interface ContractSubmission {
+  id: string;
+  club_id: string;
+  athlete_id: string;
+  program_contract_id?: string;
+  program_id?: string;
+  team_id?: string;
+  docuseal_submission_id: string;
+  docuseal_signer_slug?: string;
+  signer_url?: string;
+  external_id: string;
+  status: 'sent' | 'viewed' | 'signed';
+  signed_at?: string;
   created_at: string;
 }
 
@@ -480,6 +497,24 @@ export interface IStorage {
   getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined>;
   createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at' | 'initiation_fee_paid'>): Promise<AthleteContract>;
   updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract>;
+
+  // Contract Submissions (DocuSeal)
+  createContractSubmission(data: {
+    club_id: string;
+    athlete_id: string;
+    program_contract_id?: string;
+    program_id?: string;
+    team_id?: string;
+    docuseal_submission_id: string;
+    docuseal_signer_slug?: string;
+    signer_url?: string;
+    external_id: string;
+  }): Promise<ContractSubmission>;
+  getContractSubmission(submissionId: string): Promise<ContractSubmission | undefined>;
+  getContractSubmissionByExternalId(externalId: string): Promise<ContractSubmission | undefined>;
+  getContractSubmissionByDocuSealId(docusealSubmissionId: string): Promise<ContractSubmission | undefined>;
+  getContractSubmissionsForAthlete(athleteId: string): Promise<ContractSubmission[]>;
+  updateContractSubmissionStatus(id: string, status: 'sent' | 'viewed' | 'signed', signedAt?: Date): Promise<ContractSubmission>;
 
   // Events
   getEvents(clubId: string, filters?: { programId?: string; teamId?: string }): Promise<Event[]>;
@@ -1561,6 +1596,100 @@ export class MemStorage implements IStorage {
 
   async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
     throw new Error('Not implemented in MemStorage');
+  }
+
+  // Contract Submissions (DocuSeal) - using database storage
+  async createContractSubmission(data: {
+    club_id: string;
+    athlete_id: string;
+    program_contract_id?: string;
+    program_id?: string;
+    team_id?: string;
+    docuseal_submission_id: string;
+    docuseal_signer_slug?: string;
+    signer_url?: string;
+    external_id: string;
+  }): Promise<ContractSubmission> {
+    const { data: submission, error } = await supabase
+      .from('contract_submissions')
+      .insert({
+        club_id: data.club_id,
+        athlete_id: data.athlete_id,
+        program_contract_id: data.program_contract_id,
+        program_id: data.program_id,
+        team_id: data.team_id,
+        docuseal_submission_id: data.docuseal_submission_id,
+        docuseal_signer_slug: data.docuseal_signer_slug,
+        signer_url: data.signer_url,
+        external_id: data.external_id,
+        status: 'sent',
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return submission as ContractSubmission;
+  }
+
+  async getContractSubmission(submissionId: string): Promise<ContractSubmission | undefined> {
+    const { data, error } = await supabase
+      .from('contract_submissions')
+      .select('*')
+      .eq('id', submissionId)
+      .single();
+
+    if (error) return undefined;
+    return data as ContractSubmission;
+  }
+
+  async getContractSubmissionByExternalId(externalId: string): Promise<ContractSubmission | undefined> {
+    const { data, error } = await supabase
+      .from('contract_submissions')
+      .select('*')
+      .eq('external_id', externalId)
+      .single();
+
+    if (error) return undefined;
+    return data as ContractSubmission;
+  }
+
+  async getContractSubmissionByDocuSealId(docusealSubmissionId: string): Promise<ContractSubmission | undefined> {
+    const { data, error } = await supabase
+      .from('contract_submissions')
+      .select('*')
+      .eq('docuseal_submission_id', docusealSubmissionId)
+      .single();
+
+    if (error) return undefined;
+    return data as ContractSubmission;
+  }
+
+  async getContractSubmissionsForAthlete(athleteId: string): Promise<ContractSubmission[]> {
+    const { data, error } = await supabase
+      .from('contract_submissions')
+      .select('*')
+      .eq('athlete_id', athleteId)
+      .order('created_at', { ascending: false });
+
+    if (error) return [];
+    return data as ContractSubmission[];
+  }
+
+  async updateContractSubmissionStatus(id: string, status: 'sent' | 'viewed' | 'signed', signedAt?: Date): Promise<ContractSubmission> {
+    const updateData: any = { status };
+    if (signedAt) {
+      updateData.signed_at = signedAt.toISOString();
+    }
+
+    const { data, error } = await supabase
+      .from('contract_submissions')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data as ContractSubmission;
   }
 
   // Events (stub implementations - using database storage)

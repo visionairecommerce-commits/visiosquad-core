@@ -242,6 +242,7 @@ export const programContractsTable = pgTable("program_contracts", {
   initiation_fee: decimal("initiation_fee", { precision: 10, scale: 2 }), // One-time fee
   sessions_per_week: integer("sessions_per_week").notNull(),
   contract_document_url: text("contract_document_url"), // Custom contract PDF URL (overrides club default)
+  docuseal_template_id: text("docuseal_template_id"), // DocuSeal template ID for e-signatures
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
@@ -262,6 +263,27 @@ export const athleteContractsTable = pgTable("athlete_contracts", {
   status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Contract submissions table - tracks DocuSeal per-athlete submissions
+export const contractSubmissionsTable = pgTable("contract_submissions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
+  program_contract_id: uuid("program_contract_id").references(() => programContractsTable.id),
+  program_id: uuid("program_id").references(() => programsTable.id),
+  team_id: uuid("team_id"),
+  docuseal_submission_id: text("docuseal_submission_id").notNull(),
+  docuseal_signer_slug: text("docuseal_signer_slug"),
+  signer_url: text("signer_url"),
+  external_id: text("external_id").notNull(), // Unique identifier for webhook matching
+  status: text("status", { enum: ["sent", "viewed", "signed"] }).default("sent").notNull(),
+  signed_at: timestamp("signed_at"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  athleteIdx: index("contract_submissions_athlete_idx").on(table.athlete_id),
+  submissionIdx: index("contract_submissions_submission_idx").on(table.docuseal_submission_id),
+  externalIdIdx: index("contract_submissions_external_id_idx").on(table.external_id),
+}));
 
 // Contract templates table (legacy - for document signing)
 export const contractTemplatesTable = pgTable("contract_templates", {
@@ -559,7 +581,24 @@ export interface ProgramContract {
   initiation_fee?: number;
   sessions_per_week: number;
   contract_document_url?: string;
+  docuseal_template_id?: string;
   is_active: boolean;
+  created_at: string;
+}
+
+export interface ContractSubmission {
+  id: string;
+  club_id: string;
+  athlete_id: string;
+  program_contract_id?: string;
+  program_id?: string;
+  team_id?: string;
+  docuseal_submission_id: string;
+  docuseal_signer_slug?: string;
+  signer_url?: string;
+  external_id: string;
+  status: 'sent' | 'viewed' | 'signed';
+  signed_at?: string;
   created_at: string;
 }
 

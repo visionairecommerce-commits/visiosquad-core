@@ -71,6 +71,11 @@ Preferred communication style: Simple, everyday language.
 - **Helcim**: Payment gateway for credit card and ACH transactions (`HELCIM_API_TOKEN`, `HELCIM_ACCOUNT_ID`).
 - **Resend**: Transactional email service for notifications (`RESEND_API_KEY`).
 - **Firebase**: Push notifications (FCM) via Firebase Admin SDK (`FIREBASE_SERVICE_ACCOUNT`).
+- **DocuSeal**: E-signature platform for per-athlete contract submissions (`DOCUSEAL_API_KEY`, `DOCUSEAL_WEBHOOK_SECRET`).
+  - Directors configure `docuseal_template_id` on program contracts
+  - API creates submissions with external_id for reliable webhook matching
+  - Webhook verifies `X-DocuSeal-Secret` header and updates athlete contract status
+  - `contract_submissions` table tracks submission status (sent, viewed, signed)
 
 ### Key NPM Packages
 - `@supabase/supabase-js`: Supabase client SDK.

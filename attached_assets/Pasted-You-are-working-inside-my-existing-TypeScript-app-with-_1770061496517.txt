@@ -1,0 +1,109 @@
+You are working inside my existing TypeScript app with this structure: server/index.ts, server/routes.ts, server/storage.ts, and shared/schema.ts (Drizzle ORM). We already have a working DocuSeal webhook endpoint at POST /api/webhooks/docuseal that marks contracts as signed in the database, but right now it relies on metadata.club_id and metadata.athlete_id which we do NOT get when directors use DocuSeal shared template links (/d/...). We want a correct, seamless implementation where each athlete signing event can be reliably mapped back to that athlete account so my app can unlock permissions for that athlete.
+
+Goal
+
+Implement “per-athlete DocuSeal submissions” so that:
+
+Each club director can log into DocuSeal, upload their own contract templates, and provide my app with a Template ID for each “Plan/Option” (plan = price + permissions + schedule rules) they sell.
+
+When a parent registers/pays for a plan, my backend automatically creates a DocuSeal submission for that specific athlete using that plan’s docuseal_template_id.
+
+The submission creation must set external_id and/or metadata so the webhook can always identify the athlete. Use:
+
+club_id
+
+athlete_id
+
+program_id (if applicable)
+
+team_id (if applicable)
+
+plan_id / option_id (if applicable)
+
+season/year if available
+
+The backend must store the returned submission_id and signer slug/link in the database.
+
+The frontend should show a “Sign Contract” button that opens the signer URL (/s/{slug}) or returns a signer link string from the backend. (No need to redesign UI; minimal changes.)
+
+When DocuSeal sends the signed webhook event (form.completed or equivalent), our webhook handler must:
+
+verify the webhook secret using a custom header X-DocuSeal-Secret (NOT by comparing Authorization bearer token with DOCUSEAL_API_KEY)
+
+read external_id/metadata/submission_id from the webhook payload
+
+update the correct athlete’s contract submission row as signed
+
+then unlock that athlete’s permissions for the purchased plan (or set contract_signed = true in the existing table we use).
+
+The webhook must NOT “fall back” to email-only matching that marks all athletes under a parent as signed. If metadata/external_id/submission_id can’t map to a single athlete, log and return 200 with {processed:false} (so DocuSeal doesn’t retry forever), but do not unlock anyone.
+
+Required architecture changes
+
+Add database fields/tables needed to support per-athlete submissions (Drizzle):
+
+We need a place to store plan/option-level DocuSeal Template ID (e.g., docuseal_template_id) wherever plans/options are stored.
+
+We need a table to store created submissions per athlete (e.g., contract_submissions) with:
+
+athlete_id
+
+plan_id/option_id
+
+docuseal_submission_id
+
+docuseal_signer_slug or signer_url
+
+status (sent, signed)
+
+signed_at
+
+external_id stored
+
+Add server endpoints:
+
+POST /api/docuseal/submission (or similar) that takes athleteId + planId and creates a DocuSeal submission using the plan’s template ID, returning a signer URL.
+
+Any helper method in server/services or server/storage.ts to create and persist the submission record.
+
+Update existing enrollment/payment success flow so that after payment success, it creates the DocuSeal submission (or returns signer URL to UI) and the account remains locked until webhook confirms signature.
+
+DocuSeal API details to use
+
+Use DOCUSEAL_API_KEY from env and send it as X-Auth-Token header when calling DocuSeal API.
+
+Use POST https://api.docuseal.com/submissions (or configured base URL) with template_id and signer info. Include external_id plus a metadata object with the IDs listed above.
+
+Parse the response to capture:
+
+submission id
+
+signer slug(s) OR signer URL(s) for embedded/redirect signing
+
+Security requirements
+
+Add env var DOCUSEAL_WEBHOOK_SECRET.
+
+In webhook handler, verify header X-DocuSeal-Secret equals DOCUSEAL_WEBHOOK_SECRET.
+
+Keep webhook response fast. Always return 200 on valid requests even if {processed:false}.
+
+Constraints
+
+Do NOT rewrite entire files. Make minimal patch-style changes.
+
+Preserve all existing functionality that already works.
+
+Keep all changes TypeScript, consistent with current code style.
+
+Provide the code diffs with exact file names and exact code blocks to insert/replace.
+
+After implementing, add a short checklist for me to test:
+
+create plan with template_id
+
+enroll athlete → submission created → signer URL returned
+
+sign → webhook → athlete unlocked
+
+Proceed to implement this fully.

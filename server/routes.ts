@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
 import { processPayment, calculateTotalWithFee, createCardToken, createBankToken } from "./lib/helcim";
-import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest } from "./lib/resend";
+import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
@@ -662,6 +662,39 @@ export async function registerRoutes(
       supabaseUrl: process.env.SUPABASE_URL || '',
       supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
     });
+  });
+
+  // Test email endpoint - owner only, sends a test email to verify Resend configuration
+  app.post('/api/test-email', requireRole('owner'), async (req, res) => {
+    try {
+      if (!isResendConfigured()) {
+        return res.status(503).json({ 
+          ok: false, 
+          error: 'Email service not configured. RESEND_API_KEY is missing.' 
+        });
+      }
+
+      const result = await sendTestEmail();
+      
+      if (result.success) {
+        res.json({ 
+          ok: true, 
+          message: 'Test email sent successfully',
+          emailId: result.id 
+        });
+      } else {
+        res.status(500).json({ 
+          ok: false, 
+          error: result.error || 'Failed to send test email' 
+        });
+      }
+    } catch (error) {
+      console.error('[Test Email] Error:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: 'Internal error while sending test email' 
+      });
+    }
   });
 
   // Get user's document signatures

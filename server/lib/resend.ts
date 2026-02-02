@@ -1,13 +1,17 @@
 import { Resend } from 'resend';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const DEFAULT_FROM = 'VisioSquad <no-reply@visiosquad.com>';
+const REPLY_TO = 'visionairecommerce@gmail.com';
+const OWNER_EMAIL = process.env.OWNER_EMAIL || 'visionairecommerce@gmail.com';
 
 let resend: Resend | null = null;
 
 if (RESEND_API_KEY) {
   resend = new Resend(RESEND_API_KEY);
+  console.log('Resend email client initialized successfully');
 } else {
-  console.warn('Resend API key not configured. Email sending will fail.');
+  console.warn('RESEND_API_KEY not configured. Email sending will be disabled.');
 }
 
 interface EmailOptions {
@@ -15,6 +19,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   from?: string;
+  replyTo?: string;
 }
 
 interface EmailResult {
@@ -23,30 +28,64 @@ interface EmailResult {
   error?: string;
 }
 
+export function isResendConfigured(): boolean {
+  return resend !== null;
+}
+
 export async function sendEmail(options: EmailOptions): Promise<EmailResult> {
   if (!resend) {
-    console.warn('Resend not configured, email not sent:', options.subject);
+    console.warn('[Resend] Not configured, email not sent:', { subject: options.subject, to: options.to });
     return { success: false, error: 'Email service not configured' };
   }
 
   try {
+    console.log('[Resend] Sending email:', { subject: options.subject, to: options.to });
+    
     const { data, error } = await resend.emails.send({
-      from: options.from || 'VisioSquad <notifications@visiosquad.com>',
+      from: options.from || DEFAULT_FROM,
       to: Array.isArray(options.to) ? options.to : [options.to],
       subject: options.subject,
       html: options.html,
+      replyTo: options.replyTo || REPLY_TO,
     });
 
     if (error) {
-      console.error('Resend error:', error);
+      console.error('[Resend] API error:', { error, subject: options.subject });
       return { success: false, error: error.message };
     }
 
+    console.log('[Resend] Email sent successfully:', { id: data?.id, subject: options.subject });
     return { success: true, id: data?.id };
   } catch (error) {
-    console.error('Email send error:', error);
-    return { success: false, error: 'Failed to send email' };
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Resend] Exception while sending email:', { error: errorMessage, subject: options.subject });
+    return { success: false, error: errorMessage };
   }
+}
+
+export async function sendTestEmail(): Promise<EmailResult> {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #2563eb;">VisioSquad Email Test</h2>
+      <p>This is a test email to verify that the Resend integration is working correctly.</p>
+      <div style="background-color: #eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2563eb;">
+        <p style="margin: 0;"><strong>Status:</strong> Email service is operational</p>
+        <p style="margin: 8px 0 0;"><strong>Sent at:</strong> ${new Date().toISOString()}</p>
+        <p style="margin: 8px 0 0;"><strong>From:</strong> ${DEFAULT_FROM}</p>
+        <p style="margin: 8px 0 0;"><strong>Reply-To:</strong> ${REPLY_TO}</p>
+      </div>
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #6b7280; font-size: 12px;">
+        This is an automated test message from VisioSquad.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: OWNER_EMAIL,
+    subject: 'VisioSquad Email Test - Configuration Verified',
+    html,
+  });
 }
 
 export async function sendSessionCancellationEmail(
@@ -147,8 +186,6 @@ export async function sendDocuSealOnboardingRequest(
   payload: { program_name?: string; team_name?: string; template_id?: string; contract_name?: string },
   dashboardUrl: string
 ): Promise<EmailResult> {
-  const OWNER_EMAIL = process.env.OWNER_EMAIL || 'visionairecommerce@gmail.com';
-  
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #f59e0b;">DocuSeal Onboarding Needed</h2>

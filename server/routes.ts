@@ -1408,6 +1408,7 @@ export async function registerRoutes(
 
   // ============ PARENT CONTRACT ENROLLMENT ============
   // Get available contracts for an athlete (based on their roster memberships)
+  // Implements contract hierarchy: team contract > program contract > "not assigned" message
   app.get('/api/athletes/:athleteId/available-contracts', requireRole('parent'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
@@ -1420,23 +1421,63 @@ export async function registerRoutes(
         return res.status(403).json({ error: 'Access denied' });
       }
       
-      // Get athlete's roster memberships to find their programs
+      // Get athlete's roster memberships to find their programs/teams
       const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
-      const programIds = rosters.map(r => r.program_id);
-      const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
       
-      // Get all contracts for those programs
+      // If athlete has no roster assignments, return special response
+      if (rosters.length === 0) {
+        return res.json({ 
+          not_assigned: true, 
+          message: "You have not yet been assigned to a program or team, please contact your club director to have them assign you.",
+          contracts: [] 
+        });
+      }
+      
+      // Get all active contracts for the club
       const allContracts = await storage.getProgramContracts(clubId);
+      const activeContracts = allContracts.filter(c => c.is_active);
       
-      // Filter to contracts that match athlete's programs/teams
-      const availableContracts = allContracts.filter(c => {
-        if (!programIds.includes(c.program_id)) return false;
-        // If contract is team-specific, athlete must be on that team
-        if (c.team_id && !teamIds.includes(c.team_id)) return false;
-        return c.is_active;
+      // Apply contract hierarchy for each roster entry
+      // For each program/team assignment, find ALL contracts at the most specific scope
+      const availableContracts: typeof activeContracts = [];
+      const seenContractIds = new Set<string>();
+      
+      for (const roster of rosters) {
+        // First, check for team-specific contracts if athlete is on a team
+        if (roster.team_id) {
+          const teamContracts = activeContracts.filter(c => 
+            c.program_id === roster.program_id && 
+            c.team_id === roster.team_id
+          );
+          if (teamContracts.length > 0) {
+            // Add all team-specific contracts (team takes precedence)
+            for (const contract of teamContracts) {
+              if (!seenContractIds.has(contract.id)) {
+                availableContracts.push(contract);
+                seenContractIds.add(contract.id);
+              }
+            }
+            continue; // Team contracts take precedence, skip program-level contracts
+          }
+        }
+        
+        // Fall back to program-level contracts (no team_id)
+        const programContracts = activeContracts.filter(c => 
+          c.program_id === roster.program_id && 
+          !c.team_id
+        );
+        for (const contract of programContracts) {
+          if (!seenContractIds.has(contract.id)) {
+            availableContracts.push(contract);
+            seenContractIds.add(contract.id);
+          }
+        }
+      }
+      
+      res.json({ 
+        not_assigned: false, 
+        contracts: availableContracts 
       });
-      
-      res.json(availableContracts);
     } catch (error) {
       console.error('Error fetching available contracts:', error);
       res.status(500).json({ error: 'Failed to fetch available contracts' });

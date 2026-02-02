@@ -20,7 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAthlete } from '@/contexts/AthleteContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { FileText, DollarSign, Calendar, Check, AlertCircle, ArrowLeft } from 'lucide-react';
+import { FileText, DollarSign, Calendar, Check, AlertCircle, ArrowLeft, UserX } from 'lucide-react';
 
 interface ProgramContract {
   id: string;
@@ -34,6 +34,12 @@ interface ProgramContract {
   sessions_per_week: number;
   contract_document_url?: string;
   is_active: boolean;
+}
+
+interface AvailableContractsResponse {
+  not_assigned: boolean;
+  message?: string;
+  contracts: ProgramContract[];
 }
 
 interface AthleteContract {
@@ -63,10 +69,10 @@ export default function ParentContractsPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
 
-  const { data: availableContracts = [], isLoading: loadingContracts } = useQuery<ProgramContract[]>({
+  const { data: contractsResponse, isLoading: loadingContracts } = useQuery<AvailableContractsResponse>({
     queryKey: ['/api/athletes', activeAthlete?.id, 'available-contracts'],
     queryFn: async () => {
-      if (!activeAthlete?.id) return [];
+      if (!activeAthlete?.id) return { not_assigned: false, contracts: [] };
       const res = await fetch(`/api/athletes/${activeAthlete.id}/available-contracts`, {
         headers: {
           'X-User-Role': 'parent',
@@ -79,6 +85,10 @@ export default function ParentContractsPage() {
     },
     enabled: !!activeAthlete?.id,
   });
+  
+  const availableContracts = contractsResponse?.contracts || [];
+  const isNotAssigned = contractsResponse?.not_assigned || false;
+  const notAssignedMessage = contractsResponse?.message || '';
 
   const { data: currentContract, isLoading: loadingCurrent } = useQuery<AthleteContract | null>({
     queryKey: ['/api/athletes', activeAthlete?.id, 'contract'],
@@ -235,7 +245,17 @@ export default function ParentContractsPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-4">Available Contracts</h2>
-        {availableContracts.length === 0 ? (
+        {isNotAssigned ? (
+          <Card data-testid="card-not-assigned">
+            <CardContent className="py-12 text-center">
+              <UserX className="h-12 w-12 mx-auto text-amber-500 mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Not Yet Assigned</h3>
+              <p className="text-muted-foreground" data-testid="text-not-assigned-message">
+                {notAssignedMessage || "You have not yet been assigned to a program or team, please contact your club director to have them assign you."}
+              </p>
+            </CardContent>
+          </Card>
+        ) : availableContracts.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, Users, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747467171.png';
 
@@ -187,7 +188,11 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-xs text-muted-foreground">
-          By continuing, you agree to our Terms of Service and Privacy Policy
+          By continuing, you agree to our{' '}
+          <Link href="/terms-of-service" className="underline hover:text-foreground" data-testid="link-terms-of-service">
+            Terms of Service
+          </Link>
+          {' '}and Privacy Policy
         </p>
       </div>
     </div>

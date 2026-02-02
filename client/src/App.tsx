@@ -40,6 +40,7 @@ import MessagesPage from "@/pages/messages";
 import BulletinPage from "@/pages/bulletin";
 import AthleteDashboard from "@/pages/athlete/dashboard";
 import AthleteSchedulePage from "@/pages/athlete/schedule";
+import TermsOfServicePage from "@/pages/terms-of-service";
 import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
 
 function RedirectToLogin() {
@@ -187,6 +188,7 @@ function AppContent() {
         <Route path="/login" component={LoginPage} />
         <Route path="/create-club" component={CreateClubPage} />
         <Route path="/join" component={JoinPage} />
+        <Route path="/terms-of-service" component={TermsOfServicePage} />
         <Route component={RedirectToLogin} />
       </Switch>
     );

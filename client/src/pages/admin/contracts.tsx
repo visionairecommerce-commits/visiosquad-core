@@ -13,7 +13,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText, HelpCircle } from "lucide-react";
+import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText, HelpCircle, Mail } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Program {
@@ -238,7 +238,7 @@ export default function ContractsPage() {
               Add Contract
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>{editingContract ? "Edit Contract" : "Create New Contract"}</DialogTitle>
               <DialogDescription>
@@ -248,7 +248,8 @@ export default function ContractsPage() {
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 overflow-hidden">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                 <FormField
                   control={form.control}
                   name="program_id"
@@ -439,7 +440,27 @@ export default function ContractsPage() {
                 <FormField
                   control={form.control}
                   name="docuseal_template_id"
-                  render={({ field }) => (
+                  render={({ field }) => {
+                    const selectedProgram = programs.find(p => p.id === form.watch("program_id"));
+                    const selectedTeam = teams.find(t => t.id === form.watch("team_id"));
+                    const programName = selectedProgram?.name || "my program";
+                    const teamName = selectedTeam?.name || "";
+                    
+                    const emailSubject = encodeURIComponent(`DocuSeal Setup Request for ${programName}${teamName ? ` - ${teamName}` : ""}`);
+                    const emailBody = encodeURIComponent(
+`Hi VisioSquad Team,
+
+I would like to request DocuSeal e-signature setup for my club.
+
+Program: ${programName}${teamName ? `\nTeam: ${teamName}` : ""}
+
+Please let me know the next steps to get started with electronic contract signing.
+
+Thank you!`
+                    );
+                    const mailtoLink = `mailto:visionairecommerce@gmail.com?subject=${emailSubject}&body=${emailBody}`;
+                    
+                    return (
                     <FormItem>
                       <FormLabel className="flex items-center gap-2">
                         DocuSeal Template ID (Optional)
@@ -469,11 +490,25 @@ export default function ContractsPage() {
                         Paste the Template ID from DocuSeal. You only paste this once per contract. The app will automatically generate athlete-specific signing links.
                       </FormDescription>
                       <FormMessage />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-0 justify-start mt-2"
+                        asChild
+                        data-testid="button-contact-visiosquad-admin"
+                      >
+                        <a href={mailtoLink}>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Contact VisioSquad Admin for DocuSeal setup
+                        </a>
+                      </Button>
                     </FormItem>
-                  )}
+                  )}}
                 />
+                </div>
 
-                <DialogFooter>
+                <DialogFooter className="mt-4 pt-4 border-t">
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancel
                   </Button>

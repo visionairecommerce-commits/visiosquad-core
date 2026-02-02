@@ -48,7 +48,7 @@ Preferred communication style: Simple, everyday language.
 - **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
 - **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
 - **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, $1.00 flat fee for ACH). Requires billing card on file for clubs.
-- **Platform Fees**: $3.00/player/month for regular athletes, $1.00/player for clinics, $0.75/player for drop-ins. Defined in `PLATFORM_FEES` constant in `shared/schema.ts`.
+- **Platform Fees**: $3.00/player/month for regular athletes, $1.00/player for events, $0.75/player for drop-ins. Defined in `PLATFORM_FEES` constant in `shared/schema.ts`.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.

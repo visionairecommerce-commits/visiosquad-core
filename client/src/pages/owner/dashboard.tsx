@@ -36,7 +36,7 @@ interface PlatformMetrics {
   total_payments: number;
   estimated_monthly_revenue: number;
   platform_fee_monthly: number;
-  platform_fee_clinic: number;
+  platform_fee_event: number;
   platform_fee_drop_in: number;
 }
 
@@ -196,8 +196,8 @@ export default function OwnerDashboard() {
                 <Activity className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="font-medium">Clinic Fee</p>
-                <p className="text-2xl font-bold text-primary">${metrics?.platform_fee_clinic ?? 1.00}</p>
+                <p className="font-medium">Event Fee</p>
+                <p className="text-2xl font-bold text-primary">${metrics?.platform_fee_event ?? 1.00}</p>
                 <p className="text-sm text-muted-foreground">Per participant</p>
               </div>
             </div>

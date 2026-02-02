@@ -335,10 +335,9 @@ export interface PushSubscription {
 
 // Platform fee constants
 export const PLATFORM_FEES = {
-  monthly: 2.00,
-  clinic: 1.00,
-  drop_in: 0.75,
+  monthly: 3.00,
   event: 1.00,
+  drop_in: 0.75,
 } as const;
 
 // Storage interface

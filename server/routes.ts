@@ -4320,7 +4320,7 @@ export async function registerRoutes(
         total_payments: totalPayments,
         estimated_monthly_revenue: estimatedMonthlyRevenue,
         platform_fee_monthly: PLATFORM_FEES.monthly,
-        platform_fee_clinic: PLATFORM_FEES.clinic,
+        platform_fee_event: PLATFORM_FEES.event,
         platform_fee_drop_in: PLATFORM_FEES.drop_in,
       });
     } catch (error) {

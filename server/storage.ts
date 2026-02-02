@@ -19,7 +19,28 @@ export interface Club {
   billing_bank_token?: string;
   billing_bank_last_four?: string;
   billing_method?: 'card' | 'bank';
+  // DocuSeal onboarding status
+  docuseal_onboarded: boolean;
+  docuseal_team_name?: string;
+  docuseal_onboarded_at?: string;
+  docuseal_onboarded_by_user_id?: string;
   created_at: string;
+}
+
+export interface DocuSealSetupRequest {
+  id: string;
+  club_id: string;
+  requested_by_user_id?: string | null;
+  requested_by_email: string;
+  requested_at: string;
+  status: 'open' | 'in_progress' | 'completed' | 'rejected';
+  notes?: string | null;
+  payload?: {
+    program_name?: string;
+    team_name?: string;
+    template_id?: string;
+    contract_name?: string;
+  } | null;
 }
 
 export interface User {
@@ -599,6 +620,16 @@ export interface IStorage {
   updateSeason(clubId: string, seasonId: string, data: { name?: string; start_date?: Date; end_date?: Date }): Promise<Season>;
   setActiveSeason(clubId: string, seasonId: string): Promise<Season>;
   deleteSeason(clubId: string, seasonId: string): Promise<void>;
+  
+  // ============ DOCUSEAL SETUP REQUESTS ============
+  
+  getDocuSealSetupRequests(status?: 'open' | 'in_progress' | 'completed' | 'rejected'): Promise<DocuSealSetupRequest[]>;
+  getDocuSealSetupRequest(requestId: string): Promise<DocuSealSetupRequest | undefined>;
+  getOpenDocuSealRequestForClub(clubId: string): Promise<DocuSealSetupRequest | undefined>;
+  createDocuSealSetupRequest(request: { club_id: string; requested_by_user_id?: string; requested_by_email: string; payload?: { program_name?: string; team_name?: string; template_id?: string; contract_name?: string } }): Promise<DocuSealSetupRequest>;
+  updateDocuSealSetupRequest(requestId: string, data: { status?: 'open' | 'in_progress' | 'completed' | 'rejected'; notes?: string }): Promise<DocuSealSetupRequest>;
+  markClubDocuSealOnboarded(clubId: string, onboardedByUserId?: string, teamName?: string): Promise<Club>;
+  isClubDocuSealOnboarded(clubId: string): Promise<boolean>;
 }
 
 // Season interface
@@ -1752,6 +1783,35 @@ export class MemStorage implements IStorage {
   }
 
   async setEventCoaches(clubId: string, eventId: string, coachIds: string[]): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // DocuSeal Setup Requests (stub implementations)
+  async getDocuSealSetupRequests(status?: 'open' | 'in_progress' | 'completed' | 'rejected'): Promise<DocuSealSetupRequest[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getDocuSealSetupRequest(requestId: string): Promise<DocuSealSetupRequest | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getOpenDocuSealRequestForClub(clubId: string): Promise<DocuSealSetupRequest | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async createDocuSealSetupRequest(request: { club_id: string; requested_by_user_id?: string; requested_by_email: string; payload?: { program_name?: string; team_name?: string; template_id?: string; contract_name?: string } }): Promise<DocuSealSetupRequest> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateDocuSealSetupRequest(requestId: string, data: { status?: 'open' | 'in_progress' | 'completed' | 'rejected'; notes?: string }): Promise<DocuSealSetupRequest> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async markClubDocuSealOnboarded(clubId: string, onboardedByUserId?: string, teamName?: string): Promise<Club> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async isClubDocuSealOnboarded(clubId: string): Promise<boolean> {
     throw new Error('Not implemented in MemStorage');
   }
 }

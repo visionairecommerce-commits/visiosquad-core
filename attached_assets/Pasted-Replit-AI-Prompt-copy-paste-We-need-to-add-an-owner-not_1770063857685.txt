@@ -1,0 +1,146 @@
+Replit AI Prompt (copy/paste)
+
+We need to add an owner-notification workflow for DocuSeal onboarding + instructions in the Owner Dashboard. The goal is: when a club director tries to add a DocuSeal contract/template in the app but their club is not yet onboarded to DocuSeal (team/user not created/invited), the app should notify me (the app owner) by email and show me a checklist inside the Owner Dashboard on how to onboard the club in DocuSeal.
+
+Current context
+
+App is TypeScript with server/index.ts, server/routes.ts, server/storage.ts, shared/schema.ts using Drizzle.
+
+We already have RESEND_API_KEY in Replit secrets and likely email sending already exists or can be added via Resend.
+
+DocuSeal integration exists (webhook + per-athlete submissions). Directors will paste DocuSeal Template IDs into plan/contract configuration.
+
+We do NOT have fully automated DocuSeal team/user provisioning. For now it’s manual: create DocuSeal Team for the club, invite director to that team.
+
+Requirements
+1) Trigger an email to owner when a director attempts to add a DocuSeal contract/template AND the club is not marked as DocuSeal-onboarded.
+
+Add a boolean field on clubs table: docuseal_onboarded default false.
+
+Add optional fields on clubs: docuseal_team_name, docuseal_onboarded_at, and optionally docuseal_onboarded_by_user_id if owner users exist.
+
+When directors try to save a contract template id or contract configuration (whatever endpoint handles “add/update contract”), if clubs.docuseal_onboarded === false, then:
+
+Save the attempted contract data as “pending” (don’t lose their work) OR at minimum store a pending_docuseal_setup_request record (see requirement 2).
+
+Send email to owner immediately.
+
+Return a response to director indicating: “DocuSeal setup pending. The owner has been notified and will complete DocuSeal onboarding shortly.”
+
+2) Persist a “DocuSeal setup request” record so the owner dashboard can show requests
+
+Create a new table docuseal_setup_requests with:
+
+id (serial)
+
+club_id (fk)
+
+requested_by_user_id (director user id if available)
+
+requested_by_email (string)
+
+requested_at (timestamp default now)
+
+status enum: open, in_progress, completed, rejected (default open)
+
+notes (text nullable)
+
+payload (json) to store what they attempted: e.g. program/team/plan name + template_id they tried to set
+
+When the trigger happens, create an open request if one doesn’t already exist for that club with status open/in_progress.
+
+3) Email owner (me) with actionable details
+
+Add env var OWNER_EMAIL (string). If missing, fallback to a safe default but do not hardcode in code.
+
+Email subject: “DocuSeal onboarding needed: <Club Name>”
+
+Email body must include:
+
+club name
+
+director email/name (if available)
+
+what they tried to add (template_id, plan/program/team names if present)
+
+a short checklist of onboarding steps (see requirement 4)
+
+a link to the Owner Dashboard page showing the request (e.g. /owner/docuseal-requests or similar)
+
+Use Resend to send email:
+
+If Resend is already implemented, reuse existing helper.
+
+If not, create a minimal server/services/email.ts with a sendOwnerEmail() function using RESEND_API_KEY.
+
+4) Add Owner Dashboard instructions + UI
+
+Add a new Owner Dashboard page/section: “DocuSeal Onboarding”
+It must include:
+A) A visible onboarding checklist (static instructions) that I can follow quickly:
+
+Go to DocuSeal Console
+
+Create Team with club name
+
+Invite director email to that team (Admin role)
+
+Director logs in, creates Templates, copies Template IDs
+
+Director pastes Template IDs into app plans
+
+Confirm webhook + signing works
+B) A list/table of open setup requests with:
+
+club name
+
+director email
+
+requested_at
+
+status
+
+a “Mark In Progress” and “Mark Completed” button
+
+a place to add notes
+C) When owner marks completed, set clubs.docuseal_onboarded=true and docuseal_onboarded_at=now.
+
+5) Minimal impact / patch style
+
+Do NOT rewrite whole files.
+
+Apply minimal diffs.
+
+Keep consistent style with existing codebase.
+
+Add Drizzle schema changes + migration instructions or files.
+
+Add routes:
+
+GET /api/owner/docuseal-setup-requests (list open/in_progress)
+
+PATCH /api/owner/docuseal-setup-requests/:id (update status/notes)
+
+Protect owner routes with existing auth/role checks. If there is an existing “owner/admin” check, use it. If not, add a minimal check (e.g., only allow if user email matches OWNER_EMAIL) and document it.
+
+Deliverables
+
+Code changes with file-by-file diffs (exact code to replace/insert).
+
+New tables/fields in shared/schema.ts and migration steps.
+
+A short “How to test” checklist:
+
+Create club not onboarded
+
+Director attempts to add template id
+
+Verify email sent to OWNER_EMAIL
+
+Verify setup request appears in owner dashboard
+
+Mark completed → club docuseal_onboarded true
+
+Director retries add → no email, saves normally
+
+Implement now.

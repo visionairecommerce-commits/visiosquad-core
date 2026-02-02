@@ -15,7 +15,7 @@ import type {
   Facility, Court, Session, Registration, Payment, PlatformLedger,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
-  PushSubscription as PushSub, Season
+  PushSubscription as PushSub, Season, DocuSealSetupRequest
 } from './storage';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
@@ -2398,6 +2398,112 @@ export class DatabaseStorage implements IStorage {
       is_active: s.is_active,
       created_at: s.created_at?.toISOString?.() ?? s.created_at,
       updated_at: s.updated_at?.toISOString?.() ?? s.updated_at ?? undefined,
+    };
+  }
+
+  // ============ DOCUSEAL SETUP REQUESTS ============
+
+  async getDocuSealSetupRequests(status?: 'open' | 'in_progress' | 'completed' | 'rejected'): Promise<DocuSealSetupRequest[]> {
+    let query = supabase
+      .from('docuseal_setup_requests')
+      .select('*')
+      .order('requested_at', { ascending: false });
+    
+    if (status) {
+      query = query.eq('status', status);
+    } else {
+      query = query.in('status', ['open', 'in_progress']);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(this.mapDocuSealSetupRequest);
+  }
+
+  async getDocuSealSetupRequest(requestId: string): Promise<DocuSealSetupRequest | undefined> {
+    const { data, error } = await supabase
+      .from('docuseal_setup_requests')
+      .select('*')
+      .eq('id', requestId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? this.mapDocuSealSetupRequest(data) : undefined;
+  }
+
+  async getOpenDocuSealRequestForClub(clubId: string): Promise<DocuSealSetupRequest | undefined> {
+    const { data, error } = await supabase
+      .from('docuseal_setup_requests')
+      .select('*')
+      .eq('club_id', clubId)
+      .in('status', ['open', 'in_progress'])
+      .maybeSingle();
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? this.mapDocuSealSetupRequest(data) : undefined;
+  }
+
+  async createDocuSealSetupRequest(request: { club_id: string; requested_by_user_id?: string; requested_by_email: string; payload?: { program_name?: string; team_name?: string; template_id?: string; contract_name?: string } }): Promise<DocuSealSetupRequest> {
+    const { data, error } = await supabase
+      .from('docuseal_setup_requests')
+      .insert({
+        club_id: request.club_id,
+        requested_by_user_id: request.requested_by_user_id || null,
+        requested_by_email: request.requested_by_email,
+        status: 'open',
+        payload: request.payload || null,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapDocuSealSetupRequest(data);
+  }
+
+  async updateDocuSealSetupRequest(requestId: string, data: { status?: 'open' | 'in_progress' | 'completed' | 'rejected'; notes?: string }): Promise<DocuSealSetupRequest> {
+    const { data: updated, error } = await supabase
+      .from('docuseal_setup_requests')
+      .update(data)
+      .eq('id', requestId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapDocuSealSetupRequest(updated);
+  }
+
+  async markClubDocuSealOnboarded(clubId: string, onboardedByUserId?: string, teamName?: string): Promise<Club> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .update({
+        docuseal_onboarded: true,
+        docuseal_onboarded_at: new Date().toISOString(),
+        docuseal_onboarded_by_user_id: onboardedByUserId || null,
+        docuseal_team_name: teamName || null,
+      })
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapClub(data);
+  }
+
+  async isClubDocuSealOnboarded(clubId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('docuseal_onboarded')
+      .eq('id', clubId)
+      .single();
+    if (error) throw error;
+    return data?.docuseal_onboarded === true;
+  }
+
+  private mapDocuSealSetupRequest(r: any): DocuSealSetupRequest {
+    return {
+      id: r.id,
+      club_id: r.club_id,
+      requested_by_user_id: r.requested_by_user_id,
+      requested_by_email: r.requested_by_email,
+      requested_at: r.requested_at?.toISOString?.() ?? r.requested_at,
+      status: r.status,
+      notes: r.notes,
+      payload: r.payload,
     };
   }
 }

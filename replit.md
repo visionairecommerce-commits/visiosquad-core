@@ -76,6 +76,13 @@ Preferred communication style: Simple, everyday language.
   - API creates submissions with external_id for reliable webhook matching
   - Webhook verifies `X-DocuSeal-Secret` header and updates athlete contract status
   - `contract_submissions` table tracks submission status (sent, viewed, signed)
+  - **Owner-Managed Onboarding**: Clubs must be onboarded to DocuSeal before using e-signatures
+    - `docuseal_setup_requests` table tracks pending onboarding requests
+    - When director sets template_id on non-onboarded club, system creates setup request and emails owner
+    - Owner Dashboard → DocuSeal Onboarding page shows checklist and pending requests
+    - Owner marks request as completed to enable DocuSeal for that club
+    - `clubs.docuseal_onboarded` flag controls whether club can use DocuSeal
+    - Environment: `OWNER_EMAIL` (defaults to visionairecommerce@gmail.com)
 
 ### Key NPM Packages
 - `@supabase/supabase-js`: Supabase client SDK.

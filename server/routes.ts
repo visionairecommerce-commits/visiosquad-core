@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
 import { processPayment, calculateTotalWithFee, createCardToken, createBankToken } from "./lib/helcim";
-import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation } from "./lib/resend";
+import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
@@ -1320,8 +1320,60 @@ export async function registerRoutes(
   // Create a new program contract
   app.post('/api/program-contracts', requireRole('admin'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
+      const { clubId, userId } = getAuthContext(req);
       const data = insertProgramContractSchema.parse(req.body);
+      
+      // Check if club is DocuSeal onboarded when a template ID is being set
+      if (data.docuseal_template_id) {
+        const isOnboarded = await storage.isClubDocuSealOnboarded(clubId);
+        
+        if (!isOnboarded) {
+          // Check if there's already an open request for this club
+          const existingRequest = await storage.getOpenDocuSealRequestForClub(clubId);
+          
+          if (!existingRequest) {
+            // Get club and user info for the notification
+            const club = await storage.getClub(clubId);
+            const user = await storage.getUserById(userId);
+            const program = data.program_id ? await storage.getProgram(clubId, data.program_id) : undefined;
+            
+            // Create a setup request
+            await storage.createDocuSealSetupRequest({
+              club_id: clubId,
+              requested_by_user_id: userId,
+              requested_by_email: user?.email || 'unknown',
+              payload: {
+                contract_name: data.name,
+                program_name: program?.name,
+                template_id: data.docuseal_template_id,
+              },
+            });
+            
+            // Send email to owner
+            const appUrl = process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : 'https://visiosquad.com';
+            await sendDocuSealOnboardingRequest(
+              club?.name || 'Unknown Club',
+              user?.email || 'unknown',
+              user?.full_name || null,
+              {
+                contract_name: data.name,
+                program_name: program?.name,
+                template_id: data.docuseal_template_id,
+              },
+              `${appUrl}/owner/docuseal-onboarding`
+            );
+          }
+          
+          // Still create the contract but warn the director
+          const contract = await storage.createProgramContract(clubId, data);
+          return res.status(201).json({
+            ...contract,
+            docuseal_pending: true,
+            message: 'Contract created. DocuSeal setup is pending. The platform owner has been notified and will complete DocuSeal onboarding shortly.',
+          });
+        }
+      }
+      
       const contract = await storage.createProgramContract(clubId, data);
       res.status(201).json(contract);
     } catch (error) {
@@ -1333,8 +1385,65 @@ export async function registerRoutes(
   // Update a program contract
   app.patch('/api/program-contracts/:id', requireRole('admin'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
-      const data = req.body;
+      const { clubId, userId } = getAuthContext(req);
+      // Validate with partial schema - allows partial updates
+      const updateSchema = insertProgramContractSchema.partial();
+      const data = updateSchema.parse(req.body);
+      
+      // Check if club is DocuSeal onboarded when a template ID is being set
+      if (data.docuseal_template_id) {
+        const isOnboarded = await storage.isClubDocuSealOnboarded(clubId);
+        
+        if (!isOnboarded) {
+          // Check if there's already an open request for this club
+          const existingRequest = await storage.getOpenDocuSealRequestForClub(clubId);
+          
+          if (!existingRequest) {
+            // Get club and user info for the notification
+            const club = await storage.getClub(clubId);
+            const user = await storage.getUserById(userId);
+            
+            // Get the existing contract for context
+            const existingContract = await storage.getProgramContract(clubId, req.params.id);
+            const program = existingContract?.program_id ? await storage.getProgram(clubId, existingContract.program_id) : undefined;
+            
+            // Create a setup request
+            await storage.createDocuSealSetupRequest({
+              club_id: clubId,
+              requested_by_user_id: userId,
+              requested_by_email: user?.email || 'unknown',
+              payload: {
+                contract_name: data.name || existingContract?.name,
+                program_name: program?.name,
+                template_id: data.docuseal_template_id,
+              },
+            });
+            
+            // Send email to owner
+            const appUrl = process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : 'https://visiosquad.com';
+            await sendDocuSealOnboardingRequest(
+              club?.name || 'Unknown Club',
+              user?.email || 'unknown',
+              user?.full_name || null,
+              {
+                contract_name: data.name || existingContract?.name,
+                program_name: program?.name,
+                template_id: data.docuseal_template_id,
+              },
+              `${appUrl}/owner/docuseal-onboarding`
+            );
+          }
+          
+          // Still update the contract but warn the director
+          const contract = await storage.updateProgramContract(clubId, req.params.id as string, data);
+          return res.json({
+            ...contract,
+            docuseal_pending: true,
+            message: 'Contract updated. DocuSeal setup is pending. The platform owner has been notified and will complete DocuSeal onboarding shortly.',
+          });
+        }
+      }
+      
       const contract = await storage.updateProgramContract(clubId, req.params.id as string, data);
       res.json(contract);
     } catch (error) {
@@ -4523,6 +4632,65 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching club details for owner:', error);
       res.status(500).json({ error: 'Failed to fetch club details' });
+    }
+  });
+
+  // ============ OWNER DOCUSEAL SETUP REQUESTS ============
+
+  // Get all DocuSeal setup requests
+  app.get('/api/owner/docuseal-setup-requests', requireRole('owner'), async (req, res) => {
+    try {
+      const status = req.query.status as 'open' | 'in_progress' | 'completed' | 'rejected' | undefined;
+      const requests = await storage.getDocuSealSetupRequests(status);
+      
+      // Enrich with club names
+      const enrichedRequests = await Promise.all(requests.map(async (request) => {
+        const club = await storage.getClub(request.club_id);
+        return {
+          ...request,
+          club_name: club?.name || 'Unknown Club',
+        };
+      }));
+      
+      res.json(enrichedRequests);
+    } catch (error) {
+      console.error('Error fetching DocuSeal setup requests:', error);
+      res.status(500).json({ error: 'Failed to fetch setup requests' });
+    }
+  });
+
+  // Update a DocuSeal setup request status/notes
+  app.patch('/api/owner/docuseal-setup-requests/:id', requireRole('owner'), async (req, res) => {
+    try {
+      const { status, notes, team_name } = req.body;
+      const { userId } = getAuthContext(req);
+      
+      // Update the request
+      const updated = await storage.updateDocuSealSetupRequest(req.params.id, { status, notes });
+      
+      // If marked as completed, also mark the club as DocuSeal onboarded
+      if (status === 'completed') {
+        await storage.markClubDocuSealOnboarded(updated.club_id, userId, team_name);
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating DocuSeal setup request:', error);
+      res.status(500).json({ error: 'Failed to update setup request' });
+    }
+  });
+
+  // Manually mark a club as DocuSeal onboarded (without a request)
+  app.post('/api/owner/clubs/:clubId/docuseal-onboard', requireRole('owner'), async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const { team_name } = req.body;
+      
+      const club = await storage.markClubDocuSealOnboarded(req.params.clubId, userId, team_name);
+      res.json(club);
+    } catch (error) {
+      console.error('Error marking club as DocuSeal onboarded:', error);
+      res.status(500).json({ error: 'Failed to mark club as onboarded' });
     }
   });
 

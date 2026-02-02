@@ -36,6 +36,11 @@ export const clubsTable = pgTable("clubs", {
   coaches_can_bill: boolean("coaches_can_bill").default(false).notNull(),
   communication_settings: jsonb("communication_settings").$type<CommunicationSettings>().default({ include_director_in_chats: false }),
   current_season_id: uuid("current_season_id"), // Reference to active season (set after seasons table created)
+  // DocuSeal onboarding status
+  docuseal_onboarded: boolean("docuseal_onboarded").default(false).notNull(),
+  docuseal_team_name: text("docuseal_team_name"),
+  docuseal_onboarded_at: timestamp("docuseal_onboarded_at"),
+  docuseal_onboarded_by_user_id: uuid("docuseal_onboarded_by_user_id"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -283,6 +288,26 @@ export const contractSubmissionsTable = pgTable("contract_submissions", {
   athleteIdx: index("contract_submissions_athlete_idx").on(table.athlete_id),
   submissionIdx: index("contract_submissions_submission_idx").on(table.docuseal_submission_id),
   externalIdIdx: index("contract_submissions_external_id_idx").on(table.external_id),
+}));
+
+// DocuSeal setup requests table - tracks onboarding requests from directors
+export const docusealSetupRequestsTable = pgTable("docuseal_setup_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  requested_by_user_id: uuid("requested_by_user_id").references(() => profilesTable.id),
+  requested_by_email: text("requested_by_email").notNull(),
+  requested_at: timestamp("requested_at").defaultNow().notNull(),
+  status: text("status", { enum: ["open", "in_progress", "completed", "rejected"] }).default("open").notNull(),
+  notes: text("notes"),
+  payload: jsonb("payload").$type<{
+    program_name?: string;
+    team_name?: string;
+    template_id?: string;
+    contract_name?: string;
+  }>(),
+}, (table) => ({
+  clubIdIdx: index("docuseal_setup_requests_club_id_idx").on(table.club_id),
+  statusIdx: index("docuseal_setup_requests_status_idx").on(table.status),
 }));
 
 // Contract templates table (legacy - for document signing)
@@ -1073,6 +1098,11 @@ export type UpdateCommunicationSettings = z.infer<typeof updateCommunicationSett
 export type Season = typeof seasonsTable.$inferSelect;
 export const insertSeasonSchema = createInsertSchema(seasonsTable).omit({ id: true, created_at: true, chat_data_deleted: true });
 export type InsertSeason = z.infer<typeof insertSeasonSchema>;
+
+// DocuSeal setup request types
+export type DocuSealSetupRequest = typeof docusealSetupRequestsTable.$inferSelect;
+export const insertDocuSealSetupRequestSchema = createInsertSchema(docusealSetupRequestsTable).omit({ id: true, requested_at: true });
+export type InsertDocuSealSetupRequest = z.infer<typeof insertDocuSealSetupRequestSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

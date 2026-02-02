@@ -139,3 +139,56 @@ export async function sendPaymentConfirmation(
     html,
   });
 }
+
+export async function sendDocuSealOnboardingRequest(
+  clubName: string,
+  directorEmail: string,
+  directorName: string | null,
+  payload: { program_name?: string; team_name?: string; template_id?: string; contract_name?: string },
+  dashboardUrl: string
+): Promise<EmailResult> {
+  const OWNER_EMAIL = process.env.OWNER_EMAIL || 'visionairecommerce@gmail.com';
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #f59e0b;">DocuSeal Onboarding Needed</h2>
+      <p>A club director is trying to set up DocuSeal contracts but their club is not yet onboarded.</p>
+      
+      <div style="background-color: #fef3c7; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #f59e0b;">
+        <p style="margin: 0;"><strong>Club:</strong> ${clubName}</p>
+        <p style="margin: 8px 0 0;"><strong>Director:</strong> ${directorName || 'N/A'} (${directorEmail})</p>
+        ${payload.contract_name ? `<p style="margin: 8px 0 0;"><strong>Contract Name:</strong> ${payload.contract_name}</p>` : ''}
+        ${payload.program_name ? `<p style="margin: 8px 0 0;"><strong>Program:</strong> ${payload.program_name}</p>` : ''}
+        ${payload.team_name ? `<p style="margin: 8px 0 0;"><strong>Team:</strong> ${payload.team_name}</p>` : ''}
+        ${payload.template_id ? `<p style="margin: 8px 0 0;"><strong>Template ID Attempted:</strong> ${payload.template_id}</p>` : ''}
+      </div>
+
+      <h3 style="color: #374151; margin-top: 24px;">Onboarding Checklist:</h3>
+      <ol style="color: #4b5563; line-height: 1.8;">
+        <li>Go to <a href="https://docuseal.com/console" style="color: #2563eb;">DocuSeal Console</a></li>
+        <li>Create a Team with the club name: <strong>${clubName}</strong></li>
+        <li>Invite the director (<strong>${directorEmail}</strong>) as Admin</li>
+        <li>Director logs in and creates Templates</li>
+        <li>Director copies Template IDs into VisioSquad contracts</li>
+        <li>Test webhook and signing flow</li>
+      </ol>
+
+      <div style="margin-top: 24px;">
+        <a href="${dashboardUrl}" style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+          View in Owner Dashboard
+        </a>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #6b7280; font-size: 12px;">
+        This is an automated message from VisioSquad.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: OWNER_EMAIL,
+    subject: `DocuSeal onboarding needed: ${clubName}`,
+    html,
+  });
+}

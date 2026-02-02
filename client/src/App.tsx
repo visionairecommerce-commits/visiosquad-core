@@ -40,6 +40,7 @@ import MessagesPage from "@/pages/messages";
 import BulletinPage from "@/pages/bulletin";
 import AthleteDashboard from "@/pages/athlete/dashboard";
 import AthleteSchedulePage from "@/pages/athlete/schedule";
+import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
 
 function RedirectToLogin() {
   const [, setLocation] = useLocation();
@@ -162,6 +163,8 @@ function AuthenticatedApp() {
           </main>
         </div>
       </div>
+      {/* Waiver enforcement modal for parents and coaches */}
+      {(user?.role === 'parent' || user?.role === 'coach') && <WaiverEnforcementModal />}
     </SidebarProvider>
   );
 }

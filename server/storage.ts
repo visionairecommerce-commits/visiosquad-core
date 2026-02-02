@@ -45,6 +45,7 @@ export interface ClubSignature {
   signed_name: string;
   signed_at: string;
   ip_address?: string;
+  season_id?: string | null;
   created_at: string;
 }
 
@@ -374,6 +375,7 @@ export interface IStorage {
   
   // Signatures
   createSignature(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress?: string): Promise<ClubSignature>;
+  createSignatureWithSeason(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress: string | undefined, seasonId: string | null): Promise<ClubSignature>;
   getUserSignatures(clubId: string, userId: string): Promise<ClubSignature[]>;
   hasSignedCurrentDocuments(clubId: string, userId: string): Promise<boolean>;
   
@@ -940,6 +942,23 @@ export class MemStorage implements IStorage {
       signed_name: signedName,
       signed_at: new Date().toISOString(),
       ip_address: ipAddress,
+      created_at: new Date().toISOString(),
+    };
+    this.signatures.set(signature.id, signature);
+    return signature;
+  }
+
+  async createSignatureWithSeason(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress: string | undefined, seasonId: string | null): Promise<ClubSignature> {
+    const signature: ClubSignature = {
+      id: randomUUID(),
+      club_id: clubId,
+      user_id: userId,
+      document_type: documentType,
+      document_version: documentVersion,
+      signed_name: signedName,
+      signed_at: new Date().toISOString(),
+      ip_address: ipAddress,
+      season_id: seasonId,
       created_at: new Date().toISOString(),
     };
     this.signatures.set(signature.id, signature);

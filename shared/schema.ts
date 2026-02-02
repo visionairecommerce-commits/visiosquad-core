@@ -214,6 +214,7 @@ export const clubSignaturesTable = pgTable("club_signatures", {
   signed_name: text("signed_name").notNull(),
   signed_at: timestamp("signed_at").defaultNow().notNull(),
   ip_address: text("ip_address"),
+  season_id: uuid("season_id").references(() => seasonsTable.id), // Track which season this signature applies to
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

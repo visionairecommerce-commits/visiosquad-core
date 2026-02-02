@@ -272,6 +272,19 @@ export class DatabaseStorage implements IStorage {
     return this.mapSignature(sig);
   }
 
+  async createSignatureWithSeason(clubId: string, userId: string, documentType: 'contract' | 'waiver', documentVersion: number, signedName: string, ipAddress: string | undefined, seasonId: string | null): Promise<ClubSignature> {
+    const [sig] = await db.insert(clubSignaturesTable).values({
+      club_id: clubId,
+      user_id: userId,
+      document_type: documentType,
+      document_version: documentVersion,
+      signed_name: signedName,
+      ip_address: ipAddress,
+      season_id: seasonId,
+    }).returning();
+    return this.mapSignature(sig);
+  }
+
   async getUserSignatures(clubId: string, userId: string): Promise<ClubSignature[]> {
     const sigs = await db.select().from(clubSignaturesTable)
       .where(and(eq(clubSignaturesTable.club_id, clubId), eq(clubSignaturesTable.user_id, userId)));
@@ -1038,6 +1051,7 @@ export class DatabaseStorage implements IStorage {
       signed_name: s.signed_name,
       signed_at: s.signed_at?.toISOString?.() ?? s.signed_at,
       ip_address: s.ip_address ?? undefined,
+      season_id: s.season_id ?? null,
       created_at: s.created_at?.toISOString?.() ?? s.created_at,
     };
   }

@@ -555,6 +555,105 @@ export async function registerRoutes(
     }
   });
 
+  // Get waiver status for current season
+  app.get('/api/my-waiver-status', requireAuth, async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      
+      const club = await storage.getClub(clubId);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      
+      // Check if club has waiver content
+      const waiverRequired = !!(club.waiver_content && club.waiver_content.trim());
+      
+      if (!waiverRequired) {
+        return res.json({
+          waiver_required: false,
+          waiver_signed_for_current_season: true,
+          current_season_id: null,
+          current_season_name: null,
+          waiver_content: null,
+        });
+      }
+      
+      // Get current active season
+      const seasons = await storage.getSeasonsByClub(clubId);
+      const now = new Date();
+      const currentSeason = seasons.find(s => 
+        s.is_active && 
+        new Date(s.start_date) <= now && 
+        new Date(s.end_date) >= now
+      );
+      
+      // Check if user has signed waiver for current season
+      const signatures = await storage.getUserSignatures(clubId, userId);
+      const waiverSignatures = signatures.filter(s => s.document_type === 'waiver');
+      
+      let waiverSignedForCurrentSeason = false;
+      
+      if (currentSeason) {
+        // If there's an active season, check if waiver is signed for this season
+        waiverSignedForCurrentSeason = waiverSignatures.some(s => 
+          s.season_id === currentSeason.id
+        );
+      } else {
+        // No active season - check if they have any waiver signature
+        // This allows initial waiver signing before seasons are set up
+        waiverSignedForCurrentSeason = waiverSignatures.length > 0;
+      }
+      
+      res.json({
+        waiver_required: true,
+        waiver_signed_for_current_season: waiverSignedForCurrentSeason,
+        current_season_id: currentSeason?.id || null,
+        current_season_name: currentSeason?.name || null,
+        waiver_content: club.waiver_content,
+      });
+    } catch (error) {
+      console.error('Error checking waiver status:', error);
+      res.status(500).json({ error: 'Failed to check waiver status' });
+    }
+  });
+
+  // Sign waiver for current season
+  app.post('/api/auth/sign-waiver', requireAuth, async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { signed_name, season_id } = req.body;
+      
+      if (!signed_name || typeof signed_name !== 'string' || !signed_name.trim()) {
+        return res.status(400).json({ error: 'Signed name is required' });
+      }
+      
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      
+      // Get club to determine waiver version
+      const club = await storage.getClub(clubId);
+      const waiverVersion = club?.waiver_version || 1;
+      
+      // Create signature with season_id
+      await storage.createSignatureWithSeason(
+        clubId,
+        userId,
+        'waiver',
+        waiverVersion,
+        signed_name.trim(),
+        ipAddress,
+        season_id || null
+      );
+      
+      // Update user's has_signed_documents flag
+      await storage.updateUserSignedDocuments(userId);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error signing waiver:', error);
+      res.status(500).json({ error: 'Failed to sign waiver' });
+    }
+  });
+
   // Public config endpoint - provides Supabase configuration at runtime
   // This allows the frontend to get config even if VITE_ env vars aren't bundled at build time
   app.get('/api/config', (req, res) => {

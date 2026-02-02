@@ -1255,15 +1255,22 @@ export async function registerRoutes(
 
   app.post('/api/programs', requireRole('admin'), async (req, res) => {
     try {
-      const { clubId } = getAuthContext(req);
+      const { clubId, userId } = getAuthContext(req);
+      console.log('[Create Program] Request from userId:', userId, 'clubId:', clubId);
+      console.log('[Create Program] Body:', JSON.stringify(req.body));
+      
       const data = createProgramSchema.parse(req.body);
+      console.log('[Create Program] Validated data:', JSON.stringify(data));
+      
       const program = await storage.createProgram(clubId, data);
+      console.log('[Create Program] Success:', program.id);
       res.status(201).json(program);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error('[Create Program] Validation error:', error.errors);
         res.status(400).json({ error: error.errors });
       } else {
-        console.error('Error creating program:', error);
+        console.error('[Create Program] Error:', error);
         res.status(500).json({ error: 'Failed to create program' });
       }
     }

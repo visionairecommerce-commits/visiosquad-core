@@ -579,7 +579,7 @@ export async function registerRoutes(
       }
       
       // Get current active season
-      const seasons = await storage.getSeasonsByClub(clubId);
+      const seasons = await storage.getSeasons(clubId);
       const now = new Date();
       const currentSeason = seasons.find(s => 
         s.is_active && 

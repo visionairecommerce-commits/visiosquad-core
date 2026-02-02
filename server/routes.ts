@@ -15,7 +15,7 @@ function formatTimeAgo(date: Date): string {
 }
 
 // Role types for authorization
-type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
+type UserRole = 'admin' | 'coach' | 'parent' | 'athlete' | 'owner';
 
 // Auth context result type
 interface AuthContext {
@@ -35,7 +35,8 @@ function getAuthContext(req: Request): AuthContext {
   const athleteId = req.headers['x-athlete-id'] as string | undefined;
   
   // Check if user is authenticated (has required headers)
-  const isAuthenticated = !!(role && userId && clubId);
+  // Owner role doesn't require clubId
+  const isAuthenticated = !!(role && userId && (clubId || role === 'owner'));
   
   return {
     clubId: clubId || '',
@@ -4246,6 +4247,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error('[DocuSeal Webhook] Error processing webhook:', error);
       res.status(500).json({ error: 'Webhook processing failed' });
+    }
+  });
+
+  // ============ OWNER DASHBOARD ROUTES ============
+  
+  // Get all clubs (Owner only)
+  app.get('/api/owner/clubs', requireRole('owner'), async (req, res) => {
+    try {
+      const clubs = await storage.getAllClubs();
+      
+      // Get athlete counts and active status for each club
+      const clubsWithStats = await Promise.all(clubs.map(async (club) => {
+        const athletes = await storage.getAthletes(club.id);
+        const totalAthletes = athletes.length;
+        const activeAthletes = athletes.filter(a => {
+          if (!a.paid_through_date) return false;
+          const paidThrough = new Date(a.paid_through_date);
+          const now = new Date();
+          return paidThrough >= now;
+        }).length;
+        
+        return {
+          ...club,
+          total_athletes: totalAthletes,
+          active_athletes: activeAthletes,
+          estimated_monthly_revenue: activeAthletes * PLATFORM_FEES.monthly,
+        };
+      }));
+      
+      res.json(clubsWithStats);
+    } catch (error) {
+      console.error('Error fetching clubs for owner:', error);
+      res.status(500).json({ error: 'Failed to fetch clubs' });
+    }
+  });
+  
+  // Get platform-wide metrics (Owner only)
+  app.get('/api/owner/metrics', requireRole('owner'), async (req, res) => {
+    try {
+      const clubs = await storage.getAllClubs();
+      
+      let totalAthletes = 0;
+      let activeAthletes = 0;
+      let totalPayments = 0;
+      
+      for (const club of clubs) {
+        const athletes = await storage.getAthletes(club.id);
+        totalAthletes += athletes.length;
+        
+        for (const athlete of athletes) {
+          if (athlete.paid_through_date) {
+            const paidThrough = new Date(athlete.paid_through_date);
+            const now = new Date();
+            if (paidThrough >= now) {
+              activeAthletes++;
+            }
+          }
+        }
+        
+        // Get payments for this club
+        const payments = await storage.getPayments(club.id);
+        totalPayments += payments.length;
+      }
+      
+      const estimatedMonthlyRevenue = activeAthletes * PLATFORM_FEES.monthly;
+      
+      res.json({
+        total_clubs: clubs.length,
+        total_athletes: totalAthletes,
+        active_athletes: activeAthletes,
+        total_payments: totalPayments,
+        estimated_monthly_revenue: estimatedMonthlyRevenue,
+        platform_fee_monthly: PLATFORM_FEES.monthly,
+        platform_fee_clinic: PLATFORM_FEES.clinic,
+        platform_fee_drop_in: PLATFORM_FEES.drop_in,
+      });
+    } catch (error) {
+      console.error('Error fetching owner metrics:', error);
+      res.status(500).json({ error: 'Failed to fetch metrics' });
+    }
+  });
+  
+  // Get detailed club information (Owner only)
+  app.get('/api/owner/clubs/:clubId', requireRole('owner'), async (req, res) => {
+    try {
+      const club = await storage.getClub(req.params.clubId);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      
+      const athletes = await storage.getAthletes(club.id);
+      const payments = await storage.getPayments(club.id);
+      const programs = await storage.getPrograms(club.id);
+      const teams = await storage.getTeams(club.id);
+      
+      // Calculate athlete stats
+      const totalAthletes = athletes.length;
+      const activeAthletes = athletes.filter(a => {
+        if (!a.paid_through_date) return false;
+        const paidThrough = new Date(a.paid_through_date);
+        const now = new Date();
+        return paidThrough >= now;
+      }).length;
+      
+      res.json({
+        ...club,
+        stats: {
+          total_athletes: totalAthletes,
+          active_athletes: activeAthletes,
+          total_payments: payments.length,
+          total_programs: programs.length,
+          total_teams: teams.length,
+          estimated_monthly_revenue: activeAthletes * PLATFORM_FEES.monthly,
+        },
+        recent_payments: payments.slice(0, 10),
+      });
+    } catch (error) {
+      console.error('Error fetching club details for owner:', error);
+      res.status(500).json({ error: 'Failed to fetch club details' });
     }
   });
 

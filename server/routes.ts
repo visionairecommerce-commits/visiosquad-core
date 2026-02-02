@@ -253,6 +253,39 @@ export async function registerRoutes(
 
   // ============ AUTH ROUTES (Public) ============
   
+  // TEMPORARY: Delete all Supabase Auth users (for cleanup)
+  app.delete('/api/admin/clear-all-auth-users', async (req, res) => {
+    try {
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Supabase Admin not configured' });
+      }
+      
+      // List all users
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      
+      if (listError) {
+        console.error('Error listing users:', listError);
+        return res.status(500).json({ error: 'Failed to list users' });
+      }
+      
+      // Delete each user
+      let deleted = 0;
+      for (const user of users) {
+        const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+        if (deleteError) {
+          console.error(`Error deleting user ${user.id}:`, deleteError);
+        } else {
+          deleted++;
+        }
+      }
+      
+      res.json({ message: `Deleted ${deleted} auth users`, total: users.length });
+    } catch (error) {
+      console.error('Error clearing auth users:', error);
+      res.status(500).json({ error: 'Failed to clear auth users' });
+    }
+  });
+  
   // Create new club (Director signup)
   app.post('/api/auth/create-club', async (req, res) => {
     try {

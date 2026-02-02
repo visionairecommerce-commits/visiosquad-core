@@ -1332,10 +1332,11 @@ export async function registerRoutes(
           const existingRequest = await storage.getOpenDocuSealRequestForClub(clubId);
           
           if (!existingRequest) {
-            // Get club and user info for the notification
+            // Get club, user, program, and team info for the notification
             const club = await storage.getClub(clubId);
             const user = await storage.getUserById(userId);
             const program = data.program_id ? await storage.getProgram(clubId, data.program_id) : undefined;
+            const team = data.team_id ? await storage.getTeam(clubId, data.team_id) : undefined;
             
             // Create a setup request
             await storage.createDocuSealSetupRequest({
@@ -1345,6 +1346,7 @@ export async function registerRoutes(
               payload: {
                 contract_name: data.name,
                 program_name: program?.name,
+                team_name: team?.name,
                 template_id: data.docuseal_template_id,
               },
             });
@@ -1358,6 +1360,7 @@ export async function registerRoutes(
               {
                 contract_name: data.name,
                 program_name: program?.name,
+                team_name: team?.name,
                 template_id: data.docuseal_template_id,
               },
               `${appUrl}/owner/docuseal-onboarding`
@@ -1399,13 +1402,15 @@ export async function registerRoutes(
           const existingRequest = await storage.getOpenDocuSealRequestForClub(clubId);
           
           if (!existingRequest) {
-            // Get club and user info for the notification
+            // Get club, user, contract, program, and team info for the notification
             const club = await storage.getClub(clubId);
             const user = await storage.getUserById(userId);
             
             // Get the existing contract for context
             const existingContract = await storage.getProgramContract(clubId, req.params.id);
             const program = existingContract?.program_id ? await storage.getProgram(clubId, existingContract.program_id) : undefined;
+            const teamId = data.team_id || existingContract?.team_id;
+            const team = teamId ? await storage.getTeam(clubId, teamId) : undefined;
             
             // Create a setup request
             await storage.createDocuSealSetupRequest({
@@ -1415,6 +1420,7 @@ export async function registerRoutes(
               payload: {
                 contract_name: data.name || existingContract?.name,
                 program_name: program?.name,
+                team_name: team?.name,
                 template_id: data.docuseal_template_id,
               },
             });
@@ -1428,6 +1434,7 @@ export async function registerRoutes(
               {
                 contract_name: data.name || existingContract?.name,
                 program_name: program?.name,
+                team_name: team?.name,
                 template_id: data.docuseal_template_id,
               },
               `${appUrl}/owner/docuseal-onboarding`

@@ -59,7 +59,7 @@ export const profilesTable = pgTable("profiles", {
   id: uuid("id").primaryKey(), // Links to Supabase auth.users.id
   email: text("email").notNull().unique(),
   full_name: text("full_name").notNull(),
-  role: text("role", { enum: ["admin", "coach", "parent", "athlete"] }).notNull(),
+  role: text("role", { enum: ["admin", "coach", "parent", "athlete", "owner"] }).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id),
   has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
   can_bill: boolean("can_bill").default(false).notNull(),
@@ -126,7 +126,7 @@ export const channelParticipantsTable = pgTable("channel_participants", {
   id: uuid("id").primaryKey().defaultRandom(),
   channel_id: uuid("channel_id").references(() => chatChannelsTable.id).notNull(),
   user_id: uuid("user_id").references(() => profilesTable.id).notNull(),
-  role: text("role", { enum: ["admin", "coach", "parent", "athlete"] }).notNull(),
+  role: text("role", { enum: ["admin", "coach", "parent", "athlete", "owner"] }).notNull(),
   athlete_id: uuid("athlete_id"), // If participant is an athlete (for SafeSport tracking)
   is_director_auto_added: boolean("is_director_auto_added").default(false).notNull(), // Track if director was auto-added
   last_read_at: timestamp("last_read_at"),
@@ -1069,7 +1069,7 @@ export const getConvenienceFeeAmount = (amount: number, method: 'credit_card' | 
 
 // Platform fee calculations
 export const PLATFORM_FEES = {
-  monthly: 2.00,
+  monthly: 3.00,
   clinic: 1.00,
   drop_in: 0.75,
 } as const;

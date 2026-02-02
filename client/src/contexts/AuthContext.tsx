@@ -8,7 +8,7 @@ interface User {
   email: string;
   full_name: string;
   role: UserRole;
-  club_id: string;
+  club_id?: string | null;
   has_signed_documents: boolean;
   contract_status?: 'unsigned' | 'pending' | 'verified';
   contract_method?: 'digital' | 'paper';

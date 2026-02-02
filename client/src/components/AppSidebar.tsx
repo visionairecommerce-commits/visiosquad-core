@@ -31,6 +31,8 @@ import {
   Shield,
   MessageSquare,
   Megaphone,
+  Building2,
+  TrendingUp,
 } from 'lucide-react';
 import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747467171.png';
 
@@ -78,11 +80,19 @@ const athleteMenuItems = [
   { title: 'My Schedule', url: '/schedule', icon: Calendar },
 ];
 
+const ownerMenuItems = [
+  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'All Clubs', url: '/clubs', icon: Building2 },
+  { title: 'Revenue', url: '/revenue', icon: TrendingUp },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, club, logout } = useAuth();
 
-  const menuItems = user?.role === 'admin'
+  const menuItems = user?.role === 'owner'
+    ? ownerMenuItems
+    : user?.role === 'admin'
     ? adminMenuItems
     : user?.role === 'coach'
     ? coachMenuItems
@@ -106,7 +116,7 @@ export function AppSidebar() {
             data-testid="img-sidebar-logo"
           />
         </Link>
-        <div className="text-xs text-muted-foreground mt-2">{club?.name || 'Sports Club'}</div>
+        <div className="text-xs text-muted-foreground mt-2">{user?.role === 'owner' ? 'Platform Owner' : (club?.name || 'Sports Club')}</div>
       </SidebarHeader>
 
       <SidebarContent>

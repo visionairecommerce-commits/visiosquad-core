@@ -454,7 +454,7 @@ export const eventCoachesTable = pgTable("event_coaches", {
 // ============ TYPE DEFINITIONS (for compatibility) ============
 
 // User roles
-export type UserRole = 'admin' | 'coach' | 'parent' | 'athlete';
+export type UserRole = 'admin' | 'coach' | 'parent' | 'athlete' | 'owner';
 
 // Base types matching Supabase tables
 export interface Club {

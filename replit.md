@@ -31,7 +31,8 @@ Preferred communication style: Simple, everyday language.
 ### Authentication & Authorization
 - **Auth Provider**: Supabase Auth (JWT session tokens)
 - **Multi-tenant Onboarding**: Club code-based registration
-- **Role-Based Access**: Admin/Director, Coach, Parent, Athlete roles for UI and API protection (`X-User-Role`, `X-User-Id`, `X-Club-Id`, `X-Athlete-Id` headers)
+- **Role-Based Access**: Owner, Admin/Director, Coach, Parent, Athlete roles for UI and API protection (`X-User-Role`, `X-User-Id`, `X-Club-Id`, `X-Athlete-Id` headers)
+- **Platform Owner**: Special 'owner' role for platform-level administration (visionairecommerce@gmail.com). Owner has `club_id = null` and can view all clubs and platform-wide metrics. Owner dashboard shows total clubs, athletes, payments, and estimated revenue.
 - **Director Onboarding**: Club creation, waiver setup, club code generation.
 - **Parent/Coach Join Flow**: Club code entry, waiver e-signature, account creation.
 - **Athlete Login Capability**: Parents create athlete profiles first, then can optionally set up login credentials for athletes. Athletes with accounts:
@@ -47,6 +48,7 @@ Preferred communication style: Simple, everyday language.
 - **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
 - **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
 - **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, $1.00 flat fee for ACH). Requires billing card on file for clubs.
+- **Platform Fees**: $3.00/player/month for regular athletes, $1.00/player for clinics, $0.75/player for drop-ins. Defined in `PLATFORM_FEES` constant in `shared/schema.ts`.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.

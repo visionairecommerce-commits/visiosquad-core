@@ -26,8 +26,8 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'coach' | 'parent' | 'athlete';
-  club_id: string;
+  role: 'admin' | 'coach' | 'parent' | 'athlete' | 'owner';
+  club_id?: string | null;
   has_signed_documents: boolean;
   can_bill: boolean;
   contract_status?: 'unsigned' | 'pending' | 'verified';

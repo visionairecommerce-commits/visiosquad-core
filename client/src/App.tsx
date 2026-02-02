@@ -41,6 +41,7 @@ import BulletinPage from "@/pages/bulletin";
 import AthleteDashboard from "@/pages/athlete/dashboard";
 import AthleteSchedulePage from "@/pages/athlete/schedule";
 import TermsOfServicePage from "@/pages/terms-of-service";
+import OwnerDashboard from "@/pages/owner/dashboard";
 import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
 
 function RedirectToLogin() {
@@ -139,6 +140,18 @@ function AthleteRoutes() {
   );
 }
 
+function OwnerRoutes() {
+  return (
+    <Switch>
+      <Route path="/" component={OwnerDashboard} />
+      <Route path="/clubs" component={OwnerDashboard} />
+      <Route path="/revenue" component={OwnerDashboard} />
+      <Route path="/login" component={RedirectToDashboard} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
 function AuthenticatedApp() {
   const { user } = useAuth();
 
@@ -157,6 +170,7 @@ function AuthenticatedApp() {
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-auto p-6">
+            {user?.role === 'owner' && <OwnerRoutes />}
             {user?.role === 'admin' && <AdminRoutes />}
             {user?.role === 'coach' && <CoachRoutes />}
             {user?.role === 'parent' && <ParentRoutes />}

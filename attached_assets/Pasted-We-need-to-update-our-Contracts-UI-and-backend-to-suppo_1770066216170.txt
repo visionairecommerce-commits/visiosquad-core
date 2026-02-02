@@ -1,0 +1,122 @@
+We need to update our Contracts UI and backend to support the correct DocuSeal integration model: directors should paste ONE DocuSeal Template ID per contract option (pricing tier), not a PDF URL, and the app should automatically create per-athlete DocuSeal submissions and signing links.
+
+Current app state
+
+React/Vite client.
+
+TypeScript server with server/index.ts, server/routes.ts, server/storage.ts, and Drizzle schema in shared/schema.ts.
+
+DocuSeal secrets are set in Replit:
+
+DOCUSEAL_API_KEY
+
+DOCUSEAL_WEBHOOK_SECRET
+
+We have webhook endpoint POST /api/webhooks/docuseal that must verify header X-DocuSeal-Secret and unlock only the correct athlete using external_id / submission_id.
+
+Replit AI previously implemented per-athlete submissions and a contract_submissions table + endpoints like POST /api/docuseal/submission (or similar). If it exists, use it; if not, implement it as described below.
+
+What we must change (high priority)
+1) Update Contracts UI field
+
+On the Contracts page modal (currently has “Contract Document URL (Optional)” with placeholder https://example.com/contract.pdf):
+
+Rename the field label to: “DocuSeal Template ID”
+
+Replace placeholder with: tpl_xxxxxxxxxxxxx
+
+Replace helper text with:
+
+“Paste the Template ID from DocuSeal. You only paste this once per contract. The app will automatically generate athlete-specific signing links.”
+
+Add inline validation:
+
+Reject values containing http, ://, or /
+
+Show error: “Please paste a DocuSeal Template ID (not a link).”
+
+2) Backend: store the template ID on the contract record
+
+Wherever we currently store contract_document_url or similar, repurpose it (or add a new field) as docuseal_template_id.
+
+Preferred: add a new column docuseal_template_id and keep the old column for backwards compatibility if needed.
+
+If adding a new column is heavy, we can reuse the existing column but rename it in UI and treat it as template ID (but still validate).
+
+Update API payloads so saving a contract stores this template ID.
+
+3) Enrollment / “Sign Contract” flow must be per-athlete and automatic
+
+When an athlete registers/enrolls/pays for a program/team contract option:
+
+The app must create a DocuSeal submission using the saved template ID (per athlete).
+
+That submission must include strong mapping fields:
+
+external_id format like: vs_{clubId}_{athleteId}_{contractId}_{timestamp}
+
+and/or metadata with: club_id, athlete_id, program_id, team_id (if applicable), contract_id
+
+Store the returned docuseal_submission_id and signer slug/url for that athlete in DB.
+
+If we already have an endpoint like POST /api/docuseal/submission, ensure it:
+
+accepts athleteId + contractId (or planId)
+
+looks up the contract’s docuseal_template_id
+
+calls DocuSeal API using X-Auth-Token: DOCUSEAL_API_KEY
+
+returns a signer URL/slug (so frontend can show a “Sign Now” button)
+
+If the endpoint doesn’t exist, implement:
+
+POST /api/docuseal/submission that returns { signerUrl, submissionId }
+
+4) Webhook must stay strict and safe (no email fallback)
+
+In POST /api/webhooks/docuseal:
+
+Verify webhook secret by checking:
+
+header X-DocuSeal-Secret (read in Node as req.headers['x-docuseal-secret'])
+
+equals process.env.DOCUSEAL_WEBHOOK_SECRET
+
+On completion events (form.completed / submission.completed):
+
+Find the submission record by external_id or submission_id
+
+Mark only that submission as signed
+
+Unlock permissions ONLY for that athlete for that specific program/team/contract (no broad updates)
+
+Remove/disable any email-only fallback that could mark multiple athletes as signed.
+
+If mapping fails, return 200 {processed:false} but do not unlock anyone.
+
+5) Add director-facing instructions in the Contracts modal
+
+Add a small “Where do I find this?” help text or tooltip under the Template ID field:
+
+“DocuSeal → Templates → open your template → copy Template ID → paste here.”
+
+Constraints
+
+Minimal diffs. Do NOT rewrite entire files.
+
+Keep TypeScript style consistent.
+
+Provide patch-style output: file-by-file changes with exact code blocks to replace/insert.
+
+After changes, provide a short test checklist:
+
+Director creates a DocuSeal template and pastes Template ID into a contract in our app
+
+Parent enrolls/pays → app creates DocuSeal submission → receives signer URL
+
+Parent signs → webhook fires → athlete unlocked
+
+Verify a different athlete is NOT affected
+
+Implement now.

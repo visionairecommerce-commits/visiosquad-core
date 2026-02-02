@@ -13,7 +13,8 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText } from "lucide-react";
+import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText, HelpCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Program {
   id: string;
@@ -37,7 +38,7 @@ interface ProgramContract {
   paid_in_full_price?: number;
   initiation_fee?: number;
   sessions_per_week: number;
-  contract_document_url?: string;
+  docuseal_template_id?: string;
   is_active: boolean;
   created_at: string;
 }
@@ -51,7 +52,12 @@ const contractSchema = z.object({
   paid_in_full_price: z.coerce.number().min(0).optional().or(z.literal("")),
   initiation_fee: z.coerce.number().min(0).optional().or(z.literal("")),
   sessions_per_week: z.coerce.number().min(1, "At least 1 session per week").max(7, "Maximum 7 sessions per week"),
-  contract_document_url: z.string().url().optional().or(z.literal("")),
+  docuseal_template_id: z.string()
+    .refine((val) => !val || (!val.includes('http') && !val.includes('://') && !val.includes('/')), {
+      message: "Please paste a DocuSeal Template ID (not a link).",
+    })
+    .optional()
+    .or(z.literal("")),
 });
 
 type ContractFormData = z.infer<typeof contractSchema>;
@@ -85,7 +91,7 @@ export default function ContractsPage() {
       paid_in_full_price: "",
       initiation_fee: "",
       sessions_per_week: 1,
-      contract_document_url: "",
+      docuseal_template_id: "",
     },
   });
 
@@ -154,7 +160,7 @@ export default function ContractsPage() {
         paid_in_full_price: contract.paid_in_full_price || "",
         initiation_fee: contract.initiation_fee || "",
         sessions_per_week: contract.sessions_per_week,
-        contract_document_url: contract.contract_document_url || "",
+        docuseal_template_id: contract.docuseal_template_id || "",
       });
     } else {
       setEditingContract(null);
@@ -167,7 +173,7 @@ export default function ContractsPage() {
         paid_in_full_price: "",
         initiation_fee: "",
         sessions_per_week: 1,
-        contract_document_url: "",
+        docuseal_template_id: "",
       });
     }
     setIsDialogOpen(true);
@@ -432,20 +438,35 @@ export default function ContractsPage() {
 
                 <FormField
                   control={form.control}
-                  name="contract_document_url"
+                  name="docuseal_template_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Contract Document URL (Optional)</FormLabel>
+                      <FormLabel className="flex items-center gap-2">
+                        DocuSeal Template ID (Optional)
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="text-sm">
+                                <strong>Where to find this:</strong><br />
+                                DocuSeal → Templates → open your template → copy Template ID → paste here.
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </FormLabel>
                       <FormControl>
                         <Input
-                          type="url"
-                          placeholder="https://example.com/contract.pdf"
+                          type="text"
+                          placeholder="tpl_xxxxxxxxxxxxx"
                           {...field}
-                          data-testid="input-contract-document-url"
+                          data-testid="input-docuseal-template-id"
                         />
                       </FormControl>
                       <FormDescription>
-                        Custom contract PDF for this tier. If blank, uses the club's default contract from Document Vault.
+                        Paste the Template ID from DocuSeal. You only paste this once per contract. The app will automatically generate athlete-specific signing links.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

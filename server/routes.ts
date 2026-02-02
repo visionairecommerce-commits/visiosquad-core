@@ -183,6 +183,7 @@ const cashPaymentSchema = z.object({
 // Auth schemas
 const createClubSchema = z.object({
   name: z.string().min(2),
+  sport: z.enum(['soccer', 'football', 'basketball', 'indoor_volleyball', 'beach_volleyball']),
   director_name: z.string().min(2),
   director_email: z.string().email(),
   director_password: z.string().min(8),
@@ -265,7 +266,7 @@ export async function registerRoutes(
       console.log('[create-club] Parsed data for email:', data.director_email);
       
       // Create the club first to get the club_id
-      const club = await storage.createClubOnly(data.name);
+      const club = await storage.createClubOnly(data.name, data.sport);
       console.log('[create-club] Created club:', club.id, club.name);
       
       // Create user via Supabase Auth

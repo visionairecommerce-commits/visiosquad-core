@@ -4,53 +4,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut, Trophy } from 'lucide-react';
+import { Loader2, CheckCircle2, FileText, Copy, MessageSquare, ExternalLink, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
 import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747467171.png';
-import type { SportType } from '@shared/schema';
 
-type OnboardingStep = 'sport' | 'documents' | 'complete';
-
-const SPORTS = [
-  { value: 'soccer', label: 'Soccer' },
-  { value: 'football', label: 'Football' },
-  { value: 'basketball', label: 'Basketball' },
-  { value: 'indoor_volleyball', label: 'Indoor Volleyball' },
-  { value: 'beach_volleyball', label: 'Beach Volleyball' },
-] as const;
+type OnboardingStep = 'documents' | 'complete';
 
 export default function OnboardingPage() {
-  const [step, setStep] = useState<OnboardingStep>('sport');
-  const [selectedSport, setSelectedSport] = useState<SportType | ''>('');
+  const [step, setStep] = useState<OnboardingStep>('documents');
   const [waiverContent, setWaiverContent] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { club, updateClubDocuments, completeOnboarding, logout, setClub } = useAuth();
+  const { club, updateClubDocuments, completeOnboarding, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-
-  const handleSaveSport = async () => {
-    if (!selectedSport) {
-      toast({ title: 'Please select a sport', variant: 'destructive' });
-      return;
-    }
-    
-    setIsLoading(true);
-    try {
-      const response = await apiRequest('PATCH', '/api/clubs/sport', { sport: selectedSport });
-      const updatedClub = await response.json();
-      setClub(updatedClub);
-      toast({ title: 'Sport saved successfully!' });
-      setStep('documents');
-    } catch (error) {
-      toast({ title: 'Failed to save sport', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSaveDocuments = async () => {
     if (!waiverContent || waiverContent.length < 10) {
@@ -129,57 +97,12 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        {step === 'sport' && (
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2 text-primary mb-2">
-                <Trophy className="h-5 w-5" />
-                <span className="text-sm font-medium">Step 1 of 3</span>
-              </div>
-              <CardTitle>Select Your Sport</CardTitle>
-              <CardDescription>
-                Choose the primary sport your club manages
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="sport">Sport</Label>
-                <Select value={selectedSport} onValueChange={(value) => setSelectedSport(value as SportType)}>
-                  <SelectTrigger data-testid="select-sport">
-                    <SelectValue placeholder="Select a sport" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SPORTS.map((sport) => (
-                      <SelectItem key={sport.value} value={sport.value} data-testid={`option-sport-${sport.value}`}>
-                        {sport.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  This helps customize the experience for your athletes and coaches
-                </p>
-              </div>
-
-              <Button
-                className="w-full"
-                onClick={handleSaveSport}
-                disabled={isLoading || !selectedSport}
-                data-testid="button-save-sport"
-              >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Continue
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
         {step === 'documents' && (
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2 text-primary mb-2">
                 <FileText className="h-5 w-5" />
-                <span className="text-sm font-medium">Step 2 of 3</span>
+                <span className="text-sm font-medium">Step 1 of 2</span>
               </div>
               <CardTitle>Set Up Club Documents</CardTitle>
               <CardDescription>
@@ -222,7 +145,7 @@ Example: By signing this waiver, I acknowledge the inherent risks associated wit
             <CardHeader>
               <div className="flex items-center gap-2 text-primary mb-2">
                 <CheckCircle2 className="h-5 w-5" />
-                <span className="text-sm font-medium">Step 3 of 3 - Setup Complete!</span>
+                <span className="text-sm font-medium">Step 2 of 2 - Setup Complete!</span>
               </div>
               <CardTitle>Your Club is Ready</CardTitle>
               <CardDescription>

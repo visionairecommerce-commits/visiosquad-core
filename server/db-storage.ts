@@ -151,9 +151,10 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(club);
   }
 
-  async createClubOnly(name: string): Promise<Club> {
+  async createClubOnly(name: string, sport: string): Promise<Club> {
     const [club] = await db.insert(clubsTable).values({
       name,
+      sport: sport as any,
       join_code: this.generateClubCode(),
       onboarding_complete: false,
     }).returning();

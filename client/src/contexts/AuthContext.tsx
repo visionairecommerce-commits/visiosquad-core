@@ -37,7 +37,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; needsOnboarding?: boolean }>;
   logout: () => void;
-  createClub: (name: string, directorName: string, directorEmail: string, directorPassword: string) => Promise<{ success: boolean; error?: string }>;
+  createClub: (name: string, sport: string, directorName: string, directorEmail: string, directorPassword: string) => Promise<{ success: boolean; error?: string }>;
   registerUser: (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent') => Promise<{ success: boolean; error?: string; needsSignature?: boolean }>;
   signDocument: (documentType: 'contract' | 'waiver', signedName: string) => Promise<{ success: boolean; allSigned?: boolean }>;
   updateClubDocuments: (waiverContent: string, contractPdfUrl?: string) => Promise<{ success: boolean; error?: string }>;
@@ -101,10 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('visiosport_session');
   };
 
-  const createClub = async (name: string, directorName: string, directorEmail: string, directorPassword: string): Promise<{ success: boolean; error?: string }> => {
+  const createClub = async (name: string, sport: string, directorName: string, directorEmail: string, directorPassword: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await apiRequest('POST', '/api/auth/create-club', {
         name,
+        sport,
         director_name: directorName,
         director_email: directorEmail,
         director_password: directorPassword,

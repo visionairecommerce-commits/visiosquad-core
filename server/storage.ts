@@ -344,7 +344,7 @@ export const PLATFORM_FEES = {
 export interface IStorage {
   // Auth & Clubs
   createClub(name: string, directorEmail: string, directorName: string, directorPassword: string): Promise<{ club: Club; user: User }>;
-  createClubOnly(name: string): Promise<Club>;
+  createClubOnly(name: string, sport: string): Promise<Club>;
   deleteClub(clubId: string): Promise<void>;
   getClubByJoinCode(joinCode: string): Promise<Club | undefined>;
   getClub(clubId: string): Promise<Club | undefined>;
@@ -719,11 +719,12 @@ export class MemStorage implements IStorage {
     return { club, user: userWithoutPassword };
   }
 
-  async createClubOnly(name: string): Promise<Club> {
+  async createClubOnly(name: string, sport: string): Promise<Club> {
     const clubId = randomUUID();
     const club: Club = {
       id: clubId,
       name,
+      sport: sport as any,
       join_code: this.generateClubCode(),
       onboarding_complete: false,
       created_at: new Date().toISOString(),

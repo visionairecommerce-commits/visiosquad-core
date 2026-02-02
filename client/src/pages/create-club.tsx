@@ -4,13 +4,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import visioSquadLogo from '@assets/ChatGPT_Image_Jan_29,_2026,_09_28_16_PM_1769747467171.png';
+import type { SportType } from '@shared/schema';
+
+const SPORTS = [
+  { value: 'soccer', label: 'Soccer' },
+  { value: 'football', label: 'Football' },
+  { value: 'basketball', label: 'Basketball' },
+  { value: 'indoor_volleyball', label: 'Indoor Volleyball' },
+  { value: 'beach_volleyball', label: 'Beach Volleyball' },
+] as const;
 
 export default function CreateClubPage() {
   const [clubName, setClubName] = useState('');
+  const [sport, setSport] = useState<SportType | ''>('');
   const [directorName, setDirectorName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +34,7 @@ export default function CreateClubPage() {
   const { toast } = useToast();
 
   const handleCreateClub = async () => {
-    if (!clubName || !directorName || !email || !password) {
+    if (!clubName || !sport || !directorName || !email || !password) {
       toast({ title: 'Please fill in all fields', variant: 'destructive' });
       return;
     }
@@ -39,7 +50,7 @@ export default function CreateClubPage() {
     }
     
     setIsLoading(true);
-    const result = await createClub(clubName, directorName, email, password);
+    const result = await createClub(clubName, sport, directorName, email, password);
     setIsLoading(false);
     
     if (result.success) {
@@ -89,6 +100,22 @@ export default function CreateClubPage() {
                 onChange={(e) => setClubName(e.target.value)}
                 data-testid="input-club-name"
               />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="sport">Sport</Label>
+              <Select value={sport} onValueChange={(value) => setSport(value as SportType)}>
+                <SelectTrigger id="sport" data-testid="select-sport">
+                  <SelectValue placeholder="Select a sport" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPORTS.map((s) => (
+                    <SelectItem key={s.value} value={s.value} data-testid={`sport-option-${s.value}`}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="space-y-2">

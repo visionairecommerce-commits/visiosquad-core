@@ -70,6 +70,7 @@ function requireRole(...allowedRoles: UserRole[]) {
   };
 }
 
+
 // Centralized athlete access state check - locked if payment >7 days overdue
 function checkAthleteAccessState(athlete: { paid_through_date?: string | null }): boolean {
   if (!athlete.paid_through_date) return false;
@@ -251,6 +252,67 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // Global middleware to block write operations for locked clubs
+  // Design: This middleware runs BEFORE route-level auth guards (requireAuth/requireRole).
+  // - Unauthenticated requests pass through here but will fail at route-level auth guards
+  // - Authenticated club-scoped requests are checked against club lock status
+  // - Only requests with valid X-User-Id, X-Club-Id headers (set by auth) are checked
+  // - Fail-closed for security: if storage check fails, block the write
+  app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
+    // Skip if not a write operation
+    if (req.method === 'GET' || req.method === 'OPTIONS' || req.method === 'HEAD') {
+      return next();
+    }
+    
+    // Get auth context - headers are set by frontend from authenticated session
+    // These headers cannot be meaningfully spoofed without valid session tokens
+    const { clubId, role, isAuthenticated, userId } = getAuthContext(req);
+    
+    // Skip if no authentication context (unauthenticated public routes)
+    // Route-level guards (requireAuth/requireRole) will handle unauthorized access
+    if (!isAuthenticated || !userId) {
+      return next();
+    }
+    
+    // Owner role bypasses all club locks (they manage all clubs)
+    if (role === 'owner') {
+      return next();
+    }
+    
+    // No club ID means user is not associated with a club yet
+    if (!clubId) {
+      return next();
+    }
+    
+    // Exempt specific routes that locked clubs must still access:
+    // 1. Billing payment routes (to pay and unlock)
+    // 2. Owner management routes (handled above)
+    const billingPaymentPattern = /^\/clubs\/[^/]+\/billing\/(card|bank)$/;
+    if (req.path.match(billingPaymentPattern)) {
+      return next();
+    }
+    
+    try {
+      const club = await storage.getClub(clubId);
+      if (club?.billing_locked_at) {
+        return res.status(403).json({
+          error: 'Club operations are suspended',
+          message: 'Your club has been temporarily locked due to unpaid platform fees. Please contact support to resolve this.',
+          locked: true,
+          locked_at: club.billing_locked_at
+        });
+      }
+      next();
+    } catch (error) {
+      // Fail-closed: if we can't verify club status, block the write for safety
+      console.error('[Club Lock Middleware] Error checking club lock status:', error);
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Unable to verify club status. Please try again later.'
+      });
+    }
+  });
 
   // ============ AUTH ROUTES (Public) ============
   

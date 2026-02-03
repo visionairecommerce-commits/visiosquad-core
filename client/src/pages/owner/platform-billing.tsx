@@ -108,11 +108,8 @@ export default function PlatformBillingPage() {
 
   const previewMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('/api/platform/billing/preview', {
-        method: 'POST',
-        body: JSON.stringify({ periodStart, periodEnd, paymentMethod }),
-      });
-      return res as BillingPreview;
+      const res = await apiRequest('POST', '/api/platform/billing/preview', { periodStart, periodEnd, paymentMethod });
+      return res.json() as Promise<BillingPreview>;
     },
     onSuccess: (data) => {
       setPreview(data);
@@ -126,11 +123,8 @@ export default function PlatformBillingPage() {
 
   const runBillingMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('/api/platform/billing/run', {
-        method: 'POST',
-        body: JSON.stringify({ periodStart, periodEnd, paymentMethod }),
-      });
-      return res as BillingResult;
+      const res = await apiRequest('POST', '/api/platform/billing/run', { periodStart, periodEnd, paymentMethod });
+      return res.json() as Promise<BillingResult>;
     },
     onSuccess: (data) => {
       setResults(data);

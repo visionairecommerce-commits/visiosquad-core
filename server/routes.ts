@@ -4884,10 +4884,14 @@ export async function registerRoutes(
             ? !!club?.billing_card_token 
             : !!club?.billing_bank_token;
 
+          // Get active athlete count for this period
+          const activeAthletes = await storage.getActiveAthletesForPeriod(clubId, start, end);
+
           return {
             club_id: clubId,
             club_name: club?.name || 'Unknown Club',
             ledger_line_count: entries.length,
+            active_athlete_count: activeAthletes.length,
             subtotal,
             fee: feeAmount,
             total,

@@ -33,6 +33,7 @@ interface BillingPreview {
     club_id: string;
     club_name: string;
     ledger_line_count: number;
+    active_athlete_count: number;
     subtotal: number;
     fee: number;
     total: number;
@@ -142,10 +143,8 @@ export default function PlatformBillingPage() {
 
   const retryMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
-      const res = await apiRequest(`/api/platform/billing/charge/${invoiceId}`, {
-        method: 'POST',
-      });
-      return res;
+      const res = await apiRequest('POST', `/api/platform/billing/charge/${invoiceId}`);
+      return res.json();
     },
     onSuccess: (data: any) => {
       refetchInvoices();
@@ -324,7 +323,8 @@ export default function PlatformBillingPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Club</TableHead>
-                  <TableHead className="text-right">Lines</TableHead>
+                  <TableHead className="text-right">Active Athletes</TableHead>
+                  <TableHead className="text-right">Ledger Lines</TableHead>
                   <TableHead className="text-right">Subtotal</TableHead>
                   <TableHead className="text-right">Fee</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -333,8 +333,9 @@ export default function PlatformBillingPage() {
               </TableHeader>
               <TableBody>
                 {preview.clubs.map((club) => (
-                  <TableRow key={club.club_id}>
+                  <TableRow key={club.club_id} data-testid={`row-club-${club.club_id}`}>
                     <TableCell className="font-medium">{club.club_name}</TableCell>
+                    <TableCell className="text-right" data-testid={`text-athlete-count-${club.club_id}`}>{club.active_athlete_count}</TableCell>
                     <TableCell className="text-right">{club.ledger_line_count}</TableCell>
                     <TableCell className="text-right">${club.subtotal.toFixed(2)}</TableCell>
                     <TableCell className="text-right">${club.fee.toFixed(2)}</TableCell>

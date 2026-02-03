@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pgTable, text, integer, boolean, timestamp, decimal, uuid, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, decimal, uuid, jsonb, index, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 // ============ DRIZZLE TABLE DEFINITIONS ============
@@ -449,15 +449,19 @@ export const paymentsTable = pgTable("payments", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Platform ledger table
+// Platform ledger table - tracks platform fees per athlete
 export const platformLedgerTable = pgTable("platform_ledger", {
   id: uuid("id").primaryKey().defaultRandom(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
-  payment_id: uuid("payment_id").references(() => paymentsTable.id).notNull(),
+  entry_type: text("entry_type", { enum: ["monthly", "clinic", "drop_in", "event"] }).notNull(),
+  athlete_id: uuid("athlete_id").references(() => athletesTable.id), // track which athlete for billing
+  session_id: uuid("session_id"), // link to session if applicable
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  fee_type: text("fee_type", { enum: ["monthly", "clinic", "drop_in", "event"] }).notNull(),
+  period_month: integer("period_month"), // billing month
+  period_year: integer("period_year"), // billing year
   paid: boolean("paid").default(false).notNull(),
   platform_invoice_id: uuid("platform_invoice_id"),
+  billing_period_start: date("billing_period_start"), // track billing period for auto-billing
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -851,11 +855,15 @@ export interface Payment {
 export interface PlatformLedger {
   id: string;
   club_id: string;
-  payment_id: string;
+  entry_type: 'monthly' | 'clinic' | 'drop_in' | 'event';
+  athlete_id?: string | null; // track which athlete for billing
+  session_id?: string | null; // link to session if applicable
   amount: number;
-  fee_type: 'monthly' | 'clinic' | 'drop_in' | 'event';
+  period_month?: number | null; // billing month
+  period_year?: number | null; // billing year
   paid: boolean;
   platform_invoice_id: string | null;
+  billing_period_start?: string | null; // track billing period for auto-billing
   created_at: string;
 }
 

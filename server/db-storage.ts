@@ -987,12 +987,16 @@ export class DatabaseStorage implements IStorage {
     return this.mapPayment(p);
   }
 
-  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger> {
+  async createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger> {
+    const now = new Date();
     const [entry] = await db.insert(platformLedgerTable).values({
       club_id: clubId,
-      payment_id: paymentId,
+      entry_type: feeType,
+      athlete_id: athleteId,
+      session_id: sessionId,
       amount: String(amount),
-      fee_type: feeType,
+      period_month: now.getMonth() + 1,
+      period_year: now.getFullYear(),
     }).returning();
     return this.mapLedger(entry);
   }
@@ -1229,6 +1233,125 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Active athlete tracking for automatic monthly billing
+  // An athlete is "active" if they have:
+  // 1. Made a payment during the period, OR
+  // 2. Have a paid_through_date that extends into the period, OR
+  // 3. Have session attendance during the period
+  async getActiveAthletesForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<Athlete[]> {
+    // Get athletes with payments in period
+    const { data: athletesWithPayments } = await supabase
+      .from('payments')
+      .select('athlete_id')
+      .eq('club_id', clubId)
+      .eq('status', 'completed')
+      .gte('created_at', periodStart.toISOString())
+      .lte('created_at', periodEnd.toISOString());
+    
+    // Get athletes with valid paid_through_date
+    const { data: athletesWithPaidThrough } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('club_id', clubId)
+      .gte('paid_through_date', periodStart.toISOString().split('T')[0]);
+    
+    // Get athletes belonging to this club from their athlete records first
+    const { data: clubAthletes } = await supabase
+      .from('athletes')
+      .select('id')
+      .eq('club_id', clubId);
+    
+    const clubAthleteIds = clubAthletes?.map(a => a.id) || [];
+    
+    // Get athletes with session attendance in period - ONLY for athletes in this club
+    let athletesWithAttendance: { athlete_id: string }[] = [];
+    if (clubAthleteIds.length > 0) {
+      const { data } = await supabase
+        .from('session_attendance')
+        .select('athlete_id')
+        .in('athlete_id', clubAthleteIds)
+        .gte('check_in_time', periodStart.toISOString())
+        .lte('check_in_time', periodEnd.toISOString());
+      athletesWithAttendance = data || [];
+    }
+    
+    // Combine unique athlete IDs
+    const uniqueAthleteIds = new Set<string>();
+    
+    if (athletesWithPayments) {
+      athletesWithPayments.forEach(p => uniqueAthleteIds.add(p.athlete_id));
+    }
+    if (athletesWithPaidThrough) {
+      athletesWithPaidThrough.forEach(a => uniqueAthleteIds.add(a.id));
+    }
+    if (athletesWithAttendance) {
+      athletesWithAttendance.forEach(a => uniqueAthleteIds.add(a.athlete_id));
+    }
+    
+    if (uniqueAthleteIds.size === 0) {
+      return [];
+    }
+    
+    // Fetch full athlete records
+    const { data: athletes, error } = await supabase
+      .from('athletes')
+      .select('*')
+      .eq('club_id', clubId)
+      .in('id', Array.from(uniqueAthleteIds));
+    
+    if (error || !athletes) return [];
+    return athletes.map(a => this.mapAthlete(a));
+  }
+
+  async getActiveAthleteCountByClub(periodStart: Date, periodEnd: Date): Promise<Array<{ clubId: string; clubName: string; activeAthleteCount: number }>> {
+    // Get all clubs
+    const clubs = await this.getAllClubs();
+    
+    const results = [];
+    for (const club of clubs) {
+      const activeAthletes = await this.getActiveAthletesForPeriod(club.id, periodStart, periodEnd);
+      results.push({
+        clubId: club.id,
+        clubName: club.name,
+        activeAthleteCount: activeAthletes.length,
+      });
+    }
+    
+    return results.filter(r => r.activeAthleteCount > 0);
+  }
+
+  async hasMonthlyLedgerEntryForAthlete(clubId: string, athleteId: string, periodStart: Date, periodEnd: Date): Promise<boolean> {
+    // Check if there's already a monthly ledger entry for this athlete in this period
+    // Check using athlete_id and period_month/period_year
+    const periodMonth = periodStart.getMonth() + 1;
+    const periodYear = periodStart.getFullYear();
+    
+    const { data: existingEntries } = await supabase
+      .from('platform_ledger')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('athlete_id', athleteId)
+      .eq('entry_type', 'monthly')
+      .eq('period_month', periodMonth)
+      .eq('period_year', periodYear);
+    
+    return (existingEntries?.length || 0) > 0;
+  }
+
+  async createAutoBillingLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', billingPeriodStart: string): Promise<PlatformLedger> {
+    const periodDate = new Date(billingPeriodStart);
+    const [entry] = await db.insert(platformLedgerTable).values({
+      club_id: clubId,
+      entry_type: feeType,
+      athlete_id: athleteId,
+      amount: String(amount),
+      period_month: periodDate.getMonth() + 1,
+      period_year: periodDate.getFullYear(),
+      billing_period_start: billingPeriodStart,
+    }).returning();
+    return this.mapLedger(entry);
+  }
+
   private mapPlatformInvoice(inv: any): PlatformInvoice {
     return {
       id: inv.id,
@@ -1435,11 +1558,15 @@ export class DatabaseStorage implements IStorage {
     return {
       id: l.id,
       club_id: l.club_id,
-      payment_id: l.payment_id,
+      entry_type: l.entry_type,
+      athlete_id: l.athlete_id ?? null,
+      session_id: l.session_id ?? null,
       amount: parseFloat(l.amount),
-      fee_type: l.fee_type,
+      period_month: l.period_month ?? null,
+      period_year: l.period_year ?? null,
       paid: l.paid ?? false,
       platform_invoice_id: l.platform_invoice_id ?? null,
+      billing_period_start: l.billing_period_start ?? null,
       created_at: l.created_at?.toISOString?.() ?? l.created_at,
     };
   }

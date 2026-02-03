@@ -63,6 +63,12 @@ Preferred communication style: Simple, everyday language.
   - **Season-End Cleanup**: All chat data (except event chats) is automatically deleted when a season ends
   - **Scheduled Jobs**: Runs hourly for event cleanup, daily at 2 AM for season cleanup
   - **UI**: Directors manage seasons in Settings → Seasons section
+- **Automatic Monthly Club Billing**: Platform fees are automatically calculated and billed based on active player count:
+  - **Active Athlete Definition**: Athletes with payments in the billing period, valid paid_through_date, or session attendance
+  - **Scheduled Job**: Runs on the 1st of each month at 3 AM to bill for the previous month
+  - **Ledger Entries**: Created per athlete with `entry_type`, `athlete_id`, `period_month`, `period_year` tracking
+  - **Deduplication**: System checks for existing ledger entries before creating new ones to prevent double-billing
+  - **Test Club Exclusion**: Clubs with "TEST" or "DO NOT BILL" in their name are automatically skipped
 
 ## External Dependencies
 

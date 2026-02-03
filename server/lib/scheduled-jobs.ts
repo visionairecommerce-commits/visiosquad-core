@@ -7,15 +7,20 @@ import {
   chatChannelsTable, 
   channelParticipantsTable, 
   messagesTable,
-  seasonsTable
+  seasonsTable,
+  paymentsTable,
+  platformLedgerTable,
+  PLATFORM_FEES
 } from '@shared/schema';
 import { eq, lte, and, isNotNull, ne, sql, inArray } from 'drizzle-orm';
 import { cancelRecurringPayment } from './helcim';
+import { storage } from '../storage';
 
 // Advisory lock IDs for preventing concurrent cron job execution
 const AUTO_RELEASE_LOCK_ID = 1234567890;
 const EVENT_CHAT_CLEANUP_LOCK_ID = 1234567891;
 const SEASON_CHAT_CLEANUP_LOCK_ID = 1234567892;
+const MONTHLY_BILLING_LOCK_ID = 1234567893;
 
 export function initializeScheduledJobs() {
   console.log('[Scheduled Jobs] Initializing scheduled jobs...');
@@ -38,6 +43,12 @@ export function initializeScheduledJobs() {
     await runWithLock(SEASON_CHAT_CLEANUP_LOCK_ID, cleanupEndedSeasonChats);
   });
 
+  // Run on the 1st of each month at 3 AM - Automatic monthly billing
+  cron.schedule('0 3 1 * *', async () => {
+    console.log('[Monthly Billing] Running automatic monthly club billing...');
+    await runWithLock(MONTHLY_BILLING_LOCK_ID, processMonthlyClubBilling);
+  });
+
   // Also run immediately on startup for testing/catchup (with slight delay)
   setTimeout(async () => {
     console.log('[Auto-Release Job] Running initial contract expiration check...');
@@ -48,6 +59,8 @@ export function initializeScheduledJobs() {
     
     console.log('[Season Chat Cleanup] Running initial season-end chat cleanup...');
     await runWithLock(SEASON_CHAT_CLEANUP_LOCK_ID, cleanupEndedSeasonChats);
+    
+    // Don't run monthly billing on startup - only on schedule
   }, 10000);
 
   console.log('[Scheduled Jobs] Scheduled jobs initialized');
@@ -300,5 +313,77 @@ async function cleanupEndedSeasonChats() {
     console.log(`[Season Chat Cleanup] Completed: ${endedSeasons.length} seasons processed`);
   } catch (error) {
     console.error('[Season Chat Cleanup] Error in cleanupEndedSeasonChats:', error);
+  }
+}
+
+// Automatic monthly club billing based on active player count
+// Runs on the 1st of each month to bill for the previous month
+async function processMonthlyClubBilling() {
+  try {
+    console.log('[Monthly Billing] Starting automatic monthly billing process...');
+    
+    // Calculate billing period (previous month)
+    const now = new Date();
+    const periodEnd = new Date(now.getFullYear(), now.getMonth(), 1); // First of current month
+    const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1); // First of previous month
+    
+    console.log(`[Monthly Billing] Billing period: ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
+    
+    // Get active athlete counts for all clubs
+    const activeAthletesByClub = await storage.getActiveAthleteCountByClub(periodStart, periodEnd);
+    
+    console.log(`[Monthly Billing] Found ${activeAthletesByClub.length} clubs with active athletes`);
+    
+    let totalEntriesCreated = 0;
+    let totalAmount = 0;
+    
+    for (const club of activeAthletesByClub) {
+      // Skip test clubs (case-insensitive check)
+      const clubNameUpper = club.clubName.toUpperCase();
+      if (clubNameUpper.includes('TEST') || clubNameUpper.includes('DO NOT BILL')) {
+        console.log(`[Monthly Billing] Skipping test club: ${club.clubName}`);
+        continue;
+      }
+      
+      // Get the actual active athletes for this club
+      const activeAthletes = await storage.getActiveAthletesForPeriod(club.clubId, periodStart, periodEnd);
+      
+      for (const athlete of activeAthletes) {
+        // Check if there's already a ledger entry for this athlete in this period
+        const hasExistingEntry = await storage.hasMonthlyLedgerEntryForAthlete(
+          club.clubId,
+          athlete.id,
+          periodStart,
+          periodEnd
+        );
+        
+        if (hasExistingEntry) {
+          // Already billed for this athlete this month
+          continue;
+        }
+        
+        // Create a platform ledger entry for this athlete (no payment_id for auto-billing)
+        try {
+          await storage.createAutoBillingLedgerEntry(
+            club.clubId,
+            athlete.id,
+            PLATFORM_FEES.monthly,
+            'monthly',
+            periodStart.toISOString().split('T')[0]
+          );
+          
+          totalEntriesCreated++;
+          totalAmount += PLATFORM_FEES.monthly;
+          
+          console.log(`[Monthly Billing] Created ledger entry for athlete ${athlete.id} in club ${club.clubName}`);
+        } catch (entryError) {
+          console.error(`[Monthly Billing] Error creating ledger entry for athlete ${athlete.id}:`, entryError);
+        }
+      }
+    }
+    
+    console.log(`[Monthly Billing] Complete: Created ${totalEntriesCreated} ledger entries, total amount: $${totalAmount.toFixed(2)}`);
+  } catch (error) {
+    console.error('[Monthly Billing] Error in processMonthlyClubBilling:', error);
   }
 }

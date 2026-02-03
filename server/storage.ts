@@ -522,7 +522,7 @@ export interface IStorage {
   // Payments
   getPayments(clubId: string): Promise<Payment[]>;
   createPayment(clubId: string, payment: Omit<Payment, 'id' | 'club_id' | 'created_at'>): Promise<Payment>;
-  createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger>;
+  createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger>;
   getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
   getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
   markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void>;
@@ -564,6 +564,12 @@ export interface IStorage {
   getPlatformInvoiceByInvoiceNumber(invoiceNumber: string): Promise<PlatformInvoice | undefined>;
   markLedgerEntriesPaidByInvoiceId(invoiceId: string): Promise<void>;
   unmarkLedgerEntriesByInvoiceId(invoiceId: string): Promise<void>;
+
+  // Active athlete tracking for automatic monthly billing
+  getActiveAthletesForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<Athlete[]>;
+  getActiveAthleteCountByClub(periodStart: Date, periodEnd: Date): Promise<Array<{ clubId: string; clubName: string; activeAthleteCount: number }>>;
+  hasMonthlyLedgerEntryForAthlete(clubId: string, athleteId: string, periodStart: Date, periodEnd: Date): Promise<boolean>;
+  createAutoBillingLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', billingPeriodStart: string): Promise<PlatformLedger>;
 
   // Program Contracts
   getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
@@ -1637,17 +1643,8 @@ export class MemStorage implements IStorage {
     return newPayment;
   }
 
-  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger> {
-    const entry: PlatformLedger = {
-      id: randomUUID(),
-      club_id: clubId,
-      payment_id: paymentId,
-      amount,
-      fee_type: feeType,
-      created_at: new Date().toISOString(),
-    };
-    this.ledger.set(entry.id, entry);
-    return entry;
+  async createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger> {
+    throw new Error('Not implemented in MemStorage - use dbStorage');
   }
 
   // Program Contracts (stub implementations - using database storage)
@@ -1954,6 +1951,22 @@ export class MemStorage implements IStorage {
   }
 
   async unmarkLedgerEntriesByInvoiceId(invoiceId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getActiveAthletesForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<Athlete[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getActiveAthleteCountByClub(periodStart: Date, periodEnd: Date): Promise<Array<{ clubId: string; clubName: string; activeAthleteCount: number }>> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async hasMonthlyLedgerEntryForAthlete(clubId: string, athleteId: string, periodStart: Date, periodEnd: Date): Promise<boolean> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async createAutoBillingLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', billingPeriodStart: string): Promise<PlatformLedger> {
     throw new Error('Not implemented in MemStorage');
   }
 }

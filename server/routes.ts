@@ -1967,7 +1967,7 @@ export async function registerRoutes(
       await storage.updateEventRosterPayment(clubId, rosterId, payment.id);
       
       // Create platform ledger entry ($1 per player per event)
-      await storage.createPlatformLedgerEntry(clubId, payment.id, PLATFORM_FEES.event, 'event');
+      await storage.createPlatformLedgerEntry(clubId, roster.athlete_id, PLATFORM_FEES.event, 'event');
       
       res.json({ success: true, payment });
     } catch (error) {
@@ -3354,9 +3354,10 @@ export async function registerRoutes(
           const feeType = session.session_type === 'clinic' ? 'clinic' : 'drop_in';
           await storage.createPlatformLedgerEntry(
             clubId,
-            payment.id,
+            targetAthleteId,
             PLATFORM_FEES[feeType],
-            feeType
+            feeType,
+            sessionId
           );
         }
       }
@@ -3434,7 +3435,7 @@ export async function registerRoutes(
       for (let i = 0; i < data.months; i++) {
         await storage.createPlatformLedgerEntry(
           clubId,
-          payment.id,
+          data.athlete_id,
           PLATFORM_FEES.monthly,
           'monthly'
         );
@@ -3503,7 +3504,7 @@ export async function registerRoutes(
         // Create platform ledger entry
         await storage.createPlatformLedgerEntry(
           clubId,
-          payment.id,
+          data.athlete_id,
           PLATFORM_FEES[data.payment_type],
           data.payment_type
         );
@@ -5296,7 +5297,7 @@ export async function registerRoutes(
         const feeType = feeTypes[i];
         const entry = await storage.createPlatformLedgerEntry(
           club.id,
-          payments[i].id,
+          testAthlete.id,
           PLATFORM_FEES[feeType],
           feeType
         );

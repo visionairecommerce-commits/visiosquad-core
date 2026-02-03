@@ -456,7 +456,26 @@ export const platformLedgerTable = pgTable("platform_ledger", {
   payment_id: uuid("payment_id").references(() => paymentsTable.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   fee_type: text("fee_type", { enum: ["monthly", "clinic", "drop_in", "event"] }).notNull(),
+  paid: boolean("paid").default(false).notNull(),
+  platform_invoice_id: uuid("platform_invoice_id"),
   created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Platform invoices table - billing clubs for platform fees
+export const platformInvoicesTable = pgTable("platform_invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  period_start: timestamp("period_start").notNull(),
+  period_end: timestamp("period_end").notNull(),
+  subtotal_amount: decimal("subtotal_amount", { precision: 10, scale: 2 }).notNull(),
+  fee_amount: decimal("fee_amount", { precision: 10, scale: 2 }).notNull(),
+  total_amount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  payment_method: text("payment_method", { enum: ["credit_card", "ach"] }).notNull(),
+  status: text("status", { enum: ["draft", "paid", "failed"] }).default("draft").notNull(),
+  helcim_transaction_id: text("helcim_transaction_id"),
+  failure_reason: text("failure_reason"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  paid_at: timestamp("paid_at"),
 });
 
 // Events table - standalone events like clinics, camps, tryouts
@@ -820,8 +839,26 @@ export interface PlatformLedger {
   club_id: string;
   payment_id: string;
   amount: number;
-  fee_type: 'monthly' | 'clinic' | 'drop_in';
+  fee_type: 'monthly' | 'clinic' | 'drop_in' | 'event';
+  paid: boolean;
+  platform_invoice_id: string | null;
   created_at: string;
+}
+
+export interface PlatformInvoice {
+  id: string;
+  club_id: string;
+  period_start: string;
+  period_end: string;
+  subtotal_amount: number;
+  fee_amount: number;
+  total_amount: number;
+  payment_method: 'credit_card' | 'ach';
+  status: 'draft' | 'paid' | 'failed';
+  helcim_transaction_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  paid_at: string | null;
 }
 
 // ============ ZOD SCHEMAS ============
@@ -1103,6 +1140,11 @@ export type InsertSeason = z.infer<typeof insertSeasonSchema>;
 export type DocuSealSetupRequest = typeof docusealSetupRequestsTable.$inferSelect;
 export const insertDocuSealSetupRequestSchema = createInsertSchema(docusealSetupRequestsTable).omit({ id: true, requested_at: true });
 export type InsertDocuSealSetupRequest = z.infer<typeof insertDocuSealSetupRequestSchema>;
+
+// Platform invoice types
+export type PlatformInvoiceRecord = typeof platformInvoicesTable.$inferSelect;
+export const insertPlatformInvoiceSchema = createInsertSchema(platformInvoicesTable).omit({ id: true, created_at: true, paid_at: true });
+export type InsertPlatformInvoice = z.infer<typeof insertPlatformInvoiceSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

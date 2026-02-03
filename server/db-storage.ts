@@ -4,7 +4,7 @@ import { supabaseAdmin as supabase } from './lib/supabase';
 import {
   clubsTable, profilesTable, clubSignaturesTable, programsTable,
   teamsTable, athletesTable, athleteTeamRostersTable, facilitiesTable, courtsTable,
-  sessionsTable, registrationsTable, paymentsTable, platformLedgerTable,
+  sessionsTable, registrationsTable, paymentsTable, platformLedgerTable, platformInvoicesTable,
   programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
   clubFormsTable, clubFormViewsTable,
   chatChannelsTable, channelParticipantsTable, messagesTable,
@@ -12,7 +12,7 @@ import {
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
-  Facility, Court, Session, Registration, Payment, PlatformLedger,
+  Facility, Court, Session, Registration, Payment, PlatformLedger, PlatformInvoice,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
   PushSubscription as PushSub, Season, DocuSealSetupRequest
@@ -989,7 +989,7 @@ export class DatabaseStorage implements IStorage {
     return this.mapPayment(p);
   }
 
-  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in'): Promise<PlatformLedger> {
+  async createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger> {
     const [entry] = await db.insert(platformLedgerTable).values({
       club_id: clubId,
       payment_id: paymentId,
@@ -997,6 +997,142 @@ export class DatabaseStorage implements IStorage {
       fee_type: feeType,
     }).returning();
     return this.mapLedger(entry);
+  }
+
+  async getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]> {
+    const { data, error } = await supabase
+      .from('platform_ledger')
+      .select('*')
+      .eq('paid', false)
+      .gte('created_at', periodStart.toISOString())
+      .lte('created_at', periodEnd.toISOString())
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map(entry => this.mapLedger(entry));
+  }
+
+  async getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]> {
+    const { data, error } = await supabase
+      .from('platform_ledger')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('paid', false)
+      .gte('created_at', periodStart.toISOString())
+      .lte('created_at', periodEnd.toISOString())
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map(entry => this.mapLedger(entry));
+  }
+
+  async markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void> {
+    if (ids.length === 0) return;
+    
+    const { error } = await supabase
+      .from('platform_ledger')
+      .update({ paid: true, platform_invoice_id: invoiceId })
+      .in('id', ids);
+    
+    if (error) throw error;
+  }
+
+  async createPlatformInvoice(invoice: {
+    club_id: string;
+    period_start: Date;
+    period_end: Date;
+    subtotal_amount: number;
+    fee_amount: number;
+    total_amount: number;
+    payment_method: 'credit_card' | 'ach';
+    status: 'draft' | 'paid' | 'failed';
+    helcim_transaction_id?: string;
+    failure_reason?: string;
+  }): Promise<PlatformInvoice> {
+    const [created] = await db.insert(platformInvoicesTable).values({
+      club_id: invoice.club_id,
+      period_start: invoice.period_start,
+      period_end: invoice.period_end,
+      subtotal_amount: String(invoice.subtotal_amount),
+      fee_amount: String(invoice.fee_amount),
+      total_amount: String(invoice.total_amount),
+      payment_method: invoice.payment_method,
+      status: invoice.status,
+      helcim_transaction_id: invoice.helcim_transaction_id ?? null,
+      failure_reason: invoice.failure_reason ?? null,
+    }).returning();
+    return this.mapPlatformInvoice(created);
+  }
+
+  async getPlatformInvoice(invoiceId: string): Promise<PlatformInvoice | undefined> {
+    const { data, error } = await supabase
+      .from('platform_invoices')
+      .select('*')
+      .eq('id', invoiceId)
+      .single();
+    
+    if (error || !data) return undefined;
+    return this.mapPlatformInvoice(data);
+  }
+
+  async getPlatformInvoicesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformInvoice[]> {
+    const { data, error } = await supabase
+      .from('platform_invoices')
+      .select('*')
+      .gte('period_start', periodStart.toISOString())
+      .lte('period_end', periodEnd.toISOString())
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return (data || []).map(inv => this.mapPlatformInvoice(inv));
+  }
+
+  async updatePlatformInvoiceStatus(invoiceId: string, status: 'paid' | 'failed', transactionId?: string, failureReason?: string): Promise<PlatformInvoice> {
+    const updateData: any = { status };
+    if (transactionId) updateData.helcim_transaction_id = transactionId;
+    if (failureReason) updateData.failure_reason = failureReason;
+    if (status === 'paid') updateData.paid_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('platform_invoices')
+      .update(updateData)
+      .eq('id', invoiceId)
+      .select()
+      .single();
+    
+    if (error || !data) throw new Error('Failed to update invoice status');
+    return this.mapPlatformInvoice(data);
+  }
+
+  async getClubDirectorEmail(clubId: string): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('club_id', clubId)
+      .eq('role', 'admin')
+      .limit(1)
+      .single();
+    
+    if (error || !data) return null;
+    return data.email;
+  }
+
+  private mapPlatformInvoice(inv: any): PlatformInvoice {
+    return {
+      id: inv.id,
+      club_id: inv.club_id,
+      period_start: inv.period_start,
+      period_end: inv.period_end,
+      subtotal_amount: parseFloat(inv.subtotal_amount),
+      fee_amount: parseFloat(inv.fee_amount),
+      total_amount: parseFloat(inv.total_amount),
+      payment_method: inv.payment_method,
+      status: inv.status,
+      helcim_transaction_id: inv.helcim_transaction_id,
+      failure_reason: inv.failure_reason,
+      created_at: inv.created_at,
+      paid_at: inv.paid_at,
+    };
   }
 
   // Mapping helpers
@@ -1190,6 +1326,8 @@ export class DatabaseStorage implements IStorage {
       payment_id: l.payment_id,
       amount: parseFloat(l.amount),
       fee_type: l.fee_type,
+      paid: l.paid ?? false,
+      platform_invoice_id: l.platform_invoice_id ?? null,
       created_at: l.created_at?.toISOString?.() ?? l.created_at,
     };
   }

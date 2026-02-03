@@ -159,7 +159,8 @@ export function calculateTotalWithFee(amount: number, method: 'credit_card' | 'a
 
 export function getConvenienceFeeAmount(amount: number, method: 'credit_card' | 'ach' | 'cash'): number {
   if (method === 'credit_card') {
-    return amount * 0.03;
+    // Round to 2 decimal places for consistent currency calculations
+    return Math.round(amount * 0.03 * 100) / 100;
   } else if (method === 'ach') {
     return 1.00;
   }
@@ -239,6 +240,90 @@ export async function cancelRecurringPayment(
     return {
       success: false,
       error: 'Failed to cancel recurring payment',
+    };
+  }
+}
+
+interface PlatformBillingRequest {
+  amount: number;
+  cardToken?: string;
+  bankToken?: string;
+  clubId: string;
+  clubName: string;
+  invoiceId: string;
+  periodStart: string;
+  periodEnd: string;
+}
+
+interface PlatformBillingResponse {
+  success: boolean;
+  transactionId?: string;
+  message?: string;
+  error?: string;
+}
+
+export async function chargePlatformBilling(request: PlatformBillingRequest): Promise<PlatformBillingResponse> {
+  if (!HELCIM_API_TOKEN || !HELCIM_ACCOUNT_ID) {
+    console.warn('[Helcim Platform Billing] Credentials not configured');
+    return {
+      success: false,
+      error: 'Payment processing not configured',
+    };
+  }
+
+  // Determine which token to use
+  const token = request.cardToken || request.bankToken;
+  if (!token) {
+    return {
+      success: false,
+      error: 'No billing token provided',
+    };
+  }
+
+  try {
+    const isCard = !!request.cardToken;
+    const invoiceNumber = `PLAT-${request.invoiceId.slice(0, 8)}`;
+    
+    console.log(`[Helcim Platform Billing] Charging club ${request.clubName} (${request.clubId}) - Amount: $${request.amount.toFixed(2)}`);
+
+    const response = await fetch(`${HELCIM_BASE_URL}/payment/purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-token': HELCIM_API_TOKEN,
+        'account-id': HELCIM_ACCOUNT_ID,
+      },
+      body: JSON.stringify({
+        amount: request.amount,
+        currency: 'USD',
+        ...(isCard ? { cardToken: token } : { bankToken: token }),
+        invoiceNumber,
+        comments: `Platform fees for ${request.clubName} - Period: ${request.periodStart} to ${request.periodEnd}`,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      console.log(`[Helcim Platform Billing] SUCCESS - Transaction ID: ${data.transactionId}`);
+      return {
+        success: true,
+        transactionId: data.transactionId,
+        message: 'Platform billing payment processed successfully',
+      };
+    } else {
+      const errorMsg = data.errors?.[0]?.message || 'Payment failed';
+      console.error(`[Helcim Platform Billing] FAILED - ${errorMsg}`);
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+  } catch (error) {
+    console.error('[Helcim Platform Billing] Error:', error);
+    return {
+      success: false,
+      error: 'Payment processing error',
     };
   }
 }

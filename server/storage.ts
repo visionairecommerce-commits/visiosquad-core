@@ -298,7 +298,25 @@ export interface PlatformLedger {
   payment_id: string;
   amount: number;
   fee_type: 'monthly' | 'clinic' | 'drop_in' | 'event';
+  paid: boolean;
+  platform_invoice_id: string | null;
   created_at: string;
+}
+
+export interface PlatformInvoice {
+  id: string;
+  club_id: string;
+  period_start: string;
+  period_end: string;
+  subtotal_amount: number;
+  fee_amount: number;
+  total_amount: number;
+  payment_method: 'credit_card' | 'ach';
+  status: 'draft' | 'paid' | 'failed';
+  helcim_transaction_id: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  paid_at: string | null;
 }
 
 // ============ MESSAGING TYPES ============
@@ -505,6 +523,27 @@ export interface IStorage {
   getPayments(clubId: string): Promise<Payment[]>;
   createPayment(clubId: string, payment: Omit<Payment, 'id' | 'club_id' | 'created_at'>): Promise<Payment>;
   createPlatformLedgerEntry(clubId: string, paymentId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event'): Promise<PlatformLedger>;
+  getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
+  getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
+  markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void>;
+
+  // Platform Invoices
+  createPlatformInvoice(invoice: {
+    club_id: string;
+    period_start: Date;
+    period_end: Date;
+    subtotal_amount: number;
+    fee_amount: number;
+    total_amount: number;
+    payment_method: 'credit_card' | 'ach';
+    status: 'draft' | 'paid' | 'failed';
+    helcim_transaction_id?: string;
+    failure_reason?: string;
+  }): Promise<PlatformInvoice>;
+  getPlatformInvoice(invoiceId: string): Promise<PlatformInvoice | undefined>;
+  getPlatformInvoicesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformInvoice[]>;
+  updatePlatformInvoiceStatus(invoiceId: string, status: 'paid' | 'failed', transactionId?: string, failureReason?: string): Promise<PlatformInvoice>;
+  getClubDirectorEmail(clubId: string): Promise<string | null>;
 
   // Program Contracts
   getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
@@ -1812,6 +1851,49 @@ export class MemStorage implements IStorage {
   }
 
   async isClubDocuSealOnboarded(clubId: string): Promise<boolean> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async createPlatformInvoice(invoice: {
+    club_id: string;
+    period_start: Date;
+    period_end: Date;
+    subtotal_amount: number;
+    fee_amount: number;
+    total_amount: number;
+    payment_method: 'credit_card' | 'ach';
+    status: 'draft' | 'paid' | 'failed';
+    helcim_transaction_id?: string;
+    failure_reason?: string;
+  }): Promise<PlatformInvoice> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getPlatformInvoice(invoiceId: string): Promise<PlatformInvoice | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getPlatformInvoicesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformInvoice[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updatePlatformInvoiceStatus(invoiceId: string, status: 'paid' | 'failed', transactionId?: string, failureReason?: string): Promise<PlatformInvoice> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getClubDirectorEmail(clubId: string): Promise<string | null> {
     throw new Error('Not implemented in MemStorage');
   }
 }

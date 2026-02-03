@@ -229,3 +229,102 @@ export async function sendDocuSealOnboardingRequest(
     html,
   });
 }
+
+interface PlatformBillingDetails {
+  clubName: string;
+  periodStart: string;
+  periodEnd: string;
+  subtotal: number;
+  fee: number;
+  total: number;
+  paymentMethod: 'credit_card' | 'ach';
+  transactionId: string;
+  invoiceId: string;
+}
+
+export async function sendPlatformBillingSuccess(
+  directorEmail: string,
+  details: PlatformBillingDetails
+): Promise<EmailResult> {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #10b981;">Platform Billing Receipt</h2>
+      <p>Your club has been billed for VisioSquad platform fees. Here are the details:</p>
+      
+      <div style="background-color: #f0fdf4; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #10b981;">
+        <p style="margin: 0;"><strong>Club:</strong> ${details.clubName}</p>
+        <p style="margin: 8px 0 0;"><strong>Billing Period:</strong> ${details.periodStart} to ${details.periodEnd}</p>
+        <p style="margin: 8px 0 0;"><strong>Platform Fees:</strong> $${details.subtotal.toFixed(2)}</p>
+        <p style="margin: 8px 0 0;"><strong>Processing Fee (${details.paymentMethod === 'credit_card' ? '3%' : '$1.00'}):</strong> $${details.fee.toFixed(2)}</p>
+        <p style="margin: 12px 0 0; font-size: 18px;"><strong>Total Charged:</strong> $${details.total.toFixed(2)}</p>
+      </div>
+
+      <p style="color: #6b7280; font-size: 14px; margin-top: 16px;">
+        <strong>Payment Method:</strong> ${details.paymentMethod === 'credit_card' ? 'Credit Card' : 'ACH Bank Transfer'}<br/>
+        <strong>Transaction ID:</strong> ${details.transactionId}<br/>
+        <strong>Invoice ID:</strong> ${details.invoiceId}
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #6b7280; font-size: 12px;">
+        This is an automated receipt from VisioSquad. For questions, reply to this email.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: [directorEmail, OWNER_EMAIL],
+    subject: `Platform Billing Receipt - ${details.clubName}`,
+    html,
+  });
+}
+
+interface PlatformBillingFailure {
+  clubName: string;
+  clubId: string;
+  periodStart: string;
+  periodEnd: string;
+  amount: number;
+  failureReason: string;
+  invoiceId: string;
+  dashboardUrl: string;
+}
+
+export async function sendPlatformBillingFailure(
+  details: PlatformBillingFailure
+): Promise<EmailResult> {
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #ef4444;">Platform Billing Failed</h2>
+      <p>A club billing attempt has failed. Action may be required.</p>
+      
+      <div style="background-color: #fef2f2; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #ef4444;">
+        <p style="margin: 0;"><strong>Club:</strong> ${details.clubName}</p>
+        <p style="margin: 8px 0 0;"><strong>Billing Period:</strong> ${details.periodStart} to ${details.periodEnd}</p>
+        <p style="margin: 8px 0 0;"><strong>Amount:</strong> $${details.amount.toFixed(2)}</p>
+        <p style="margin: 12px 0 0; color: #dc2626;"><strong>Failure Reason:</strong> ${details.failureReason}</p>
+      </div>
+
+      <p style="color: #6b7280; font-size: 14px; margin-top: 16px;">
+        <strong>Invoice ID:</strong> ${details.invoiceId}
+      </p>
+
+      <div style="margin-top: 24px;">
+        <a href="${details.dashboardUrl}" style="display: inline-block; background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500;">
+          Retry in Owner Dashboard
+        </a>
+      </div>
+
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+      <p style="color: #6b7280; font-size: 12px;">
+        This is an automated alert from VisioSquad.
+      </p>
+    </div>
+  `;
+
+  return sendEmail({
+    to: OWNER_EMAIL,
+    subject: `BILLING FAILED: ${details.clubName}`,
+    html,
+  });
+}

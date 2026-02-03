@@ -2,8 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee, createCardToken, createBankToken } from "./lib/helcim";
-import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured } from "./lib/resend";
+import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling } from "./lib/helcim";
+import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured, sendPlatformBillingSuccess, sendPlatformBillingFailure } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
@@ -4731,6 +4731,443 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error marking club as DocuSeal onboarded:', error);
       res.status(500).json({ error: 'Failed to mark club as onboarded' });
+    }
+  });
+
+  // ============ PLATFORM BILLING ROUTES ============
+
+  // Preview platform billing for a period (Owner only)
+  app.post('/api/platform/billing/preview', requireRole('owner'), async (req, res) => {
+    try {
+      const { periodStart, periodEnd, paymentMethod } = req.body;
+      
+      if (!periodStart || !periodEnd) {
+        return res.status(400).json({ error: 'periodStart and periodEnd are required' });
+      }
+
+      const method = paymentMethod || 'credit_card';
+      const start = new Date(periodStart);
+      const end = new Date(periodEnd);
+
+      // Get all unpaid ledger entries in the period
+      const allEntries = await storage.getUnpaidLedgerEntriesByPeriod(start, end);
+
+      // Group by club
+      const clubMap = new Map<string, typeof allEntries>();
+      for (const entry of allEntries) {
+        const existing = clubMap.get(entry.club_id) || [];
+        existing.push(entry);
+        clubMap.set(entry.club_id, existing);
+      }
+
+      // Build preview for each club
+      const previews = await Promise.all(
+        Array.from(clubMap.entries()).map(async ([clubId, entries]) => {
+          const club = await storage.getClub(clubId);
+          const subtotal = entries.reduce((sum, e) => sum + e.amount, 0);
+          const feeAmount = getConvenienceFeeAmount(subtotal, method);
+          // Use consistent calculation: total = subtotal + feeAmount (not calculateTotalWithFee to avoid rounding discrepancies)
+          const total = Math.round((subtotal + feeAmount) * 100) / 100;
+
+          const hasBillingToken = method === 'credit_card' 
+            ? !!club?.billing_card_token 
+            : !!club?.billing_bank_token;
+
+          return {
+            club_id: clubId,
+            club_name: club?.name || 'Unknown Club',
+            ledger_line_count: entries.length,
+            subtotal,
+            fee: feeAmount,
+            total,
+            has_billing_token: hasBillingToken,
+            can_charge: hasBillingToken && entries.length > 0,
+          };
+        })
+      );
+
+      res.json({
+        period_start: periodStart,
+        period_end: periodEnd,
+        payment_method: method,
+        clubs: previews,
+        total_clubs: previews.length,
+        total_billable: previews.filter(p => p.can_charge).length,
+        total_amount: previews.reduce((sum, p) => sum + p.total, 0),
+      });
+    } catch (error) {
+      console.error('Error generating billing preview:', error);
+      res.status(500).json({ error: 'Failed to generate billing preview' });
+    }
+  });
+
+  // Run platform billing for all clubs in a period (Owner only)
+  app.post('/api/platform/billing/run', requireRole('owner'), async (req, res) => {
+    try {
+      const { periodStart, periodEnd, paymentMethod } = req.body;
+      
+      if (!periodStart || !periodEnd || !paymentMethod) {
+        return res.status(400).json({ error: 'periodStart, periodEnd, and paymentMethod are required' });
+      }
+
+      const method = paymentMethod as 'credit_card' | 'ach';
+      const start = new Date(periodStart);
+      const end = new Date(periodEnd);
+
+      // Get all unpaid ledger entries in the period
+      const allEntries = await storage.getUnpaidLedgerEntriesByPeriod(start, end);
+
+      // Group by club
+      const clubMap = new Map<string, typeof allEntries>();
+      for (const entry of allEntries) {
+        const existing = clubMap.get(entry.club_id) || [];
+        existing.push(entry);
+        clubMap.set(entry.club_id, existing);
+      }
+
+      const results: Array<{
+        club_id: string;
+        club_name: string;
+        status: 'paid' | 'failed' | 'skipped';
+        invoice_id?: string;
+        amount?: number;
+        error?: string;
+      }> = [];
+
+      const appUrl = process.env.REPL_SLUG 
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` 
+        : 'https://visiosquad.com';
+
+      // Process each club
+      for (const [clubId, entries] of clubMap.entries()) {
+        const club = await storage.getClub(clubId);
+        const clubName = club?.name || 'Unknown Club';
+
+        // Check if club has billing token
+        const cardToken = method === 'credit_card' ? club?.billing_card_token : undefined;
+        const bankToken = method === 'ach' ? club?.billing_bank_token : undefined;
+
+        if (!cardToken && !bankToken) {
+          results.push({
+            club_id: clubId,
+            club_name: clubName,
+            status: 'skipped',
+            error: `No ${method === 'credit_card' ? 'card' : 'bank'} token on file`,
+          });
+          continue;
+        }
+
+        // Calculate amounts with consistent rounding
+        const subtotal = entries.reduce((sum, e) => sum + e.amount, 0);
+        const feeAmount = getConvenienceFeeAmount(subtotal, method);
+        // Use consistent calculation: total = subtotal + feeAmount (rounded to 2 decimals)
+        const total = Math.round((subtotal + feeAmount) * 100) / 100;
+
+        // Create invoice
+        const invoice = await storage.createPlatformInvoice({
+          club_id: clubId,
+          period_start: start,
+          period_end: end,
+          subtotal_amount: subtotal,
+          fee_amount: feeAmount,
+          total_amount: total,
+          payment_method: method,
+          status: 'draft',
+        });
+
+        // Charge via Helcim
+        const chargeResult = await chargePlatformBilling({
+          amount: total,
+          cardToken,
+          bankToken,
+          clubId,
+          clubName,
+          invoiceId: invoice.id,
+          periodStart,
+          periodEnd,
+        });
+
+        if (chargeResult.success) {
+          // Mark invoice as paid
+          await storage.updatePlatformInvoiceStatus(
+            invoice.id,
+            'paid',
+            chargeResult.transactionId
+          );
+
+          // Mark ledger entries as paid
+          await storage.markLedgerEntriesPaid(
+            entries.map(e => e.id),
+            invoice.id
+          );
+
+          // Send success email
+          const directorEmail = await storage.getClubDirectorEmail(clubId);
+          if (directorEmail) {
+            await sendPlatformBillingSuccess(directorEmail, {
+              clubName,
+              periodStart,
+              periodEnd,
+              subtotal,
+              fee: feeAmount,
+              total,
+              paymentMethod: method,
+              transactionId: chargeResult.transactionId || 'N/A',
+              invoiceId: invoice.id,
+            });
+          }
+
+          results.push({
+            club_id: clubId,
+            club_name: clubName,
+            status: 'paid',
+            invoice_id: invoice.id,
+            amount: total,
+          });
+        } else {
+          // Mark invoice as failed
+          await storage.updatePlatformInvoiceStatus(
+            invoice.id,
+            'failed',
+            undefined,
+            chargeResult.error
+          );
+
+          // Send failure email to owner
+          await sendPlatformBillingFailure({
+            clubName,
+            clubId,
+            periodStart,
+            periodEnd,
+            amount: total,
+            failureReason: chargeResult.error || 'Unknown error',
+            invoiceId: invoice.id,
+            dashboardUrl: `${appUrl}/owner/platform-billing`,
+          });
+
+          results.push({
+            club_id: clubId,
+            club_name: clubName,
+            status: 'failed',
+            invoice_id: invoice.id,
+            amount: total,
+            error: chargeResult.error,
+          });
+        }
+      }
+
+      res.json({
+        period_start: periodStart,
+        period_end: periodEnd,
+        payment_method: method,
+        results,
+        summary: {
+          total_clubs: results.length,
+          paid: results.filter(r => r.status === 'paid').length,
+          failed: results.filter(r => r.status === 'failed').length,
+          skipped: results.filter(r => r.status === 'skipped').length,
+          total_collected: results
+            .filter(r => r.status === 'paid')
+            .reduce((sum, r) => sum + (r.amount || 0), 0),
+        },
+      });
+    } catch (error) {
+      console.error('Error running platform billing:', error);
+      res.status(500).json({ error: 'Failed to run platform billing' });
+    }
+  });
+
+  // Retry a single failed invoice (Owner only)
+  app.post('/api/platform/billing/charge/:invoiceId', requireRole('owner'), async (req, res) => {
+    try {
+      const { invoiceId } = req.params;
+      const invoice = await storage.getPlatformInvoice(invoiceId);
+
+      if (!invoice) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+
+      if (invoice.status === 'paid') {
+        return res.status(400).json({ error: 'Invoice is already paid' });
+      }
+
+      const club = await storage.getClub(invoice.club_id);
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+
+      const method = invoice.payment_method;
+      const cardToken = method === 'credit_card' ? club.billing_card_token : undefined;
+      const bankToken = method === 'ach' ? club.billing_bank_token : undefined;
+
+      if (!cardToken && !bankToken) {
+        return res.status(400).json({ 
+          error: `Club has no ${method === 'credit_card' ? 'card' : 'bank'} token on file` 
+        });
+      }
+
+      const appUrl = process.env.REPL_SLUG 
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` 
+        : 'https://visiosquad.com';
+
+      // Retry charge
+      const chargeResult = await chargePlatformBilling({
+        amount: invoice.total_amount,
+        cardToken,
+        bankToken,
+        clubId: invoice.club_id,
+        clubName: club.name,
+        invoiceId: invoice.id,
+        periodStart: invoice.period_start,
+        periodEnd: invoice.period_end,
+      });
+
+      if (chargeResult.success) {
+        // Mark invoice as paid
+        const updated = await storage.updatePlatformInvoiceStatus(
+          invoice.id,
+          'paid',
+          chargeResult.transactionId
+        );
+
+        // Get unpaid ledger entries for this period and club
+        const entries = await storage.getUnpaidLedgerEntriesByClubAndPeriod(
+          invoice.club_id,
+          new Date(invoice.period_start),
+          new Date(invoice.period_end)
+        );
+
+        // Mark ledger entries as paid
+        await storage.markLedgerEntriesPaid(
+          entries.map(e => e.id),
+          invoice.id
+        );
+
+        // Send success email
+        const directorEmail = await storage.getClubDirectorEmail(invoice.club_id);
+        if (directorEmail) {
+          await sendPlatformBillingSuccess(directorEmail, {
+            clubName: club.name,
+            periodStart: invoice.period_start,
+            periodEnd: invoice.period_end,
+            subtotal: invoice.subtotal_amount,
+            fee: invoice.fee_amount,
+            total: invoice.total_amount,
+            paymentMethod: method,
+            transactionId: chargeResult.transactionId || 'N/A',
+            invoiceId: invoice.id,
+          });
+        }
+
+        res.json({ success: true, invoice: updated });
+      } else {
+        // Update failure reason
+        const updated = await storage.updatePlatformInvoiceStatus(
+          invoice.id,
+          'failed',
+          undefined,
+          chargeResult.error
+        );
+
+        // Send failure email
+        await sendPlatformBillingFailure({
+          clubName: club.name,
+          clubId: invoice.club_id,
+          periodStart: invoice.period_start,
+          periodEnd: invoice.period_end,
+          amount: invoice.total_amount,
+          failureReason: chargeResult.error || 'Unknown error',
+          invoiceId: invoice.id,
+          dashboardUrl: `${appUrl}/owner/platform-billing`,
+        });
+
+        res.json({ success: false, error: chargeResult.error, invoice: updated });
+      }
+    } catch (error) {
+      console.error('Error retrying invoice charge:', error);
+      res.status(500).json({ error: 'Failed to retry invoice charge' });
+    }
+  });
+
+  // Get platform invoices (Owner only)
+  app.get('/api/platform/billing/invoices', requireRole('owner'), async (req, res) => {
+    try {
+      const { periodStart, periodEnd } = req.query;
+      
+      if (!periodStart || !periodEnd) {
+        return res.status(400).json({ error: 'periodStart and periodEnd query params are required' });
+      }
+
+      const invoices = await storage.getPlatformInvoicesByPeriod(
+        new Date(periodStart as string),
+        new Date(periodEnd as string)
+      );
+
+      // Enrich with club names
+      const enriched = await Promise.all(
+        invoices.map(async (invoice) => {
+          const club = await storage.getClub(invoice.club_id);
+          return {
+            ...invoice,
+            club_name: club?.name || 'Unknown Club',
+          };
+        })
+      );
+
+      res.json(enriched);
+    } catch (error) {
+      console.error('Error fetching platform invoices:', error);
+      res.status(500).json({ error: 'Failed to fetch invoices' });
+    }
+  });
+
+  // Test seed endpoint - creates fake ledger entries for testing (Owner only)
+  app.post('/api/platform/billing/test-seed', requireRole('owner'), async (req, res) => {
+    try {
+      // Get a club to seed data for
+      const clubs = await storage.getAllClubs();
+      if (clubs.length === 0) {
+        return res.status(400).json({ error: 'No clubs exist to seed data for' });
+      }
+
+      const club = clubs[0];
+      const athletes = await storage.getAthletes(club.id);
+      
+      if (athletes.length === 0) {
+        return res.status(400).json({ error: 'Club has no athletes to create ledger entries for' });
+      }
+
+      // Create a dummy payment record first (required by foreign key)
+      const payment = await storage.createPayment(club.id, {
+        athlete_id: athletes[0].id,
+        amount: 0,
+        payment_type: 'monthly',
+        payment_method: 'cash',
+        status: 'completed',
+      });
+
+      // Create sample ledger entries
+      const entries = [];
+      for (let i = 0; i < 5; i++) {
+        const entry = await storage.createPlatformLedgerEntry(
+          club.id,
+          payment.id,
+          PLATFORM_FEES.monthly,
+          'monthly'
+        );
+        entries.push(entry);
+      }
+
+      res.json({
+        message: 'Test data seeded successfully',
+        club_id: club.id,
+        club_name: club.name,
+        entries_created: entries.length,
+        total_amount: entries.reduce((sum, e) => sum + e.amount, 0),
+      });
+    } catch (error) {
+      console.error('Error seeding test data:', error);
+      res.status(500).json({ error: 'Failed to seed test data' });
     }
   });
 

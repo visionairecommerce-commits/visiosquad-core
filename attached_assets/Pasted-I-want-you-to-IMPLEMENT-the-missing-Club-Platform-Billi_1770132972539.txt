@@ -1,0 +1,73 @@
+I want you to IMPLEMENT the missing “Club → Platform Billing” flow using Helcim, based on the audit results.
+
+DO NOT change the existing Parent → Club payment flow (POST /api/payments/process) or its fee logic. That is already correct.
+
+Goal:
+- Clubs/directors must be billed by the platform for amounts recorded in platform_ledger.
+- Credit card / ACH processing fees must be charged to the CLUB (the purchaser), not absorbed by the platform.
+- Use the existing stored billing tokens on the club (billing_card_token / billing_bank_token) that are already being saved.
+- After a successful charge, mark ledger items as paid and email a receipt.
+
+Deliverables (must implement ALL):
+
+A) Database / data model (minimal)
+1) Create a new table (or equivalent) named platform_invoices with:
+   - id (uuid)
+   - club_id
+   - period_start (date)
+   - period_end (date)
+   - subtotal_amount (number)
+   - fee_amount (number)
+   - total_amount (number)
+   - payment_method ('credit_card'|'ach')
+   - status ('draft'|'paid'|'failed')
+   - helcim_transaction_id (nullable)
+   - created_at
+2) Add a platform_invoice_id column to platform_ledger entries (nullable) so ledger lines can be linked to an invoice.
+
+B) Backend endpoints
+1) POST /api/platform/billing/preview?periodStart=YYYY-MM-DD&periodEnd=YYYY-MM-DD
+   - Owner-only
+   - Returns per-club invoice preview:
+     subtotal, fee, total, ledger line count, and whether club has a billing token.
+2) POST /api/platform/billing/run?periodStart=YYYY-MM-DD&periodEnd=YYYY-MM-DD&method=credit_card|ach
+   - Owner-only
+   - Creates invoices for all clubs with unpaid ledger lines in that period
+   - Charges each club automatically using their saved token
+   - On success: mark invoice paid, link ledger lines to invoice, mark ledger lines paid
+   - On failure: mark invoice failed, keep ledger lines unpaid, store failure reason
+3) POST /api/platform/billing/charge/:invoiceId
+   - Owner-only
+   - Retry a single failed invoice charge.
+
+C) Helcim integration changes (if needed)
+1) Add a helcim function that can charge a stored token for a specific amount for the platform’s own merchant account.
+   - This is separate from the parent → club payment flow.
+2) Use calculateTotalWithFee() so the CLUB pays the fee, not the platform.
+
+D) Email notifications (Resend)
+1) On successful club billing: email the club director + owner
+   - Include subtotal, fee, total, invoice period, and transaction id.
+2) On failed club billing: email owner only
+   - Include club name, amount, failure reason, and a link to retry in Owner Dashboard.
+
+E) Owner Dashboard UI
+Add a new Owner Dashboard page: “Platform Billing”
+- Inputs: period start/end, payment method
+- Buttons: Preview, Run Billing
+- Table of invoice results with status + retry button
+
+F) Guardrails
+- Never charge a club unless:
+  - there are unpaid ledger lines in that period
+  - club has a billing token for the selected method
+- No double-charging: a ledger line once paid cannot be billed again.
+
+Patch rules:
+- Provide chunk-based patches only.
+- For every change: include exact code to replace and replacement code.
+- No unrelated diffs.
+
+After implementing, add a test endpoint (owner-only):
+POST /api/platform/billing/test-seed
+- Seeds 1 club with fake ledger lines so we can test preview/run flow without real money.

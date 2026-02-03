@@ -5231,49 +5231,96 @@ export async function registerRoutes(
     }
   });
 
-  // Test seed endpoint - creates fake ledger entries for testing (Owner only)
+  // Test seed endpoint - creates self-contained test data for platform billing (Owner only)
+  // Creates a dedicated test club, athlete, and ledger entries
   app.post('/api/platform/billing/test-seed', requireRole('owner'), async (req, res) => {
+    const TEST_CLUB_NAME = 'TEST CLUB - DO NOT BILL';
+    const TEST_ATHLETE_NAME = 'Test Athlete';
+    
     try {
-      // Get a club to seed data for
-      const clubs = await storage.getAllClubs();
-      if (clubs.length === 0) {
-        return res.status(400).json({ error: 'No clubs exist to seed data for' });
-      }
-
-      const club = clubs[0];
-      const athletes = await storage.getAthletes(club.id);
+      // Step 1: Find or create the dedicated test club
+      const allClubs = await storage.getAllClubs();
+      let club = allClubs.find(c => c.name === TEST_CLUB_NAME);
+      let clubCreated = false;
       
-      if (athletes.length === 0) {
-        return res.status(400).json({ error: 'Club has no athletes to create ledger entries for' });
+      if (!club) {
+        // Create the test club with a dummy director
+        const testEmail = `test-director-${Date.now()}@test.visiosquad.com`;
+        const result = await storage.createClub(
+          TEST_CLUB_NAME,
+          testEmail,
+          'Test Director',
+          'test-password-not-used'
+        );
+        club = result.club;
+        clubCreated = true;
+        console.log(`[Test Seed] Created test club: ${club.id}`);
       }
 
-      // Create a dummy payment record first (required by foreign key)
-      const payment = await storage.createPayment(club.id, {
-        athlete_id: athletes[0].id,
-        amount: 0,
-        payment_type: 'monthly',
-        payment_method: 'cash',
-        status: 'completed',
-      });
+      // Step 2: Find or create a test athlete
+      let athletes = await storage.getAthletes(club.id);
+      let testAthlete = athletes.find(a => a.first_name === 'Test' && a.last_name === 'Athlete');
+      let athleteCreated = false;
+      
+      if (!testAthlete) {
+        // Create a test athlete
+        testAthlete = await storage.createAthlete(club.id, {
+          first_name: 'Test',
+          last_name: 'Athlete',
+          birth_date: '2010-01-01',
+          gender: 'other',
+        });
+        athleteCreated = true;
+        console.log(`[Test Seed] Created test athlete: ${testAthlete.id}`);
+      }
 
-      // Create sample ledger entries
+      // Step 3: Create payment records (required by ledger entry foreign key)
+      // Create multiple payments to simulate real billing activity
+      const payments = [];
+      const feeTypes: Array<'monthly' | 'clinic' | 'drop_in' | 'event'> = ['monthly', 'monthly', 'clinic', 'event', 'drop_in'];
+      
+      for (const feeType of feeTypes) {
+        const payment = await storage.createPayment(club.id, {
+          athlete_id: testAthlete.id,
+          amount: PLATFORM_FEES[feeType],
+          payment_type: feeType === 'monthly' ? 'monthly' : 'one_time',
+          payment_method: 'card',
+          status: 'completed',
+        });
+        payments.push(payment);
+      }
+
+      // Step 4: Create platform ledger entries (unpaid, ready for billing)
       const entries = [];
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < payments.length; i++) {
+        const feeType = feeTypes[i];
         const entry = await storage.createPlatformLedgerEntry(
           club.id,
-          payment.id,
-          PLATFORM_FEES.monthly,
-          'monthly'
+          payments[i].id,
+          PLATFORM_FEES[feeType],
+          feeType
         );
         entries.push(entry);
       }
+
+      console.log(`[Test Seed] Created ${entries.length} ledger entries for club ${club.id}`);
 
       res.json({
         message: 'Test data seeded successfully',
         club_id: club.id,
         club_name: club.name,
+        club_created: clubCreated,
+        athlete_id: testAthlete.id,
+        athlete_created: athleteCreated,
+        payments_created: payments.length,
         entries_created: entries.length,
         total_amount: entries.reduce((sum, e) => sum + e.amount, 0),
+        fee_breakdown: {
+          monthly: entries.filter(e => e.fee_type === 'monthly').length,
+          clinic: entries.filter(e => e.fee_type === 'clinic').length,
+          event: entries.filter(e => e.fee_type === 'event').length,
+          drop_in: entries.filter(e => e.fee_type === 'drop_in').length,
+        }
       });
     } catch (error) {
       console.error('Error seeding test data:', error);

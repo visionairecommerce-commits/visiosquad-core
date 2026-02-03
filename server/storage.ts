@@ -545,6 +545,26 @@ export interface IStorage {
   updatePlatformInvoiceStatus(invoiceId: string, status: 'paid' | 'failed', transactionId?: string, failureReason?: string): Promise<PlatformInvoice>;
   getClubDirectorEmail(clubId: string): Promise<string | null>;
 
+  // Helcim Webhook Events (for idempotency)
+  checkWebhookEventProcessed(eventId: string): Promise<boolean>;
+  recordWebhookEvent(event: {
+    event_id: string;
+    event_type: string;
+    transaction_id?: string;
+    invoice_number?: string;
+    amount?: number;
+    status?: string;
+    raw_payload?: any;
+  }): Promise<void>;
+
+  // Payment updates from webhooks
+  updatePaymentByTransactionId(transactionId: string, status: 'completed' | 'failed'): Promise<void>;
+  updatePlatformInvoiceByTransactionId(transactionId: string, status: 'paid' | 'failed'): Promise<void>;
+  getPlatformInvoiceByTransactionId(transactionId: string): Promise<PlatformInvoice | undefined>;
+  getPlatformInvoiceByInvoiceNumber(invoiceNumber: string): Promise<PlatformInvoice | undefined>;
+  markLedgerEntriesPaidByInvoiceId(invoiceId: string): Promise<void>;
+  unmarkLedgerEntriesByInvoiceId(invoiceId: string): Promise<void>;
+
   // Program Contracts
   getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
   getProgramContract(clubId: string, contractId: string): Promise<ProgramContract | undefined>;
@@ -1894,6 +1914,46 @@ export class MemStorage implements IStorage {
   }
 
   async getClubDirectorEmail(clubId: string): Promise<string | null> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async checkWebhookEventProcessed(eventId: string): Promise<boolean> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async recordWebhookEvent(event: {
+    event_id: string;
+    event_type: string;
+    transaction_id?: string;
+    invoice_number?: string;
+    amount?: number;
+    status?: string;
+    raw_payload?: any;
+  }): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updatePaymentByTransactionId(transactionId: string, status: 'completed' | 'failed'): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updatePlatformInvoiceByTransactionId(transactionId: string, status: 'paid' | 'failed'): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getPlatformInvoiceByTransactionId(transactionId: string): Promise<PlatformInvoice | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getPlatformInvoiceByInvoiceNumber(invoiceNumber: string): Promise<PlatformInvoice | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async markLedgerEntriesPaidByInvoiceId(invoiceId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async unmarkLedgerEntriesByInvoiceId(invoiceId: string): Promise<void> {
     throw new Error('Not implemented in MemStorage');
   }
 }

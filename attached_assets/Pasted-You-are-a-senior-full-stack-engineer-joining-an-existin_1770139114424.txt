@@ -1,0 +1,205 @@
+You are a senior full-stack engineer joining an existing app that uses Helcim API tokenized payments (not hosted payment pages) with two separate payer flows:
+
+Flow A (WORKING today): Parents pay Clubs for tuition/contracts/drop-ins/events.
+Flow B (implemented but unverified): Clubs (Directors) pay the Platform a SaaS/platform fee based on platform_ledger.
+
+Non-negotiable rules (do not revisit):
+
+Processing fees are always charged to the purchaser (platform never absorbs fees).
+
+Credit card fee: +3%
+
+ACH fee: +$1.00
+
+Do NOT use Helcim “Fee Saver” anywhere in the live app. Fee pass-through is handled at the app level.
+
+Tokenized payments only (no raw PAN storage, no hosted pages in live flow).
+
+Parents and Clubs are billed via separate flows.
+
+No Helcim subscriptions/recurring plans.
+
+Secrets:
+
+HELCIM_API_TOKEN
+
+HELCIM_WEBHOOK_SECRET
+
+Goal: Confirm everything is correct + secure for parent billing, ensure webhooks work reliably, and ensure “card on file” (autopay) is supported for the payer groups that need it.
+
+Part 1 — Audit + Verify Parent Billing is Secure and Correct
+
+Confirm parents can securely enter credit card or bank in the UI.
+
+Confirm the app is not collecting or storing raw card numbers (PAN/CVV) anywhere. Only Helcim tokenization should be used.
+
+Trace the flow end-to-end:
+
+UI → tokenization call → backend charge → database write(s) → receipt/UI confirmation
+
+Confirm fee math:
+
+Credit card = subtotal * 1.03
+
+ACH = subtotal + 1.00
+
+UI disclosure present and matches actual charged amount
+
+Confirm no possibility of fee absorption: subtotal vs fees must always be charged to purchaser.
+
+Confirm errors are handled safely (no partial states, no double charges on retries).
+
+Deliverable: a short written report of findings + “PASS/FAIL” for each item and any required fixes.
+
+Part 2 — Webhooks (Required): Implement + Verify Helcim Webhook Endpoint
+
+We must receive Helcim webhooks to confirm final payment outcomes and safely mark invoices/ledger lines paid.
+
+Requirements
+
+Implement a webhook endpoint (Express route) that:
+
+Verifies signature using HELCIM_WEBHOOK_SECRET (HMAC verification per Helcim docs).
+
+Uses raw body for signature verification (avoid JSON parser altering payload).
+
+Responds quickly (200 OK) once verified and persisted.
+
+Implement idempotency:
+
+If the same Helcim event/transaction is delivered multiple times, it must not update state twice.
+
+Store processed event IDs (or transaction IDs) in DB and ignore duplicates.
+
+Wire webhook processing to the billing records:
+
+For Parent→Club charges: confirm any “paid” state updates are correct.
+
+For Club→Platform invoices: only mark invoice + ledger lines paid upon confirmed successful event.
+
+Ensure webhook route is protected from abuse:
+
+Signature verification required (reject if invalid).
+
+Log suspicious requests safely (no secrets).
+
+Deliverable: working webhook endpoint + DB idempotency + verification steps.
+
+Part 3 — “Card on File” / Autopay Requirement (Critical)
+
+The client has stated: “clients have a credit card on file to be billed.”
+
+Determine and implement the correct behavior:
+
+Step A: Determine existing behavior
+
+Check whether the app already supports storing a Helcim token for:
+
+Parents (optional convenience for future purchases), AND/OR
+
+Clubs (required for platform auto-billing)
+
+Clarify which payer groups require “card on file”:
+
+If platform auto-bills Clubs, the Club must have a saved payment method (card or ACH token).
+
+If Clubs want to auto-bill Parents, that requires parent saved tokens (if desired) but may be optional.
+
+Step B: If “card on file” is NOT already implemented
+Implement the minimal safe version:
+
+Add a DB table for saved payment methods (example):
+
+owner_type: 'parent' | 'club'
+
+owner_id
+
+helcim_card_token / helcim_bank_token
+
+brand/last4/expiry (non-sensitive metadata only)
+
+created_at, updated_at
+
+active flag
+
+Add UI for “Save payment method” (parents and/or clubs depending on requirements).
+
+Add backend endpoints to:
+
+Create/update saved token (tokenization still done via Helcim; app stores only token + metadata).
+
+Remove/disable saved method.
+
+Update billing flows:
+
+Parent payments: allow choosing saved method or entering new details.
+
+Club→Platform billing: MUST be able to run automatically using saved method if present; otherwise invoice remains unpaid and owners are notified.
+
+Ensure PCI-safe handling:
+
+No PAN/CVV stored or logged.
+
+Tokens stored securely.
+
+Strict access control (owner-only can manage their own saved method).
+
+Deliverable: “card on file” support implemented OR a confirmed written statement that Helcim + current app code already provides it natively.
+
+Part 4 — Verification / Test Plan (Must be Executed)
+
+Provide and run a test plan that includes:
+
+$1 live test (single payer, single transaction)
+
+Confirm Helcim transaction success
+
+Confirm app state updates
+
+Confirm webhook received + verified + idempotent
+
+Failure scenario:
+
+Decline / invalid method
+
+Confirm invoice NOT marked paid
+
+Confirm retry does not double charge
+
+Re-delivery scenario:
+
+Simulate webhook delivered twice
+
+Confirm only processed once
+
+Deliverable: test evidence (logs/screenshots/DB rows) + pass/fail.
+
+Part 5 — Patch Delivery Rules (STRICT)
+
+When you change code:
+
+Do NOT send full files.
+
+Provide chunk-based patches only:
+
+Include the exact code to be replaced (100% of that chunk)
+
+Include the exact replacement code (100% of the new chunk)
+
+Include precise placement instructions with anchor lines (at least 3 lines before/after)
+
+Avoid any unrelated formatting diffs.
+
+Definition of Done
+
+Parent billing confirmed secure, correct fee pass-through, and working end-to-end.
+
+Helcim webhook endpoint implemented, signature verified, idempotent, and updates state correctly.
+
+“Card on file” behavior confirmed or implemented for required payer groups (especially Clubs for platform auto-billing).
+
+$1 live test successful + failure + duplicate webhook tests passed.
+
+Owner-only access enforced for platform-billing controls.
+
+Proceed now with the audit, then implement missing pieces, then run the tests.

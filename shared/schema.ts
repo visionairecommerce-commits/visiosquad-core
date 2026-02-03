@@ -461,6 +461,20 @@ export const platformLedgerTable = pgTable("platform_ledger", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Helcim webhook events table - for idempotency/deduplication
+export const helcimWebhookEventsTable = pgTable("helcim_webhook_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event_id: text("event_id").notNull().unique(), // Helcim event ID or transaction ID
+  event_type: text("event_type").notNull(), // payment.completed, payment.failed, etc.
+  transaction_id: text("transaction_id"),
+  invoice_number: text("invoice_number"),
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  status: text("status"), // APPROVED, DECLINED, etc.
+  raw_payload: jsonb("raw_payload"), // Full webhook payload for debugging
+  processed_at: timestamp("processed_at").defaultNow().notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Platform invoices table - billing clubs for platform fees
 export const platformInvoicesTable = pgTable("platform_invoices", {
   id: uuid("id").primaryKey().defaultRandom(),

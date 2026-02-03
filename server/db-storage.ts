@@ -1117,6 +1117,120 @@ export class DatabaseStorage implements IStorage {
     return data.email;
   }
 
+  // Helcim Webhook Events (for idempotency)
+  async checkWebhookEventProcessed(eventId: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('helcim_webhook_events')
+      .select('id')
+      .eq('event_id', eventId)
+      .limit(1)
+      .single();
+    
+    return !!data && !error;
+  }
+
+  async recordWebhookEvent(event: {
+    event_id: string;
+    event_type: string;
+    transaction_id?: string;
+    invoice_number?: string;
+    amount?: number;
+    status?: string;
+    raw_payload?: any;
+  }): Promise<void> {
+    const { error } = await supabase
+      .from('helcim_webhook_events')
+      .insert({
+        event_id: event.event_id,
+        event_type: event.event_type,
+        transaction_id: event.transaction_id,
+        invoice_number: event.invoice_number,
+        amount: event.amount,
+        status: event.status,
+        raw_payload: event.raw_payload,
+      });
+    
+    if (error) {
+      // Unique constraint violation means it was already processed
+      if (error.code === '23505') {
+        console.log(`[Webhook] Event ${event.event_id} already processed`);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async updatePaymentByTransactionId(transactionId: string, status: 'completed' | 'failed'): Promise<void> {
+    const { error } = await supabase
+      .from('payments')
+      .update({ status })
+      .eq('helcim_transaction_id', transactionId);
+    
+    if (error) {
+      console.error(`[Webhook] Failed to update payment with transaction ${transactionId}:`, error);
+    }
+  }
+
+  async updatePlatformInvoiceByTransactionId(transactionId: string, status: 'paid' | 'failed'): Promise<void> {
+    const updateData: any = { status };
+    if (status === 'paid') {
+      updateData.paid_at = new Date().toISOString();
+    }
+    
+    const { error } = await supabase
+      .from('platform_invoices')
+      .update(updateData)
+      .eq('helcim_transaction_id', transactionId);
+    
+    if (error) {
+      console.error(`[Webhook] Failed to update platform invoice with transaction ${transactionId}:`, error);
+    }
+  }
+
+  async getPlatformInvoiceByTransactionId(transactionId: string): Promise<PlatformInvoice | undefined> {
+    const { data, error } = await supabase
+      .from('platform_invoices')
+      .select('*')
+      .eq('helcim_transaction_id', transactionId)
+      .single();
+    
+    if (error || !data) return undefined;
+    return this.mapPlatformInvoice(data);
+  }
+
+  async getPlatformInvoiceByInvoiceNumber(invoiceNumber: string): Promise<PlatformInvoice | undefined> {
+    const { data, error } = await supabase
+      .from('platform_invoices')
+      .select('*')
+      .eq('invoice_number', invoiceNumber)
+      .single();
+    
+    if (error || !data) return undefined;
+    return this.mapPlatformInvoice(data);
+  }
+
+  async markLedgerEntriesPaidByInvoiceId(invoiceId: string): Promise<void> {
+    const { error } = await supabase
+      .from('platform_ledger')
+      .update({ paid: true })
+      .eq('platform_invoice_id', invoiceId);
+    
+    if (error) {
+      console.error(`[Webhook] Failed to mark ledger entries paid for invoice ${invoiceId}:`, error);
+    }
+  }
+
+  async unmarkLedgerEntriesByInvoiceId(invoiceId: string): Promise<void> {
+    const { error } = await supabase
+      .from('platform_ledger')
+      .update({ paid: false, platform_invoice_id: null })
+      .eq('platform_invoice_id', invoiceId);
+    
+    if (error) {
+      console.error(`[Webhook] Failed to unmark ledger entries for invoice ${invoiceId}:`, error);
+    }
+  }
+
   private mapPlatformInvoice(inv: any): PlatformInvoice {
     return {
       id: inv.id,

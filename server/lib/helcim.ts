@@ -1,7 +1,65 @@
+import crypto from 'crypto';
+
 const HELCIM_API_TOKEN = process.env.HELCIM_API_TOKEN;
 const HELCIM_ACCOUNT_ID = process.env.HELCIM_ACCOUNT_ID;
+const HELCIM_WEBHOOK_SECRET = process.env.HELCIM_WEBHOOK_SECRET;
 
 const HELCIM_BASE_URL = 'https://api.helcim.com/v2';
+
+/**
+ * Verify Helcim webhook signature using HMAC-SHA256
+ * Helcim sends the signature in the X-Helcim-Signature header
+ */
+export function verifyWebhookSignature(payload: string, signature: string): boolean {
+  if (!HELCIM_WEBHOOK_SECRET) {
+    // In production, we should reject if no secret is configured
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      console.error('[Helcim Webhook] No webhook secret configured in production - rejecting');
+      return false;
+    }
+    console.warn('[Helcim Webhook] No webhook secret configured - skipping verification (dev mode)');
+    return true;
+  }
+
+  if (!signature) {
+    console.warn('[Helcim Webhook] No signature provided');
+    return false;
+  }
+
+  try {
+    // Helcim uses HMAC-SHA256 for webhook signatures
+    const expectedSignature = crypto
+      .createHmac('sha256', HELCIM_WEBHOOK_SECRET)
+      .update(payload)
+      .digest('hex');
+    
+    // Normalize both signatures to hex and ensure equal length before comparison
+    const receivedHex = signature.toLowerCase().trim();
+    const expectedHex = expectedSignature.toLowerCase();
+    
+    if (receivedHex.length !== expectedHex.length) {
+      console.warn('[Helcim Webhook] Signature length mismatch');
+      return false;
+    }
+    
+    // Use timing-safe comparison to prevent timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedHex, 'hex'),
+      Buffer.from(expectedHex, 'hex')
+    );
+  } catch (error) {
+    console.error('[Helcim Webhook] Signature verification error:', error);
+    return false;
+  }
+}
+
+/**
+ * Check if webhook secret is configured
+ */
+export function isWebhookSecretConfigured(): boolean {
+  return !!HELCIM_WEBHOOK_SECRET;
+}
 
 interface PaymentRequest {
   amount: number;

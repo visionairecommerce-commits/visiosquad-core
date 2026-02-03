@@ -44,6 +44,11 @@ export class DatabaseStorage implements IStorage {
     return this.mapClub(club);
   }
 
+  async getAllClubs(): Promise<Club[]> {
+    const clubs = await db.select().from(clubsTable);
+    return clubs.map(c => this.mapClub(c));
+  }
+
   async createClub(name: string, directorEmail: string, directorName: string, directorPassword: string): Promise<{ club: Club; user: User }> {
     const [club] = await db.insert(clubsTable).values({
       name,

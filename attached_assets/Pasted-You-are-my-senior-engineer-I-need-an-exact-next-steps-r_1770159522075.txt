@@ -1,0 +1,130 @@
+You are my senior engineer. I need an “exact next steps” readiness audit for Helcim + Model A billing in this codebase. Do NOT guess. Read the code and compare it to my current Replit Secrets.
+
+Goal: I want recurring billing to be AUTOMATIC (Helcim-managed) with user-selected billing day (1–28) + support one-time event charges, with a working Helcim webhook at /api/webhooks/payments. The deployment already succeeded.
+
+What you must do
+1) Produce a definitive “Required Env Vars” list from the code
+
+Search the entire repo for process.env. usage and list ALL billing/payment-related env vars the server actually reads, including exact spelling. At minimum, confirm:
+
+HELCIM_ACCOUNT_ID
+
+HELCIM_API_TOKEN
+
+HELCIM_WEBHOOK_SECRET
+
+BILLING_MODE
+
+BILLING_AUTOPAY_PREP_ENABLED
+
+BILLING_RECONCILIATION_ENABLED
+
+HELCIM_SUBSCRIPTION_ROLLOUT
+
+HELCIM_SUBSCRIPTION_CLUB_IDS
+
+SUPABASE_URL / SUPABASE_ANON_KEY / SERVICE ROLE key usage (confirm the exact env name used)
+
+DATABASE_URL
+
+SESSION_SECRET
+
+RESEND_API_KEY
+
+Output format:
+
+✅ Required (must exist or app breaks)
+
+⚠️ Optional (has safe default)
+
+❌ Unused (present in secrets but not referenced)
+
+2) Compare with my actual Replit Secrets
+
+My current secrets include (exact names):
+SESSION_SECRET
+HELCIM_ACCOUNT_ID
+HELCIM_API_TOKEN
+RESEND_API_KEY
+SUPABASE_ANON_KEY
+SUPABASE_URL
+SERVICE_ROLE_KEY
+SUPABASE_SERVICE_ROLE_KEY (or similarly named — confirm exact existing key name in secrets UI if present)
+DATABASE_URL
+FIREBASE_SERVICE_ACCOUNT_...
+NEXT_PUBLIC_VAPID_KEY
+HELCIM_WEBHOOK_SECRET
+DOCUSEAL_API_KEY
+DOCUSEAL_WEBHOOK_SECRET
+
+Tell me EXACTLY what I must add/change/remove in Secrets.
+
+If the code uses SUPABASE_SERVICE_ROLE_KEY but only SERVICE_ROLE_KEY exists (or vice versa), tell me which to rename/add.
+
+If BILLING_MODE or prep/recon flags are not set, tell me what values I should set for automatic Helcim mode.
+
+3) Verify the webhook is correct end-to-end
+
+Confirm:
+
+the route path is exactly /api/webhooks/payments
+
+signature verification uses Helcim headers webhook-id, webhook-timestamp, webhook-signature
+
+HELCIM_WEBHOOK_SECRET is base64-decoded before HMAC
+
+idempotency uses webhook-id and stores it in the idempotency table
+
+GET /api/webhooks/payments/ returns a readiness JSON (like {status:"ok", secret_configured:true}) without leaking secrets
+
+If any mismatch exists, implement the fix.
+
+4) Confirm “Automatic Recurring” is truly automatic
+
+Check whether ANY cron/scheduled job is still charging cards directly (/payment/purchase) for platform recurring fees when BILLING_MODE=helcim.
+
+In helcim mode, the app must NOT charge. It may only PATCH subscription recurringAmount (prep job) and reconcile.
+
+If there is still a direct-charge cron path, disable it behind flags.
+
+5) Confirm “One-time event charges” still work
+
+Find where one-time event charges happen and confirm they use a direct purchase flow.
+
+Ensure the webhook handler can still process those transactions too.
+
+6) Identify what data must exist for real testing
+
+Tell me the minimum real test steps (NOT seed):
+
+what must exist in the DB (club, billing_day, billing_customer_code, helcim_subscription_id, etc.)
+
+what admin UI actions I must take to create a club subscription
+
+how to test webhooks (Helcim dashboard test/send event if supported)
+
+7) Output a single, numbered checklist for me
+
+End with:
+
+“Set these secrets…”
+
+“Flip these flags to these values…”
+
+“Click here in app to set up first club…”
+
+“Run this endpoint / action to confirm…”
+
+“Expected logs / statuses…”
+
+Constraints
+
+Make minimal, safe changes.
+
+Do not break production.
+
+If you change code, include exact file paths and what changed.
+
+Do not create fake data unless I explicitly ask; instead tell me how to create a real test club safely.
+
+Now run the audit and return the checklist.

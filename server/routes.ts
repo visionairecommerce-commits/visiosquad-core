@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured, extractWebhookHeaders } from "./lib/helcim";
+import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured, extractWebhookHeaders, calculateBillingPeriod, BILLING_MODE } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured, sendPlatformBillingSuccess, sendPlatformBillingFailure } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
@@ -4453,6 +4453,36 @@ export async function registerRoutes(
         return { invoice: undefined, method: 'none' };
       }
 
+      // Helper to handle autopay subscription charges (Model A billing)
+      async function handleAutopayCharge(
+        customerCode: string, 
+        transactionId: string, 
+        txStatus: 'APPROVED' | 'DECLINED' | 'FAILED',
+        txDate: Date
+      ): Promise<boolean> {
+        if (BILLING_MODE !== 'helcim') return false;
+        
+        const club = await storage.getClubByCustomerCode(customerCode);
+        if (!club) return false;
+        
+        const billingDay = club.billing_day ?? 1;
+        const pendingCharge = await storage.getAutopayChargeForPeriod(club.id, billingDay, txDate);
+        
+        if (!pendingCharge || pendingCharge.status !== 'prepared') return false;
+        
+        const newStatus = txStatus === 'APPROVED' ? 'paid' : 'failed';
+        await storage.updateAutopayChargeStatus(pendingCharge.id, newStatus, transactionId);
+        
+        if (newStatus === 'paid') {
+          const { periodStart, periodEnd } = calculateBillingPeriod(billingDay, txDate);
+          await storage.markLedgerEntriesPaidForPeriod(club.id, periodStart, periodEnd);
+          console.log(`[Payment Webhook] Autopay: Marked ledger entries paid for club ${club.name}`);
+        }
+        
+        console.log(`[Payment Webhook] Autopay: Updated charge for club ${club.name} -> ${newStatus}`);
+        return true;
+      }
+
       // Handle cardTransaction events based on status
       if (eventType === 'cardTransaction') {
         if (status === 'APPROVED') {
@@ -4471,6 +4501,14 @@ export async function registerRoutes(
             } else {
               console.warn(`[Payment Webhook] Could not find platform invoice for approved transaction`);
             }
+          } else if (customerCode && transactionId) {
+            // Try autopay subscription charge first (Model A)
+            const handledAsAutopay = await handleAutopayCharge(customerCode, transactionId, 'APPROVED', new Date());
+            if (!handledAsAutopay) {
+              // Fallback: Update parent->club payment
+              await storage.updatePaymentByTransactionId(transactionId, 'completed');
+              console.log(`[Payment Webhook] Updated payment status to completed`);
+            }
           } else if (transactionId) {
             // Update parent->club payment
             await storage.updatePaymentByTransactionId(transactionId, 'completed');
@@ -4488,6 +4526,14 @@ export async function registerRoutes(
             if (invoice) {
               await storage.unmarkLedgerEntriesByInvoiceId(invoice.id);
               console.log(`[Payment Webhook] Unmarked ledger entries for failed invoice ${invoice.id} (found by ${method})`);
+            }
+          } else if (customerCode && transactionId) {
+            // Try autopay subscription charge first (Model A)
+            const failStatus = status === 'DECLINED' ? 'DECLINED' : 'FAILED';
+            const handledAsAutopay = await handleAutopayCharge(customerCode, transactionId, failStatus as any, new Date());
+            if (!handledAsAutopay && transactionId) {
+              await storage.updatePaymentByTransactionId(transactionId, 'failed');
+              console.log(`[Payment Webhook] Updated payment status to failed`);
             }
           } else if (transactionId) {
             await storage.updatePaymentByTransactionId(transactionId, 'failed');

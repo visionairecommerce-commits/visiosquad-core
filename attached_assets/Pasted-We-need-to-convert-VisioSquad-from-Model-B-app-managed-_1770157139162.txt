@@ -1,0 +1,270 @@
+We need to convert VisioSquad from Model B (app-managed recurring) to the most viable long-term billing architecture where Helcim charges automatically and our app only prepares amounts + syncs status.
+
+Current State (confirmed forensic audit)
+
+App stores Helcim vault tokens on clubs: billing_card_token, billing_bank_token
+
+App charges monthly platform fees by cron: processDailyClubBilling() at ~3 AM
+
+Manual owner endpoint exists: POST /api/platform/billing/run
+
+App charges tokens via Helcim Payment API /payment/purchase (chargePlatformBilling())
+
+Webhook endpoint: POST /api/webhooks/payments with Helcim signature verification
+
+Platform billing preview exists but cannot select a club
+
+Platform fee amounts are variable per club per month based on platform_ledger usage (not a fixed subscription price)
+
+Non-Negotiable Requirements
+
+Clients choose a billing day (1–28) and are billed monthly on that day automatically.
+
+Platform fee amount is variable each month from ledger usage.
+
+Our app must NOT initiate monthly platform fee charges using /payment/purchase. Helcim must do the charging automatically.
+
+Support one-time event charges (tournament/camp/drop-in):
+
+Pay-now (immediate) AND
+
+Optional “bill on next cycle”
+
+Never store raw card/bank info; Helcim vault references only.
+
+Must be reliable even if webhooks are delayed/missed; include reconciliation.
+
+Minimal diffs only — chunk-based patches, no unrelated refactors.
+
+PART 1 — Capability Confirmation + Final Architecture (do first)
+
+Before coding, confirm via Helcim official docs/API behavior:
+A) Cycle plans with dateBilling support monthly billing on a specific day (1–28).
+B) Whether payment method is plan-level (card vs bank) and whether separate plans are required.
+C) How to implement variable monthly charges while Helcim still charges automatically:
+
+Subscription amount override per customer OR
+
+One-time add-ons billed on next cycle OR
+
+Any other Helcim-supported mechanism
+D) Webhook payload shape(s) we receive with our configuration:
+
+Do recurring charges trigger our webhook?
+
+What identifiers are included (transactionId, customerCode, subscriptionId, invoiceNumber)?
+
+If minimal payload, confirm the correct details lookup endpoint (e.g., GET transaction by id).
+E) ACH recurring support and any settlement timing constraints.
+
+Then produce the final architecture choice that satisfies ALL requirements:
+✅ Day-based plans (1–28) created lazily
+✅ Helcim subscription per club
+✅ Variable monthly platform fee prepared ahead of billing date as one-time add-on billed on next cycle (preferred) OR another doc-confirmed Helcim mechanism
+✅ Helcim does the actual charging
+✅ App updates invoices/ledger via webhooks + reconciliation (read-only sync)
+
+Do NOT implement code until this architecture is written clearly.
+
+PART 2 — Implementation (after architecture is finalized)
+
+Implement the architecture with minimal changes.
+
+2.1 Feature Flags (required)
+
+Add env vars:
+
+BILLING_MODE=helcim|app (default app for safety)
+
+BILLING_AUTOPAY_PREP_ENABLED=true|false (default true)
+
+BILLING_RECONCILIATION_ENABLED=true|false (default true)
+
+Behavior:
+
+If BILLING_MODE=helcim:
+
+Disable cron that CHARGES (processDailyClubBilling) completely
+
+Disable /api/platform/billing/run from charging (preview/reporting only)
+
+Enable “autopay prep” job (prepares add-ons only; does not charge)
+
+Enable reconciliation job (read-only; does not charge)
+
+If BILLING_MODE=app:
+
+Keep current behavior for rollback
+
+2.2 Day-Based Plan Cache (lazy creation)
+
+Implement lazy plan creation:
+
+28 plans for card AND 28 for bank if Helcim requires paymentMethod at plan level (max 56).
+
+Store created plan IDs in DB for reuse.
+
+Create a DB cache table:
+helcim_plans (billing_day, payment_method, helcim_plan_id, plan_name, created_at)
+
+2.3 Club Subscription Creation/Update
+
+When a club sets billing method + billing_day:
+
+Ensure Helcim customer exists (use existing billing_customer_code)
+
+Ensure correct day plan exists (create lazily if missing)
+
+Create subscription for that club and store:
+
+clubs.helcim_subscription_id
+
+clubs.helcim_plan_id (optional but helpful)
+
+Ensure Helcim has default payment method stored in its vault (card/bank)
+
+2.4 Variable Monthly Platform Fees (the key long-term mechanism)
+
+Implement an “Autopay Prep” job that runs daily (e.g., 5 AM) and:
+
+For each club with an active Helcim subscription:
+
+Determine the current billing period that will be billed on the next cycle date
+
+Compute the platform fee amount from platform_ledger using the SAME logic as the preview
+
+Create or update a one-time add-on (or the Helcim-supported variable mechanism) so Helcim will charge that amount automatically on the upcoming billing date.
+
+Persist a durable mapping so we can reconcile payments:
+Create new DB table:
+platform_autopay_charges
+
+club_id
+
+period_start, period_end
+
+amount
+
+status: prepared|billed|paid|failed|void
+
+helcim_subscription_id
+
+helcim_addon_id (or equivalent charge reference)
+
+created_at, updated_at
+
+Idempotency rules:
+
+Only ONE “prepared” charge per club per period.
+
+If ledger changes before billing date, update/replace the prepared add-on deterministically.
+
+After billing date passes, lock the period (no changes).
+IMPORTANT: This job MUST NOT call /payment/purchase. It only creates/updates subscription add-ons or equivalent.
+
+2.5 One-Time Event Charges
+
+Support both:
+A) Pay-now:
+
+Use existing processPayment() / /payment/purchase code path for immediate event charges.
+B) Bill-on-next-cycle (optional toggle):
+
+Create a one-time add-on on the club subscription for the event amount
+
+Store mapping in platform_autopay_charges (or a separate event_charges table)
+
+2.6 Webhooks (keep security strict)
+
+Continue to verify Helcim webhook signature exactly per spec.
+Enhance processing:
+
+Add idempotency table keyed by Helcim webhook-id header:
+
+If we already have helcim_webhook_events, adapt it to use webhook_id as PK.
+
+When a webhook arrives:
+
+Fetch transaction details if payload lacks identifiers
+
+Match transaction to:
+
+platform_autopay_charges by helcim_addon_id/charge reference (preferred)
+
+platform_invoices by transactionId
+
+fallback by customerCode + amount + date window (only if needed; include guardrails)
+
+Update:
+
+invoice status (draft/pending -> paid/failed)
+
+ledger paid flags
+State rule: NEVER transition paid -> failed.
+
+2.7 Reconciliation Job (read-only)
+
+Implement a daily reconciliation (e.g., 6 AM):
+
+Pull Helcim subscription payment history / transactions for last 7–14 days
+
+Cross-check platform_autopay_charges + platform_invoices
+
+Fix mismatches (mark paid/failed, create missing invoices if needed)
+
+Alert/log unresolved items
+IMPORTANT: Never charge, never create new purchases. Only reads + updates local records.
+
+2.8 Platform Billing UI / Preview
+
+Keep Preview and reporting.
+Update preview so it can show:
+
+upcoming prepared autopay charges by club + period
+
+current period ledger totals
+No requirement to select a club, but add filter/search if easy.
+
+PART 3 — Migration & Rollout (must be safe)
+
+Add schema columns but keep BILLING_MODE=app initially.
+
+For clubs migrated to subscription mode:
+
+Exclude them from cron charging (even if BILLING_MODE=app) using per-club flag or “has helcim_subscription_id”
+
+Gradual rollout env:
+
+HELCIM_SUBSCRIPTION_ROLLOUT=none|all|list
+
+HELCIM_SUBSCRIPTION_CLUB_IDS=...
+
+Rollback: set BILLING_MODE=app; tokens still exist.
+
+DELIVERY FORMAT (STRICT)
+
+Return the architecture confirmation (Part 1) first.
+
+Then implement with minimal chunk-based patches only:
+
+exact old code replaced + exact new code
+
+include insertion anchors (3 surrounding lines)
+
+List every file changed.
+
+Provide a test checklist and run through it.
+
+Proceed.
+
+What you should expect after this is implemented
+
+Clubs pick billing day.
+
+Your app prepares the month’s variable amount as a scheduled add-on.
+
+Helcim charges automatically on the chosen day.
+
+Webhook + reconciliation marks invoices/ledger paid/failed.
+
+One-time events can be charged immediately or added to next cycle.

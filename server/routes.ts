@@ -5277,7 +5277,13 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error('Error seeding test data:', error);
-      res.status(500).json({ error: 'Failed to seed test data' });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      console.error('Stack trace:', errorStack);
+      res.status(500).json({ 
+        error: 'Failed to seed test data', 
+        details: process.env.NODE_ENV !== 'production' ? errorMessage : undefined 
+      });
     }
   });
 

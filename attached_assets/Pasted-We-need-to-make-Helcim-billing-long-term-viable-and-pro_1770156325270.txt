@@ -1,0 +1,221 @@
+We need to make Helcim billing long-term viable and production-grade.
+
+Non-negotiable product requirements
+
+Clients choose a billing day (1–28) and are billed monthly on that day automatically.
+
+The system supports one-time event charges (tournaments/camps/drop-ins).
+
+The app must NOT run recurring charges. Helcim must perform the recurring billing automatically.
+
+We must never store raw card/bank details. Helcim vault references only.
+
+We must be resilient to missed webhooks, ACH settlement delays, retries, and out-of-order events.
+
+Current state (confirmed)
+
+We are currently Model B:
+
+processDailyClubBilling() cron at 3 AM charges stored tokens
+
+Manual /api/platform/billing/run
+
+Webhook /api/webhooks/payments currently handles Helcim cardTransaction and uses Helcim signature spec correctly
+We need to convert to true Model A.
+
+PART 1 — DESIGN FIRST (no coding yet)
+
+Produce a short architecture plan that includes:
+
+A) Helcim recurring implementation strategy
+
+We must support “bill on day-of-month.” Helcim’s cycle plans require dateBilling at the plan level.
+
+Choose one strategy and justify:
+
+28 day-based plans (1–28) created lazily on demand (recommended)
+
+28 plans pre-created upfront
+
+Any alternative only if it still preserves client-chosen day
+
+Plan must cover:
+
+Card recurring
+
+ACH recurring if supported (if not supported, document and propose alternative)
+
+B) One-time event billing strategy
+
+Pick the simplest long-term method:
+
+Payment API one-time “purchase” (recommended default)
+
+Optional: Add-ons to subscription if you can tie them cleanly to Helcim recurring objects
+
+C) Source of truth & reliability
+
+We want “automatic billing,” but the app must be correct even if webhooks are delayed or don’t include enough identifiers.
+
+Design must include BOTH:
+
+Webhook handler (real-time when available)
+
+A daily “reconciliation sync” job that does NOT charge anyone, it only:
+
+pulls Helcim subscription/transaction status
+
+resolves mismatches
+
+updates invoice/ledger state
+This preserves automatic billing while ensuring correctness.
+
+D) Idempotency & state machine
+
+Define a durable state machine for invoices/ledger:
+
+draft → pending → paid OR failed
+
+ensure no double marking
+
+ensure “failed” never unmarks “paid” if already final
+
+E) Data model changes (minimum)
+
+Propose minimal schema additions that are stable long term:
+
+clubs.helcim_customer_code (already exists)
+
+clubs.helcim_subscription_id (new)
+
+clubs.helcim_plan_id (optional if needed)
+
+clubs.billing_day (already exists)
+
+platform_invoices.helcim_transaction_id (already exists)
+
+platform_invoices.helcim_subscription_id OR helcim_plan_id (new, only if truly needed)
+
+new table: helcim_events_processed (webhook-id primary key) for idempotency
+
+Return this plan first. Do NOT implement until the plan is approved.
+
+PART 2 — IMPLEMENTATION (after plan)
+
+After the plan, implement with minimal diffs and feature flags.
+
+Feature flags
+
+Add:
+
+BILLING_MODE=helcim|app (default helcim in production once ready)
+
+BILLING_RECONCILIATION_ENABLED=true|false
+
+Behavior:
+
+If BILLING_MODE=helcim:
+
+Disable charging cron (processDailyClubBilling) completely
+
+Disable /api/platform/billing/run from charging (keep preview/reporting only)
+
+If BILLING_MODE=app:
+
+Keep current behavior for fallback/rollback
+
+Subscription creation/update
+
+When a club selects billing day and payment method:
+
+Ensure Helcim customer exists (or create)
+
+Ensure the correct day-based plan exists (create lazily if missing)
+
+Create/attach subscription for that customer to that plan
+
+Store helcim_subscription_id and helcim_plan_id (if needed)
+
+One-time event charges
+
+Implement one-time charge flow that:
+
+Charges via Helcim Payment API
+
+Does not interfere with subscription
+
+Posts the correct fee pass-through
+
+Updates payment record and UI confirmation
+
+Webhooks
+
+Continue to verify signature per Helcim spec.
+Enhance processing:
+
+Use webhook-id idempotency table
+
+Fetch transaction details if webhook payload is minimal
+
+Attempt to link transaction to:
+
+subscription/customerCode (preferred)
+
+invoiceNumber / metadata if available
+
+fallback reconciliation (if webhook insufficient)
+
+Daily reconciliation sync (non-charging)
+
+Implement a daily job that:
+
+Pulls Helcim transactions and/or subscription payment history for the last N days
+
+Matches to platform invoices (by customerCode, amount, date window, subscriptionId)
+
+Fixes any mismatched invoice/ledger states
+
+Logs a reconciliation report and alerts on unresolved items
+IMPORTANT: This job must NEVER call /payment/purchase.
+
+PART 3 — MIGRATION & SAFETY
+Migration
+
+We likely have clubs with billing tokens today.
+Implement migration plan:
+
+Add subscriptions for existing clubs gradually (per-club rollout flag)
+
+Keep tokens but stop using them when subscription is active
+
+Provide rollback path (switch BILLING_MODE back to app)
+
+Test plan (must execute)
+
+Create a test club with chosen billing day
+
+Confirm plan created in Helcim
+
+Confirm subscription created & active
+
+Verify one-time event charge works
+
+Verify webhook processing is idempotent
+
+Verify reconciliation corrects a deliberately missed webhook
+
+Verify ACH behavior if supported (or document limitations)
+
+DELIVERY FORMAT (STRICT)
+
+Provide the architecture plan first.
+
+After approval, provide chunk-based patches only:
+
+show exact code replaced and replacement
+
+include insertion anchors (3 lines before/after)
+
+No refactors, no formatting churn, no unrelated diffs.
+
+Proceed.

@@ -162,10 +162,8 @@ export default function PlatformBillingPage() {
 
   const seedTestDataMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest('/api/platform/billing/test-seed', {
-        method: 'POST',
-      });
-      return res;
+      const res = await apiRequest('POST', '/api/platform/billing/test-seed');
+      return res.json();
     },
     onSuccess: (data: any) => {
       toast({ 

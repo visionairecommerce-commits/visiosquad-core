@@ -5443,6 +5443,7 @@ export async function registerRoutes(
       const allClubs = await storage.getAllClubs();
       let club = allClubs.find(c => c.name === TEST_CLUB_NAME);
       let clubCreated = false;
+      let parentUserId: string | undefined;
       
       if (!club) {
         // Create the test club with a dummy director
@@ -5454,8 +5455,27 @@ export async function registerRoutes(
           'test-password-not-used'
         );
         club = result.club;
+        parentUserId = result.user.id;
         clubCreated = true;
         console.log(`[Test Seed] Created test club: ${club.id}`);
+      } else {
+        // Get existing user for the club - first try parents (getUsersWithContractStatus)
+        const clubUsers = await storage.getUsersWithContractStatus(club.id);
+        if (clubUsers.length > 0) {
+          parentUserId = clubUsers[0].id;
+        } else {
+          // No parents found, we need to create a parent user for the test club
+          // Use the test director email from the club (query directly)
+          const { data: adminUsers } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('club_id', club.id)
+            .limit(1);
+          
+          if (adminUsers && adminUsers.length > 0) {
+            parentUserId = adminUsers[0].id;
+          }
+        }
       }
 
       // Step 2: Find or create a test athlete
@@ -5464,42 +5484,38 @@ export async function registerRoutes(
       let athleteCreated = false;
       
       if (!testAthlete) {
-        // Create a test athlete
+        if (!parentUserId) {
+          throw new Error('No parent user found for test athlete - cannot create athlete without parent');
+        }
+        
         testAthlete = await storage.createAthlete(club.id, {
           first_name: 'Test',
           last_name: 'Athlete',
-          birth_date: '2010-01-01',
-          gender: 'other',
+          date_of_birth: '2010-01-01',
+          graduation_year: 2028,
+          parent_id: parentUserId,
+          tags: [],
         });
         athleteCreated = true;
         console.log(`[Test Seed] Created test athlete: ${testAthlete.id}`);
       }
 
-      // Step 3: Create payment records (required by ledger entry foreign key)
-      // Create multiple payments to simulate real billing activity
-      const payments = [];
-      const feeTypes: Array<'monthly' | 'clinic' | 'drop_in' | 'event'> = ['monthly', 'monthly', 'clinic', 'event', 'drop_in'];
-      
-      for (const feeType of feeTypes) {
-        const payment = await storage.createPayment(club.id, {
-          athlete_id: testAthlete.id,
-          amount: PLATFORM_FEES[feeType],
-          payment_type: feeType === 'monthly' ? 'monthly' : 'one_time',
-          payment_method: 'card',
-          status: 'completed',
-        });
-        payments.push(payment);
-      }
-
-      // Step 4: Create platform ledger entries (unpaid, ready for billing)
+      // Step 3: Create platform ledger entries (unpaid, ready for billing)
+      // Use the database enum values: monthly_athlete, clinic_session, drop_in_session
+      const entryConfigs = [
+        { dbType: 'monthly_athlete' as const, fee: PLATFORM_FEES.monthly },
+        { dbType: 'monthly_athlete' as const, fee: PLATFORM_FEES.monthly },
+        { dbType: 'clinic_session' as const, fee: PLATFORM_FEES.event }, // Use event fee for clinic sessions
+        { dbType: 'monthly_athlete' as const, fee: PLATFORM_FEES.event },
+        { dbType: 'drop_in_session' as const, fee: PLATFORM_FEES.drop_in },
+      ];
       const entries = [];
-      for (let i = 0; i < payments.length; i++) {
-        const feeType = feeTypes[i];
-        const entry = await storage.createPlatformLedgerEntry(
+      for (const config of entryConfigs) {
+        const entry = await storage.createPlatformLedgerEntryRaw(
           club.id,
           testAthlete.id,
-          PLATFORM_FEES[feeType],
-          feeType
+          config.fee,
+          config.dbType
         );
         entries.push(entry);
       }
@@ -5513,14 +5529,12 @@ export async function registerRoutes(
         club_created: clubCreated,
         athlete_id: testAthlete.id,
         athlete_created: athleteCreated,
-        payments_created: payments.length,
         entries_created: entries.length,
         total_amount: entries.reduce((sum, e) => sum + e.amount, 0),
-        fee_breakdown: {
-          monthly: entries.filter(e => e.fee_type === 'monthly').length,
-          clinic: entries.filter(e => e.fee_type === 'clinic').length,
-          event: entries.filter(e => e.fee_type === 'event').length,
-          drop_in: entries.filter(e => e.fee_type === 'drop_in').length,
+        entry_breakdown: {
+          monthly_athlete: entries.filter(e => e.entry_type === 'monthly_athlete').length,
+          clinic_session: entries.filter(e => e.entry_type === 'clinic_session').length,
+          drop_in_session: entries.filter(e => e.entry_type === 'drop_in_session').length,
         }
       });
     } catch (error) {

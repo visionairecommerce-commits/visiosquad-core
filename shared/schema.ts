@@ -446,11 +446,11 @@ export const paymentsTable = pgTable("payments", {
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   athlete_id: uuid("athlete_id").references(() => athletesTable.id).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  convenience_fee: decimal("convenience_fee", { precision: 10, scale: 2 }),
   payment_type: text("payment_type", { enum: ["monthly", "clinic", "drop_in", "cash", "event"] }).notNull(),
-  payment_method: text("payment_method", { enum: ["credit_card", "ach", "cash"] }).notNull(),
-  helcim_transaction_id: text("helcim_transaction_id"),
-  months_paid: integer("months_paid"),
   status: text("status", { enum: ["pending", "completed", "failed"] }).default("pending").notNull(),
+  description: text("description"),
+  helcim_transaction_id: text("helcim_transaction_id"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -853,11 +853,11 @@ export interface Payment {
   club_id: string;
   athlete_id: string;
   amount: number;
+  convenience_fee?: number;
   payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash' | 'event';
-  payment_method: 'credit_card' | 'ach' | 'cash';
-  helcim_transaction_id?: string;
-  months_paid?: number;
   status: 'pending' | 'completed' | 'failed';
+  description?: string;
+  helcim_transaction_id?: string;
   created_at: string;
 }
 

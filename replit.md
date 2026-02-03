@@ -63,12 +63,21 @@ Preferred communication style: Simple, everyday language.
   - **Season-End Cleanup**: All chat data (except event chats) is automatically deleted when a season ends
   - **Scheduled Jobs**: Runs hourly for event cleanup, daily at 2 AM for season cleanup
   - **UI**: Directors manage seasons in Settings → Seasons section
-- **Automatic Monthly Club Billing**: Platform fees are automatically calculated and billed based on active player count:
+- **Daily Club Billing System**: Platform fees are automatically calculated and billed based on active player count:
   - **Active Athlete Definition**: Athletes with payments in the billing period, valid paid_through_date, or session attendance
-  - **Scheduled Job**: Runs on the 1st of each month at 3 AM to bill for the previous month
-  - **Ledger Entries**: Created per athlete with `entry_type`, `athlete_id`, `period_month`, `period_year` tracking
+  - **Club Billing Day**: Clubs choose their billing day (1-28), stored in `clubs.billing_day` column
+  - **Daily Billing Job**: `processDailyClubBilling` runs at 3 AM daily, bills clubs on their chosen billing_day
+  - **End-of-Month Handling**: Clubs with billing_day > days in current month are billed on last day of month
+  - **Grace Period**: 7 days for clubs to pay before locking, tracked via `billing_locked_at` timestamp
+  - **Grace Period Job**: `processGracePeriodLocking` runs at 4 AM daily, locks clubs 7 days after billing
+  - **Club Locking**: Locked clubs have write operations blocked via global middleware
+  - **Ledger Entries**: Created per athlete with `entry_type` (monthly_athlete, clinic_session, drop_in_session), `athlete_id`, `period_month`, `period_year`
+  - **Database Schema**: `platform_ledger.entry_type` enum: monthly_athlete, clinic_session, drop_in_session
   - **Deduplication**: System checks for existing ledger entries before creating new ones to prevent double-billing
-  - **Test Club Exclusion**: Clubs with "TEST" or "DO NOT BILL" in their name are automatically skipped
+  - **Test Club Exclusion**: Clubs with "TEST" or "DO NOT BILL" in name are automatically skipped (case-insensitive)
+  - **Owner Billing Dashboard**: `/owner/clubs-billing` shows all clubs with billing status, unpaid balances, lock/unlock controls
+  - **Director Billing Card**: Settings page shows billing day, active athletes, estimated fees, unpaid balance
+  - **Test Seed Endpoint**: `POST /api/platform/billing/test-seed` (owner only) creates test data for billing testing
 
 ## External Dependencies
 

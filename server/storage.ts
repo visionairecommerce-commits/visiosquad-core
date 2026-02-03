@@ -532,6 +532,7 @@ export interface IStorage {
   getPayments(clubId: string): Promise<Payment[]>;
   createPayment(clubId: string, payment: Omit<Payment, 'id' | 'club_id' | 'created_at'>): Promise<Payment>;
   createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger>;
+  createPlatformLedgerEntryRaw(clubId: string, athleteId: string, amount: number, entryType: 'monthly_athlete' | 'clinic_session' | 'drop_in_session', sessionId?: string): Promise<PlatformLedger>;
   getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
   getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
   getUnpaidLedgerEntriesByClub(clubId: string): Promise<PlatformLedger[]>;
@@ -1708,6 +1709,10 @@ export class MemStorage implements IStorage {
   }
 
   async createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger> {
+    throw new Error('Not implemented in MemStorage - use dbStorage');
+  }
+
+  async createPlatformLedgerEntryRaw(clubId: string, athleteId: string, amount: number, entryType: 'monthly_athlete' | 'clinic_session' | 'drop_in_session', sessionId?: string): Promise<PlatformLedger> {
     throw new Error('Not implemented in MemStorage - use dbStorage');
   }
 

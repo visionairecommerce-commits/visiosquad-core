@@ -1063,19 +1063,28 @@ export class DatabaseStorage implements IStorage {
       athlete_id: payment.athlete_id,
       amount: String(payment.amount),
       payment_type: payment.payment_type,
-      payment_method: payment.payment_method,
       helcim_transaction_id: payment.helcim_transaction_id,
-      months_paid: payment.months_paid,
       status: payment.status,
     }).returning();
     return this.mapPayment(p);
   }
 
   async createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger> {
+    // Map app fee types to database entry types
+    const entryTypeMap: Record<string, 'monthly_athlete' | 'clinic_session' | 'drop_in_session'> = {
+      'monthly': 'monthly_athlete',
+      'clinic': 'clinic_session',
+      'drop_in': 'drop_in_session',
+      'event': 'monthly_athlete', // Use monthly_athlete for events (not in DB enum)
+    };
+    return this.createPlatformLedgerEntryRaw(clubId, athleteId, amount, entryTypeMap[feeType], sessionId);
+  }
+
+  async createPlatformLedgerEntryRaw(clubId: string, athleteId: string, amount: number, entryType: 'monthly_athlete' | 'clinic_session' | 'drop_in_session', sessionId?: string): Promise<PlatformLedger> {
     const now = new Date();
     const [entry] = await db.insert(platformLedgerTable).values({
       club_id: clubId,
-      entry_type: feeType,
+      entry_type: entryType,
       athlete_id: athleteId,
       session_id: sessionId,
       amount: String(amount),
@@ -1645,11 +1654,11 @@ export class DatabaseStorage implements IStorage {
       club_id: p.club_id,
       athlete_id: p.athlete_id,
       amount: parseFloat(p.amount),
+      convenience_fee: p.convenience_fee ? parseFloat(p.convenience_fee) : undefined,
       payment_type: p.payment_type,
-      payment_method: p.payment_method,
-      helcim_transaction_id: p.helcim_transaction_id ?? undefined,
-      months_paid: p.months_paid ?? undefined,
       status: p.status,
+      description: p.description ?? undefined,
+      helcim_transaction_id: p.helcim_transaction_id ?? undefined,
       created_at: p.created_at?.toISOString?.() ?? p.created_at,
     };
   }

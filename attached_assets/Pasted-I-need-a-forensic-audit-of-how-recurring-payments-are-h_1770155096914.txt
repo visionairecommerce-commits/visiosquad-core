@@ -1,0 +1,106 @@
+I need a forensic audit of how recurring payments are handled in this codebase with Helcim.
+
+Goal: I do NOT want our app to “run billing.” I want payments to be automatic (Helcim-managed recurring), with our app only syncing status and access.
+
+1) Answer this first (no code changes yet)
+
+In this codebase, which model are we using right now?
+
+Model A (Helcim-managed recurring): We create/manage Helcim subscriptions (Helcim charges automatically on schedule). Our app just stores Helcim subscription/customer references and updates invoices/status when charges occur.
+
+Model B (App-managed recurring): Our app stores a Helcim token (card/bank token) and runs scheduled charges (cron/job/manual “Run Billing”).
+
+Model C (Not truly recurring): Parents pay manually each time; no recurring automation exists.
+
+Pick ONE and justify it with file/function references.
+
+2) Trace the full payment lifecycle (with code pointers)
+
+Provide a step-by-step trace with exact file paths + function names for:
+
+A. First-time payment / payment method capture
+
+Where does the parent enter payment info (HelcimPay.js / hosted page / payment page)?
+
+What does the frontend send to backend?
+
+What does the backend create in Helcim (customer? payment method token? subscription?)?
+
+B. What we store in our database
+List the exact DB fields/table columns used to store payment references:
+
+card token? bank token? customerId? subscriptionId?
+
+For clubs vs parents (if different)
+Include the table name + column names.
+
+C. How “automatic recurring” happens
+Show exactly where the recurring schedule lives:
+
+Is there any code that creates a Helcim subscription / recurring plan?
+
+Is there any cron/scheduled job that charges users?
+
+Is billing triggered by an admin clicking a button?
+
+If Helcim is auto-charging, how do we know a charge happened?
+
+D. How we reconcile a successful/failed payment
+
+What endpoint handles payment confirmations?
+
+Do we rely on webhook(s)? If yes, which endpoint path(s) and event types?
+
+If not webhooks, do we poll Helcim APIs? Where?
+
+What records get updated on success/failure (invoices, ledger, access flags)?
+
+3) Confirm whether our current webhook actually covers recurring online payments
+
+We currently have a webhook deliver URL set to:
+/api/webhooks/payments
+
+Confirm:
+
+What Helcim event types are we receiving and processing?
+
+Does that include recurring subscription charges and ACH payments, or only cardTransaction-style events?
+
+Show the exact payload shapes the handler expects.
+
+4) Output format (required)
+
+Return your findings in this exact structure:
+
+Current Recurring Model: A / B / C
+
+Evidence: bullet list with file paths + function names
+
+What’s stored in DB: table → columns
+
+What triggers recurring charges: Helcim subscription schedule vs app job vs manual
+
+How payments sync back to app: webhook vs polling vs direct response
+
+Gaps vs the desired goal (“automatic Helcim-managed recurring”):
+
+If we are NOT Model A, list exactly what is missing.
+
+5) If we are not Helcim-managed recurring (Model A), propose the minimum change plan
+
+If we’re currently Model B or C, propose the smallest change set to reach:
+
+✅ Helcim creates & runs subscriptions automatically
+✅ Our app stores only Helcim IDs (customerId/subscriptionId) and invoice references
+✅ Our app updates status/access based on payment success/failure
+✅ Supports both credit card and ACH if available
+
+Important constraints
+
+Do NOT implement changes yet unless I ask.
+
+Do NOT store raw card numbers ever.
+
+If you recommend storing tokens, clarify whether it’s a Helcim vault token (OK) vs card data (not OK).
+
+Provide only minimal, chunk-based patches when/if changes are requested.

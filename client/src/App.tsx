@@ -44,6 +44,7 @@ import TermsOfServicePage from "@/pages/terms-of-service";
 import OwnerDashboard from "@/pages/owner/dashboard";
 import DocuSealOnboarding from "@/pages/owner/docuseal-onboarding";
 import PlatformBilling from "@/pages/owner/platform-billing";
+import ClubsBilling from "@/pages/owner/clubs-billing";
 import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
 
 function RedirectToLogin() {
@@ -150,6 +151,7 @@ function OwnerRoutes() {
       <Route path="/revenue" component={OwnerDashboard} />
       <Route path="/docuseal-onboarding" component={DocuSealOnboarding} />
       <Route path="/platform-billing" component={PlatformBilling} />
+      <Route path="/clubs-billing" component={ClubsBilling} />
       <Route path="/login" component={RedirectToDashboard} />
       <Route component={NotFound} />
     </Switch>

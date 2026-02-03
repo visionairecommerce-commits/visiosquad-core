@@ -1112,6 +1112,18 @@ export class DatabaseStorage implements IStorage {
     return (data || []).map(entry => this.mapLedger(entry));
   }
 
+  async getUnpaidLedgerEntriesByClub(clubId: string): Promise<PlatformLedger[]> {
+    const { data, error } = await supabase
+      .from('platform_ledger')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('paid', false)
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return (data || []).map(entry => this.mapLedger(entry));
+  }
+
   async markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void> {
     if (ids.length === 0) return;
     

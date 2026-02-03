@@ -4845,6 +4845,140 @@ export async function registerRoutes(
     }
   });
 
+  // ============ CLUB BILLING MANAGEMENT ROUTES ============
+
+  // Get all clubs with billing status (Owner only)
+  app.get('/api/owner/clubs-billing', requireRole('owner'), async (req, res) => {
+    try {
+      const clubs = await storage.getAllClubs();
+      
+      // Get active athlete counts and billing info for each club
+      const clubsWithBilling = await Promise.all(
+        clubs.map(async (club) => {
+          const now = new Date();
+          const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, club.billing_day || 1);
+          const periodEnd = new Date(now.getFullYear(), now.getMonth(), club.billing_day || 1);
+          
+          // Get active athletes count
+          const activeAthletes = await storage.getActiveAthletesForPeriod(club.id, periodStart, periodEnd);
+          
+          // Get unpaid ledger entries for this club
+          const unpaidEntries = await storage.getUnpaidLedgerEntriesByClub(club.id);
+          const unpaidAmount = unpaidEntries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+          
+          // Calculate days until billing
+          const today = now.getDate();
+          const billingDay = club.billing_day || 1;
+          let daysUntilBilling = billingDay - today;
+          if (daysUntilBilling <= 0) {
+            // Next month
+            const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            daysUntilBilling = daysInMonth - today + billingDay;
+          }
+          
+          return {
+            ...club,
+            activeAthleteCount: activeAthletes.length,
+            unpaidAmount,
+            unpaidEntriesCount: unpaidEntries.length,
+            daysUntilBilling,
+            isLocked: !!club.billing_locked_at,
+          };
+        })
+      );
+      
+      res.json(clubsWithBilling);
+    } catch (error) {
+      console.error('Error fetching clubs billing status:', error);
+      res.status(500).json({ error: 'Failed to fetch clubs billing status' });
+    }
+  });
+
+  // Unlock a club (Owner only)
+  app.post('/api/owner/clubs/:clubId/unlock', requireRole('owner'), async (req, res) => {
+    try {
+      await storage.unlockClub(req.params.clubId);
+      const club = await storage.getClub(req.params.clubId);
+      res.json(club);
+    } catch (error) {
+      console.error('Error unlocking club:', error);
+      res.status(500).json({ error: 'Failed to unlock club' });
+    }
+  });
+
+  // Lock a club manually (Owner only)
+  app.post('/api/owner/clubs/:clubId/lock', requireRole('owner'), async (req, res) => {
+    try {
+      await storage.lockClub(req.params.clubId);
+      const club = await storage.getClub(req.params.clubId);
+      res.json(club);
+    } catch (error) {
+      console.error('Error locking club:', error);
+      res.status(500).json({ error: 'Failed to lock club' });
+    }
+  });
+
+  // Update club billing day (Director/Admin only)
+  app.patch('/api/clubs/billing-day', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const { billing_day } = req.body;
+      
+      if (!billing_day || billing_day < 1 || billing_day > 28) {
+        return res.status(400).json({ error: 'Billing day must be between 1 and 28' });
+      }
+      
+      await storage.updateClubBillingDay(clubId, billing_day);
+      const club = await storage.getClub(clubId);
+      res.json(club);
+    } catch (error) {
+      console.error('Error updating club billing day:', error);
+      res.status(500).json({ error: 'Failed to update billing day' });
+    }
+  });
+
+  // Get current club's billing status (Director/Admin only)
+  app.get('/api/clubs/billing-status', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const club = await storage.getClub(clubId);
+      
+      if (!club) {
+        return res.status(404).json({ error: 'Club not found' });
+      }
+      
+      const now = new Date();
+      const periodStart = new Date(now.getFullYear(), now.getMonth() - 1, club.billing_day || 1);
+      const periodEnd = new Date(now.getFullYear(), now.getMonth(), club.billing_day || 1);
+      
+      const activeAthletes = await storage.getActiveAthletesForPeriod(clubId, periodStart, periodEnd);
+      const unpaidEntries = await storage.getUnpaidLedgerEntriesByClub(clubId);
+      const unpaidAmount = unpaidEntries.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      
+      // Calculate next billing date
+      const billingDay = club.billing_day || 1;
+      let nextBillingDate = new Date(now.getFullYear(), now.getMonth(), billingDay);
+      if (nextBillingDate <= now) {
+        nextBillingDate = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
+      }
+      
+      res.json({
+        billingDay: club.billing_day || 1,
+        lastBilledAt: club.last_billed_at,
+        lastBilledPeriodStart: club.last_billed_period_start,
+        isLocked: !!club.billing_locked_at,
+        lockedAt: club.billing_locked_at,
+        activeAthleteCount: activeAthletes.length,
+        estimatedMonthlyFee: activeAthletes.length * 3, // $3 per player
+        unpaidAmount,
+        nextBillingDate: nextBillingDate.toISOString(),
+      });
+    } catch (error) {
+      console.error('Error fetching club billing status:', error);
+      res.status(500).json({ error: 'Failed to fetch billing status' });
+    }
+  });
+
   // ============ PLATFORM BILLING ROUTES ============
 
   // Preview platform billing for a period (Owner only)

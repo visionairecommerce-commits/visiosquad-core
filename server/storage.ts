@@ -534,6 +534,7 @@ export interface IStorage {
   createPlatformLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', sessionId?: string): Promise<PlatformLedger>;
   getUnpaidLedgerEntriesByPeriod(periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
   getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]>;
+  getUnpaidLedgerEntriesByClub(clubId: string): Promise<PlatformLedger[]>;
   markLedgerEntriesPaid(ids: string[], invoiceId: string): Promise<void>;
 
   // Platform Invoices
@@ -1939,6 +1940,10 @@ export class MemStorage implements IStorage {
   }
 
   async getUnpaidLedgerEntriesByClubAndPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<PlatformLedger[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getUnpaidLedgerEntriesByClub(clubId: string): Promise<PlatformLedger[]> {
     throw new Error('Not implemented in MemStorage');
   }
 

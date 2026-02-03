@@ -83,6 +83,7 @@ const athleteMenuItems = [
 const ownerMenuItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'All Clubs', url: '/clubs', icon: Building2 },
+  { title: 'Clubs Billing', url: '/clubs-billing', icon: CreditCard },
   { title: 'Revenue', url: '/revenue', icon: TrendingUp },
 ];
 

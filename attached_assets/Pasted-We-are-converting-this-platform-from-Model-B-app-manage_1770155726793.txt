@@ -1,0 +1,231 @@
+We are converting this platform from Model B (app-managed recurring) to Model A (Helcim-managed automatic billing).
+
+🚨 PRIMARY GOAL
+
+The app must NOT run billing jobs or initiate recurring charges.
+Helcim must handle all recurring billing automatically.
+
+Our app should:
+
+Configure subscriptions
+
+Store Helcim references (IDs)
+
+Listen to webhooks
+
+Update invoices/ledger/access
+
+1️⃣ Confirm Helcim Capabilities (Do This First — No Code Yet)
+
+Using current official Helcim documentation, confirm:
+
+How Helcim supports monthly recurring billing on a specific day of month
+
+Whether billing day is defined at the plan or subscription level
+
+Whether multiple plans (1st–28th) are required
+
+Whether Helcim supports recurring ACH in the same subscription system
+
+If ACH recurring is supported, note any limitations
+
+If not, document clearly
+
+What webhook event types Helcim sends for:
+
+Recurring payment success
+
+Recurring payment failure
+
+Subscription cancellation / suspension
+
+What identifiers appear in those webhook payloads:
+
+subscriptionId
+
+customerCode
+
+invoiceNumber
+
+transactionId
+
+Return a short “Helcim Recurring Model Summary” before implementing anything.
+
+2️⃣ Required Outcomes (Non-Negotiable)
+A) Monthly Automatic Billing (Client Chooses Date)
+
+Clients (clubs and/or parents) must be able to choose a billing day (1–28)
+
+Helcim must automatically charge every month on that date
+
+No cron jobs, no manual triggers
+
+B) One-Time Charges
+
+Support one-time event billing in either of these ways (choose the cleanest):
+
+Helcim one-time “purchase” payment
+
+OR Helcim recurring add-ons (one-time add-on to subscription)
+
+C) Security / Compliance
+
+❌ Never store raw card or bank numbers
+
+✅ Storing Helcim customerId, subscriptionId, or planId is OK
+
+Tokens are Helcim vault tokens only
+
+3️⃣ Data Model Changes (Minimal)
+
+Propose and implement the minimum schema additions needed, likely:
+
+clubs
+
+helcim_customer_code (already exists)
+
+helcim_subscription_id (NEW)
+
+billing_day (already exists)
+
+platform_invoices
+
+helcim_subscription_id (NEW, if needed)
+
+helcim_invoice_number (NEW, if needed)
+
+Do NOT break existing tables unless absolutely necessary.
+
+4️⃣ Subscription Lifecycle (Implement This)
+A) When a client adds or updates a billing method
+
+Create or update Helcim Customer
+
+Create or update Helcim Subscription:
+
+Monthly
+
+Billing day = client-selected day
+
+Payment method = card or ACH (if supported)
+
+Store returned subscriptionId
+
+Do NOT store card numbers or re-use app-managed tokens
+
+B) When billing occurs
+
+Helcim charges automatically
+
+App does nothing proactively
+
+C) When a payment succeeds or fails
+
+Helcim sends webhook
+
+App:
+
+Updates invoice status
+
+Updates platform ledger
+
+Sends emails
+
+Grants/revokes access as needed
+
+5️⃣ Webhook Expansion (Critical)
+
+Expand the existing webhook system to:
+
+Handle recurring subscription events
+
+Handle payment success and failure
+
+Support idempotency using Helcim’s webhook-id
+
+Continue supporting one-time card/ACH charges
+
+Do NOT weaken existing webhook signature verification.
+
+6️⃣ Disable App-Managed Billing Safely
+
+Implement a feature flag:
+
+BILLING_MODE=helcim | app
+
+
+When BILLING_MODE=helcim:
+
+Disable:
+
+processDailyClubBilling()
+
+/api/platform/billing/run
+
+Keep:
+
+Billing Preview
+
+Invoice history
+
+Reporting
+
+7️⃣ Testing Requirements
+
+Provide a test plan and execute it:
+
+Create a test client
+
+Choose billing day (e.g. 15th)
+
+Confirm subscription exists in Helcim
+
+Simulate or wait for charge
+
+Confirm webhook received
+
+Confirm invoice + ledger updated
+
+Test one-time event charge
+
+Test failure handling
+
+8️⃣ Output Format (Strict)
+
+Return results in this order:
+
+Helcim Recurring Model Summary
+
+Final Architecture Diagram (textual)
+
+Schema changes
+
+Code changes (chunk-based patches only)
+
+Webhook event types handled
+
+Test results
+
+What was removed or disabled
+
+⚠️ Do NOT refactor unrelated code
+⚠️ Do NOT implement until the Helcim capability confirmation is complete
+⚠️ Use minimal patches only
+
+✅ Definition of Done
+
+Clients pick a billing date
+
+Helcim bills automatically every month
+
+One-time events can be billed
+
+No cron billing
+
+No manual “Run Billing”
+
+No card data stored
+
+App is reactive, not proactive
+
+Proceed.

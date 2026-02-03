@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye } from "lucide-react";
+import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye, Receipt, FileSignature } from "lucide-react";
+import { Link } from "wouter";
 import { format } from "date-fns";
 import { useState } from "react";
 import {
@@ -105,11 +106,27 @@ export default function OwnerDashboard() {
 
   return (
     <div className="space-y-6" data-testid="owner-dashboard">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Platform Owner Dashboard</h1>
-        <p className="text-muted-foreground">
-          Monitor all clubs, athletes, and platform revenue
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">Platform Owner Dashboard</h1>
+          <p className="text-muted-foreground">
+            Monitor all clubs, athletes, and platform revenue
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/platform-billing">
+            <Button variant="default" data-testid="button-platform-billing">
+              <Receipt className="h-4 w-4 mr-2" />
+              Platform Billing
+            </Button>
+          </Link>
+          <Link href="/docuseal-onboarding">
+            <Button variant="outline" data-testid="button-docuseal-onboarding">
+              <FileSignature className="h-4 w-4 mr-2" />
+              DocuSeal Onboarding
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

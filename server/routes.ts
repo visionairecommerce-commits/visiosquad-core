@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured } from "./lib/helcim";
+import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured, extractWebhookHeaders } from "./lib/helcim";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured, sendPlatformBillingSuccess, sendPlatformBillingFailure } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
@@ -4300,67 +4300,71 @@ export async function registerRoutes(
 
   // ============ WEBHOOKS ============
 
-  // Helcim webhook validation - responds to GET requests for URL verification
-  app.get('/api/webhooks/helcim', (req, res) => {
-    console.log('[Helcim Webhook] Validation request received');
+  // Payment webhook validation - responds to GET requests for URL verification
+  // Note: Route path intentionally does not contain provider name per Helcim requirements
+  app.get('/api/webhooks/payments', (req, res) => {
+    console.log('[Payment Webhook] Validation request received');
     res.json({ 
       status: 'ok', 
-      message: 'Helcim webhook endpoint ready',
+      message: 'Payment webhook endpoint ready',
       secret_configured: isWebhookSecretConfigured()
     });
   });
 
-  // Helcim payment webhook - receives payment notifications from Helcim
+  // Payment webhook - receives payment notifications from Helcim
   // Uses express.raw() middleware for signature verification
-  app.post('/api/webhooks/helcim', express.raw({ type: 'application/json' }), async (req, res) => {
+  // Route path intentionally does not contain "helcim" per Helcim requirements
+  app.post('/api/webhooks/payments', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
       // Get raw body as string for signature verification
       const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
       
-      // Verify webhook signature if secret is configured
-      const signature = req.headers['x-helcim-signature'] as string || '';
+      // Extract Helcim webhook headers per spec
+      const webhookHeaders = extractWebhookHeaders(req.headers as Record<string, string | string[] | undefined>);
+      
+      // Verify webhook signature using Helcim spec
       if (isWebhookSecretConfigured()) {
-        if (!verifyWebhookSignature(rawBody, signature)) {
-          console.warn('[Helcim Webhook] Invalid signature - rejecting request');
+        if (!webhookHeaders) {
+          console.warn('[Payment Webhook] Missing required webhook headers (webhook-id, webhook-timestamp, webhook-signature)');
+          return res.status(401).json({ error: 'Missing required headers' });
+        }
+        if (!verifyWebhookSignature(rawBody, webhookHeaders)) {
+          console.warn('[Payment Webhook] Invalid signature - rejecting request');
           return res.status(401).json({ error: 'Invalid signature' });
         }
-        console.log('[Helcim Webhook] Signature verified successfully');
       } else {
-        console.warn('[Helcim Webhook] No webhook secret configured - accepting without verification');
+        console.warn('[Payment Webhook] No webhook secret configured - accepting without verification');
       }
 
       // Parse the JSON body
       const payload = req.body instanceof Buffer ? JSON.parse(rawBody) : req.body;
-      console.log('[Helcim Webhook] Received event:', JSON.stringify(payload, null, 2));
+      console.log('[Payment Webhook] Received event:', JSON.stringify(payload, null, 2));
       
-      const { event, transactionId, status, amount, invoiceNumber, customerCode } = payload;
-      
-      // Generate a unique event ID for idempotency
-      // Use transactionId + event_type to allow status transitions (failed -> completed) for same transaction
-      // Include Helcim's event ID if provided, otherwise create deterministic key from payload data
-      const eventType = event || status || 'unknown';
-      let eventId: string;
-      if (transactionId) {
-        // Best case: transaction-based idempotency
-        eventId = `${transactionId}-${eventType}`;
-      } else if (payload.eventId) {
-        // Helcim provides event ID
-        eventId = payload.eventId;
-      } else if (invoiceNumber) {
-        // Fallback: use invoice + event type + amount for determinism
-        eventId = `${invoiceNumber}-${eventType}-${amount || '0'}`;
-      } else {
-        // Last resort: hash the raw body for stable deduplication
+      // Use webhook-id header as primary idempotency key (Helcim retries with same ID)
+      // This ensures duplicate deliveries are properly deduplicated
+      const eventId = webhookHeaders?.webhookId || (() => {
+        // Fallback if no webhook-id header (shouldn't happen with valid Helcim webhooks)
         const crypto = require('crypto');
-        eventId = crypto.createHash('sha256').update(rawBody).digest('hex').substring(0, 32);
-      }
+        return crypto.createHash('sha256').update(rawBody).digest('hex').substring(0, 32);
+      })();
       
-      // Check if we've already processed this specific event (idempotency check)
+      // Check if we've already processed this webhook (idempotency check)
       const alreadyProcessed = await storage.checkWebhookEventProcessed(eventId);
       if (alreadyProcessed) {
-        console.log(`[Helcim Webhook] Event ${eventId} already processed - skipping`);
+        console.log(`[Payment Webhook] Event ${eventId} already processed - skipping`);
         return res.json({ received: true, status: 'already_processed' });
       }
+
+      // Handle Helcim payload structure
+      // Helcim sends: { type: "cardTransaction", data: { transactionId, status, amount, invoiceNumber, ... } }
+      const eventType = payload.type || 'unknown';
+      const data = payload.data || payload; // Support both nested and flat structure
+      
+      const transactionId = data.transactionId?.toString();
+      const status = data.status; // "APPROVED", "DECLINED", etc.
+      const amount = data.amount;
+      const invoiceNumber = data.invoiceNumber;
+      const customerCode = data.customerCode;
 
       // Record the webhook event for idempotency
       await storage.recordWebhookEvent({
@@ -4386,57 +4390,56 @@ export async function registerRoutes(
         return { invoice: undefined, method: 'none' };
       }
 
-      // Handle different Helcim events
-      if (event === 'payment.completed' || status === 'APPROVED') {
-        console.log(`[Helcim Webhook] Payment completed: Transaction ${transactionId}, Amount $${amount}, Invoice ${invoiceNumber}`);
-        
-        // Check if this is a platform billing invoice (starts with PLAT-)
-        if (invoiceNumber?.startsWith('PLAT-')) {
-          if (transactionId) {
-            await storage.updatePlatformInvoiceByTransactionId(transactionId, 'paid');
+      // Handle cardTransaction events based on status
+      if (eventType === 'cardTransaction') {
+        if (status === 'APPROVED') {
+          console.log(`[Payment Webhook] Transaction approved: ${transactionId}, Amount $${amount}, Invoice ${invoiceNumber}`);
+          
+          // Check if this is a platform billing invoice (starts with PLAT-)
+          if (invoiceNumber?.startsWith('PLAT-')) {
+            if (transactionId) {
+              await storage.updatePlatformInvoiceByTransactionId(transactionId, 'paid');
+            }
+            // Find and update ledger entries
+            const { invoice, method } = await findPlatformInvoice();
+            if (invoice) {
+              await storage.markLedgerEntriesPaidByInvoiceId(invoice.id);
+              console.log(`[Payment Webhook] Marked ledger entries paid for invoice ${invoice.id} (found by ${method})`);
+            } else {
+              console.warn(`[Payment Webhook] Could not find platform invoice for approved transaction`);
+            }
+          } else if (transactionId) {
+            // Update parent->club payment
+            await storage.updatePaymentByTransactionId(transactionId, 'completed');
+            console.log(`[Payment Webhook] Updated payment status to completed`);
           }
-          // Find and update ledger entries
-          const { invoice, method } = await findPlatformInvoice();
-          if (invoice) {
-            await storage.markLedgerEntriesPaidByInvoiceId(invoice.id);
-            console.log(`[Helcim Webhook] Marked ledger entries paid for invoice ${invoice.id} (found by ${method})`);
-          } else {
-            console.warn(`[Helcim Webhook] Could not find platform invoice for payment.completed event`);
+        } else if (status === 'DECLINED' || status === 'CANCELLED' || status === 'FAILED') {
+          console.log(`[Payment Webhook] Transaction ${status}: ${transactionId}, Invoice ${invoiceNumber}`);
+          
+          if (invoiceNumber?.startsWith('PLAT-')) {
+            if (transactionId) {
+              await storage.updatePlatformInvoiceByTransactionId(transactionId, 'failed');
+            }
+            // Find and update ledger entries
+            const { invoice, method } = await findPlatformInvoice();
+            if (invoice) {
+              await storage.unmarkLedgerEntriesByInvoiceId(invoice.id);
+              console.log(`[Payment Webhook] Unmarked ledger entries for failed invoice ${invoice.id} (found by ${method})`);
+            }
+          } else if (transactionId) {
+            await storage.updatePaymentByTransactionId(transactionId, 'failed');
+            console.log(`[Payment Webhook] Updated payment status to failed`);
           }
-          console.log(`[Helcim Webhook] Updated platform invoice status to paid`);
-        } else if (transactionId) {
-          // Update parent->club payment
-          await storage.updatePaymentByTransactionId(transactionId, 'completed');
-          console.log(`[Helcim Webhook] Updated payment status to completed`);
+        } else {
+          console.log(`[Payment Webhook] Unhandled transaction status: ${status}`);
         }
-      } else if (event === 'payment.failed' || status === 'DECLINED') {
-        console.log(`[Helcim Webhook] Payment failed: Transaction ${transactionId}, Invoice ${invoiceNumber}`);
-        
-        if (invoiceNumber?.startsWith('PLAT-')) {
-          if (transactionId) {
-            await storage.updatePlatformInvoiceByTransactionId(transactionId, 'failed');
-          }
-          // Find and update ledger entries
-          const { invoice, method } = await findPlatformInvoice();
-          if (invoice) {
-            await storage.unmarkLedgerEntriesByInvoiceId(invoice.id);
-            console.log(`[Helcim Webhook] Unmarked ledger entries for failed invoice ${invoice.id} (found by ${method})`);
-          } else {
-            console.warn(`[Helcim Webhook] Could not find platform invoice for payment.failed event`);
-          }
-          console.log(`[Helcim Webhook] Updated platform invoice status to failed`);
-        } else if (transactionId) {
-          await storage.updatePaymentByTransactionId(transactionId, 'failed');
-          console.log(`[Helcim Webhook] Updated payment status to failed`);
-        }
-      } else if (event === 'recurring.cancelled') {
-        console.log(`[Helcim Webhook] Recurring cancelled: Customer ${customerCode}`);
-        // Note: Our app doesn't use Helcim recurring - we manage billing manually
+      } else {
+        console.log(`[Payment Webhook] Received event type: ${eventType} (not cardTransaction)`);
       }
       
       res.json({ received: true, status: 'processed' });
     } catch (error) {
-      console.error('[Helcim Webhook] Error processing webhook:', error);
+      console.error('[Payment Webhook] Error processing webhook:', error);
       // Always return 200 to prevent retries that could cause duplicate processing
       res.status(200).json({ received: true, error: 'Processing error logged' });
     }

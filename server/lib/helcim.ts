@@ -7,12 +7,47 @@ const HELCIM_WEBHOOK_SECRET = process.env.HELCIM_WEBHOOK_SECRET;
 const HELCIM_BASE_URL = 'https://api.helcim.com/v2';
 
 /**
- * Verify Helcim webhook signature using HMAC-SHA256
- * Helcim sends the signature in the X-Helcim-Signature header
+ * Helcim Webhook Headers interface
+ * Helcim sends these three headers with every webhook:
+ * - webhook-id: Unique message identifier for idempotency
+ * - webhook-timestamp: Unix timestamp of when the webhook was sent
+ * - webhook-signature: Space-delimited versioned signatures (e.g., "v1,<sig> v2,<sig>")
  */
-export function verifyWebhookSignature(payload: string, signature: string): boolean {
+export interface HelcimWebhookHeaders {
+  webhookId: string;
+  webhookTimestamp: string;
+  webhookSignature: string;
+}
+
+/**
+ * Extract Helcim webhook headers from request
+ */
+export function extractWebhookHeaders(headers: Record<string, string | string[] | undefined>): HelcimWebhookHeaders | null {
+  const webhookId = headers['webhook-id'] as string;
+  const webhookTimestamp = headers['webhook-timestamp'] as string;
+  const webhookSignature = headers['webhook-signature'] as string;
+  
+  if (!webhookId || !webhookTimestamp || !webhookSignature) {
+    return null;
+  }
+  
+  return { webhookId, webhookTimestamp, webhookSignature };
+}
+
+/**
+ * Verify Helcim webhook signature using HMAC-SHA256
+ * 
+ * Per Helcim docs:
+ * 1. Build signedContent = "${webhookId}.${webhookTimestamp}.${rawBody}"
+ * 2. Base64-decode the verifier token (HELCIM_WEBHOOK_SECRET) to get HMAC key
+ * 3. Generate HMAC-SHA256 signature and base64-encode it
+ * 4. Compare against signatures in webhook-signature header (format: "v1,<sig> v2,<sig>")
+ */
+export function verifyWebhookSignature(
+  rawBody: string, 
+  headers: HelcimWebhookHeaders
+): boolean {
   if (!HELCIM_WEBHOOK_SECRET) {
-    // In production, we should reject if no secret is configured
     const isProduction = process.env.NODE_ENV === 'production';
     if (isProduction) {
       console.error('[Helcim Webhook] No webhook secret configured in production - rejecting');
@@ -22,32 +57,48 @@ export function verifyWebhookSignature(payload: string, signature: string): bool
     return true;
   }
 
-  if (!signature) {
-    console.warn('[Helcim Webhook] No signature provided');
-    return false;
-  }
-
   try {
-    // Helcim uses HMAC-SHA256 for webhook signatures
-    const expectedSignature = crypto
-      .createHmac('sha256', HELCIM_WEBHOOK_SECRET)
-      .update(payload)
-      .digest('hex');
+    // Step 1: Build signed content per Helcim spec
+    const signedContent = `${headers.webhookId}.${headers.webhookTimestamp}.${rawBody}`;
     
-    // Normalize both signatures to hex and ensure equal length before comparison
-    const receivedHex = signature.toLowerCase().trim();
-    const expectedHex = expectedSignature.toLowerCase();
+    // Step 2: Base64-decode the verifier token to get the HMAC key
+    const verifierTokenBytes = Buffer.from(HELCIM_WEBHOOK_SECRET, 'base64');
     
-    if (receivedHex.length !== expectedHex.length) {
-      console.warn('[Helcim Webhook] Signature length mismatch');
-      return false;
+    // Step 3: Generate HMAC-SHA256 signature and base64-encode it
+    const generatedSignature = crypto
+      .createHmac('sha256', verifierTokenBytes)
+      .update(signedContent)
+      .digest('base64');
+    
+    // Step 4: Parse and verify against signatures in header
+    // Format: "v1,<sig1> v2,<sig2>" - space-delimited, each has version prefix
+    const signatures = headers.webhookSignature.split(' ');
+    
+    for (const sig of signatures) {
+      const parts = sig.split(',');
+      if (parts.length !== 2) continue;
+      
+      const signature = parts[1];
+      
+      // Use timing-safe comparison
+      if (signature.length === generatedSignature.length) {
+        try {
+          const isMatch = crypto.timingSafeEqual(
+            Buffer.from(signature, 'base64'),
+            Buffer.from(generatedSignature, 'base64')
+          );
+          if (isMatch) {
+            console.log('[Helcim Webhook] Signature verified successfully');
+            return true;
+          }
+        } catch {
+          // Continue to next signature if comparison fails
+        }
+      }
     }
     
-    // Use timing-safe comparison to prevent timing attacks
-    return crypto.timingSafeEqual(
-      Buffer.from(receivedHex, 'hex'),
-      Buffer.from(expectedHex, 'hex')
-    );
+    console.warn('[Helcim Webhook] No matching signature found');
+    return false;
   } catch (error) {
     console.error('[Helcim Webhook] Signature verification error:', error);
     return false;

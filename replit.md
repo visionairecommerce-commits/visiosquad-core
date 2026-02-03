@@ -97,4 +97,8 @@ Preferred communication style: Simple, everyday language.
 - **Multi-tenant isolation**: All tables filtered by `club_id`
 - **Role-based policies**: Admins have full club access, coaches have limited write access, parents access own data
 - **SafeSport compliance**: Parents can view channels/messages where their athletes participate
-- **Webhook endpoints**: `/api/webhooks/helcim` (payment notifications), `/api/webhooks/docuseal` (e-signature notifications)
+- **Webhook endpoints**: `/api/webhooks/payments` (Helcim payment notifications - path intentionally generic per Helcim requirements), `/api/webhooks/docuseal` (e-signature notifications)
+  - Helcim webhooks use headers: `webhook-id`, `webhook-timestamp`, `webhook-signature`
+  - Signature verification: HMAC-SHA256 with base64-decoded verifier token, signedContent = `${webhookId}.${webhookTimestamp}.${rawBody}`
+  - Idempotency: Uses `webhook-id` header as primary key for deduplication
+  - Payload format: `{ type: "cardTransaction", data: { transactionId, status, amount, invoiceNumber, ... } }`

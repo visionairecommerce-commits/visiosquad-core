@@ -1,4 +1,4 @@
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, lt } from 'drizzle-orm';
 import { db } from './lib/db';
 import { supabaseAdmin as supabase } from './lib/supabase';
 import {
@@ -137,6 +137,90 @@ export class DatabaseStorage implements IStorage {
       .where(eq(clubsTable.id, clubId))
       .returning();
     return this.mapClub(club);
+  }
+
+  async updateClubBillingDay(clubId: string, billingDay: number): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({ billing_day: billingDay })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
+  async lockClub(clubId: string): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({ billing_locked_at: new Date() })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
+  async unlockClub(clubId: string): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({ billing_locked_at: null })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
+  async updateClubBillingStatus(clubId: string, lastBilledAt: Date, lastBilledPeriodStart: Date): Promise<Club> {
+    const [club] = await db.update(clubsTable)
+      .set({
+        last_billed_at: lastBilledAt,
+        last_billed_period_start: lastBilledPeriodStart,
+      })
+      .where(eq(clubsTable.id, clubId))
+      .returning();
+    return this.mapClub(club);
+  }
+
+  async getClubsDueToBill(dayOfMonth: number): Promise<Club[]> {
+    const clubs = await db.select()
+      .from(clubsTable)
+      .where(
+        and(
+          eq(clubsTable.billing_day, dayOfMonth),
+          isNull(clubsTable.billing_locked_at)
+        )
+      );
+    return clubs.map(c => this.mapClub(c));
+  }
+
+  async getLockedClubs(): Promise<Club[]> {
+    const clubs = await db.select()
+      .from(clubsTable)
+      .where(isNotNull(clubsTable.billing_locked_at));
+    return clubs.map(c => this.mapClub(c));
+  }
+
+  async getClubsPastGracePeriod(gracePeriodDays: number): Promise<Club[]> {
+    // Get all clubs and check their invoice status
+    const clubs = await db.select()
+      .from(clubsTable)
+      .where(isNull(clubsTable.billing_locked_at));
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - gracePeriodDays);
+    
+    // Check which clubs have unpaid invoices older than grace period
+    const clubsPastGrace: Club[] = [];
+    for (const club of clubs) {
+      const unpaidInvoices = await db.select()
+        .from(platformInvoicesTable)
+        .where(
+          and(
+            eq(platformInvoicesTable.club_id, club.id),
+            eq(platformInvoicesTable.status, 'draft'),
+            lt(platformInvoicesTable.created_at, cutoffDate)
+          )
+        );
+      
+      if (unpaidInvoices.length > 0) {
+        clubsPastGrace.push(this.mapClub(club));
+      }
+    }
+    
+    return clubsPastGrace;
   }
 
   async completeOnboarding(clubId: string): Promise<Club> {
@@ -1392,6 +1476,10 @@ export class DatabaseStorage implements IStorage {
       billing_bank_last_four: c.billing_bank_last_four ?? undefined,
       billing_method: c.billing_method ?? undefined,
       coaches_can_bill: c.coaches_can_bill ?? false,
+      billing_day: c.billing_day ?? 1,
+      billing_locked_at: c.billing_locked_at?.toISOString?.() ?? c.billing_locked_at ?? undefined,
+      last_billed_at: c.last_billed_at?.toISOString?.() ?? c.last_billed_at ?? undefined,
+      last_billed_period_start: c.last_billed_period_start?.toISOString?.() ?? c.last_billed_period_start ?? undefined,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }

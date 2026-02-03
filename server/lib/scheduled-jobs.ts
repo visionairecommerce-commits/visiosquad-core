@@ -43,10 +43,16 @@ export function initializeScheduledJobs() {
     await runWithLock(SEASON_CHAT_CLEANUP_LOCK_ID, cleanupEndedSeasonChats);
   });
 
-  // Run on the 1st of each month at 3 AM - Automatic monthly billing
-  cron.schedule('0 3 1 * *', async () => {
-    console.log('[Monthly Billing] Running automatic monthly club billing...');
-    await runWithLock(MONTHLY_BILLING_LOCK_ID, processMonthlyClubBilling);
+  // Run daily at 3 AM - Automatic monthly billing for clubs on their billing day
+  cron.schedule('0 3 * * *', async () => {
+    console.log('[Daily Club Billing] Running club billing check...');
+    await runWithLock(MONTHLY_BILLING_LOCK_ID, processDailyClubBilling);
+  });
+
+  // Run daily at 4 AM - Check for clubs past grace period and lock them
+  cron.schedule('0 4 * * *', async () => {
+    console.log('[Grace Period Check] Checking for clubs past grace period...');
+    await runWithLock(MONTHLY_BILLING_LOCK_ID + 1, processGracePeriodLocking);
   });
 
   // Also run immediately on startup for testing/catchup (with slight delay)
@@ -316,7 +322,138 @@ async function cleanupEndedSeasonChats() {
   }
 }
 
-// Automatic monthly club billing based on active player count
+// Grace period constant (7 days)
+const GRACE_PERIOD_DAYS = 7;
+
+// Process clubs past their grace period and lock them
+async function processGracePeriodLocking() {
+  try {
+    console.log('[Grace Period Check] Checking for clubs with unpaid invoices past grace period...');
+    
+    const clubsPastGrace = await storage.getClubsPastGracePeriod(GRACE_PERIOD_DAYS);
+    
+    console.log(`[Grace Period Check] Found ${clubsPastGrace.length} clubs past grace period`);
+    
+    for (const club of clubsPastGrace) {
+      // Skip test clubs
+      const clubNameUpper = club.name.toUpperCase();
+      if (clubNameUpper.includes('TEST') || clubNameUpper.includes('DO NOT BILL')) {
+        console.log(`[Grace Period Check] Skipping test club: ${club.name}`);
+        continue;
+      }
+      
+      try {
+        await storage.lockClub(club.id);
+        console.log(`[Grace Period Check] Locked club: ${club.name} (${club.id})`);
+      } catch (lockError) {
+        console.error(`[Grace Period Check] Error locking club ${club.id}:`, lockError);
+      }
+    }
+    
+    console.log('[Grace Period Check] Complete');
+  } catch (error) {
+    console.error('[Grace Period Check] Error:', error);
+  }
+}
+
+// Daily billing check - bills clubs on their chosen billing day
+async function processDailyClubBilling() {
+  try {
+    const today = new Date();
+    const dayOfMonth = today.getDate();
+    
+    // Handle end of month edge case (if billing_day > days in month, bill on last day)
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    
+    console.log(`[Daily Club Billing] Today is day ${dayOfMonth} of month (last day: ${lastDayOfMonth})`);
+    
+    // Get clubs due to bill today
+    let clubsDueToBill = await storage.getClubsDueToBill(dayOfMonth);
+    
+    // Also get clubs with billing_day > last day of month if today is the last day
+    if (dayOfMonth === lastDayOfMonth) {
+      const allClubs = await storage.getAllClubs();
+      const endOfMonthClubs = allClubs.filter(club => 
+        (club.billing_day ?? 1) > lastDayOfMonth && !club.billing_locked_at
+      );
+      clubsDueToBill = [...clubsDueToBill, ...endOfMonthClubs];
+    }
+    
+    console.log(`[Daily Club Billing] Found ${clubsDueToBill.length} clubs to bill today`);
+    
+    for (const club of clubsDueToBill) {
+      // Skip test clubs
+      const clubNameUpper = club.name.toUpperCase();
+      if (clubNameUpper.includes('TEST') || clubNameUpper.includes('DO NOT BILL')) {
+        console.log(`[Daily Club Billing] Skipping test club: ${club.name}`);
+        continue;
+      }
+      
+      // Calculate billing period (previous month from the club's billing day)
+      const periodEnd = new Date(today.getFullYear(), today.getMonth(), dayOfMonth);
+      const periodStart = new Date(today.getFullYear(), today.getMonth() - 1, dayOfMonth);
+      
+      // Check if we already billed this club for this period
+      if (club.last_billed_period_start) {
+        const lastBilledStart = new Date(club.last_billed_period_start);
+        if (lastBilledStart.getTime() >= periodStart.getTime()) {
+          console.log(`[Daily Club Billing] Club ${club.name} already billed for this period`);
+          continue;
+        }
+      }
+      
+      console.log(`[Daily Club Billing] Processing club ${club.name} for period ${periodStart.toISOString()} to ${periodEnd.toISOString()}`);
+      
+      // Get active athletes for this club in this period
+      const activeAthletes = await storage.getActiveAthletesForPeriod(club.id, periodStart, periodEnd);
+      
+      let entriesCreated = 0;
+      
+      for (const athlete of activeAthletes) {
+        // Check if there's already a ledger entry for this athlete in this period
+        const hasExistingEntry = await storage.hasMonthlyLedgerEntryForAthlete(
+          club.id,
+          athlete.id,
+          periodStart,
+          periodEnd
+        );
+        
+        if (hasExistingEntry) {
+          continue;
+        }
+        
+        try {
+          await storage.createAutoBillingLedgerEntry(
+            club.id,
+            athlete.id,
+            PLATFORM_FEES.monthly,
+            'monthly',
+            periodStart.toISOString().split('T')[0]
+          );
+          
+          entriesCreated++;
+          console.log(`[Daily Club Billing] Created ledger entry for athlete ${athlete.id}`);
+        } catch (entryError) {
+          console.error(`[Daily Club Billing] Error creating ledger entry:`, entryError);
+        }
+      }
+      
+      // Update club billing status
+      try {
+        await storage.updateClubBillingStatus(club.id, new Date(), periodStart);
+        console.log(`[Daily Club Billing] Created ${entriesCreated} ledger entries for club ${club.name}`);
+      } catch (statusError) {
+        console.error(`[Daily Club Billing] Error updating club billing status:`, statusError);
+      }
+    }
+    
+    console.log('[Daily Club Billing] Complete');
+  } catch (error) {
+    console.error('[Daily Club Billing] Error:', error);
+  }
+}
+
+// Automatic monthly club billing based on active player count (legacy - kept for reference)
 // Runs on the 1st of each month to bill for the previous month
 async function processMonthlyClubBilling() {
   try {

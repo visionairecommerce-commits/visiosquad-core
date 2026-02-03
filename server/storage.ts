@@ -416,6 +416,15 @@ export interface IStorage {
   // Club Contract Compliance Settings
   updateClubContractSettings(clubId: string, contractUrl: string | undefined, contractInstructions: string | undefined): Promise<Club>;
   
+  // Club Billing Settings
+  updateClubBillingDay(clubId: string, billingDay: number): Promise<Club>;
+  lockClub(clubId: string): Promise<Club>;
+  unlockClub(clubId: string): Promise<Club>;
+  updateClubBillingStatus(clubId: string, lastBilledAt: Date, lastBilledPeriodStart: Date): Promise<Club>;
+  getClubsDueToBill(dayOfMonth: number): Promise<Club[]>;
+  getLockedClubs(): Promise<Club[]>;
+  getClubsPastGracePeriod(gracePeriodDays: number): Promise<Club[]>;
+  
   // Users
   getUserById(userId: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -950,6 +959,60 @@ export class MemStorage implements IStorage {
     club.contract_instructions = contractInstructions;
     this.clubs.set(clubId, club);
     return club;
+  }
+
+  async updateClubBillingDay(clubId: string, billingDay: number): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.billing_day = billingDay;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async lockClub(clubId: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.billing_locked_at = new Date().toISOString();
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async unlockClub(clubId: string): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.billing_locked_at = undefined;
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async updateClubBillingStatus(clubId: string, lastBilledAt: Date, lastBilledPeriodStart: Date): Promise<Club> {
+    const club = this.clubs.get(clubId);
+    if (!club) throw new Error('Club not found');
+    club.last_billed_at = lastBilledAt.toISOString();
+    club.last_billed_period_start = lastBilledPeriodStart.toISOString();
+    this.clubs.set(clubId, club);
+    return club;
+  }
+
+  async getClubsDueToBill(dayOfMonth: number): Promise<Club[]> {
+    return Array.from(this.clubs.values()).filter(club => 
+      (club.billing_day ?? 1) === dayOfMonth && !club.billing_locked_at
+    );
+  }
+
+  async getLockedClubs(): Promise<Club[]> {
+    return Array.from(this.clubs.values()).filter(club => !!club.billing_locked_at);
+  }
+
+  async getClubsPastGracePeriod(gracePeriodDays: number): Promise<Club[]> {
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - gracePeriodDays * 24 * 60 * 60 * 1000);
+    return Array.from(this.clubs.values()).filter(club => {
+      if (!club.last_billed_at || club.billing_locked_at) return false;
+      // Check if there's an unpaid invoice past grace period
+      // This is a simplified check - real implementation would check invoice status
+      return false;
+    });
   }
 
   async regenerateClubCode(clubId: string): Promise<Club> {

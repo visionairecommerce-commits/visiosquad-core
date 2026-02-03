@@ -41,6 +41,11 @@ export const clubsTable = pgTable("clubs", {
   docuseal_team_name: text("docuseal_team_name"),
   docuseal_onboarded_at: timestamp("docuseal_onboarded_at"),
   docuseal_onboarded_by_user_id: uuid("docuseal_onboarded_by_user_id"),
+  // Club billing settings
+  billing_day: integer("billing_day").default(1), // Day of month (1-28) when club is billed
+  billing_locked_at: timestamp("billing_locked_at"), // When club was locked for non-payment
+  last_billed_at: timestamp("last_billed_at"), // When the club was last billed
+  last_billed_period_start: timestamp("last_billed_period_start"), // Start of the last billed period
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -562,6 +567,10 @@ export interface Club {
   billing_bank_last_four?: string;
   billing_method?: 'card' | 'bank';
   coaches_can_bill: boolean;
+  billing_day?: number; // Day of month (1-28) when club is billed
+  billing_locked_at?: string; // When club was locked for non-payment
+  last_billed_at?: string; // When the club was last billed
+  last_billed_period_start?: string; // Start of the last billed period
   created_at: string;
 }
 

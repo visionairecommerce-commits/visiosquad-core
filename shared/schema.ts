@@ -46,6 +46,9 @@ export const clubsTable = pgTable("clubs", {
   billing_locked_at: timestamp("billing_locked_at"), // When club was locked for non-payment
   last_billed_at: timestamp("last_billed_at"), // When the club was last billed
   last_billed_period_start: timestamp("last_billed_period_start"), // Start of the last billed period
+  // Helcim subscription billing (Model A)
+  helcim_subscription_id: text("helcim_subscription_id"), // Helcim subscription ID for automatic billing
+  helcim_plan_id: integer("helcim_plan_id"), // Helcim plan ID (day-based plan)
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -501,6 +504,41 @@ export const platformInvoicesTable = pgTable("platform_invoices", {
   paid_at: timestamp("paid_at"),
 });
 
+// ============ HELCIM SUBSCRIPTION BILLING (Model A) ============
+
+// Helcim plans cache - stores lazily created day-based payment plans
+export const helcimPlansTable = pgTable("helcim_plans", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  helcim_plan_id: integer("helcim_plan_id").notNull().unique(),
+  billing_day: integer("billing_day").notNull(), // 1-28
+  payment_method: text("payment_method", { enum: ["card", "bank"] }).notNull(),
+  plan_name: text("plan_name").notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  dayMethodIdx: index("helcim_plans_day_method_idx").on(table.billing_day, table.payment_method),
+}));
+
+// Platform autopay charges - tracks prepared/billed amounts for Helcim automatic billing
+export type AutopayChargeStatus = 'prepared' | 'billed' | 'paid' | 'failed' | 'void';
+
+export const platformAutopayChargesTable = pgTable("platform_autopay_charges", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  period_start: date("period_start").notNull(),
+  period_end: date("period_end").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  convenience_fee: decimal("convenience_fee", { precision: 10, scale: 2 }).default("0"),
+  status: text("status", { enum: ["prepared", "billed", "paid", "failed", "void"] }).default("prepared").notNull(),
+  helcim_subscription_id: text("helcim_subscription_id"),
+  helcim_transaction_id: text("helcim_transaction_id"),
+  prepared_at: timestamp("prepared_at").defaultNow().notNull(),
+  billed_at: timestamp("billed_at"),
+  updated_at: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  clubPeriodIdx: index("autopay_club_period_idx").on(table.club_id, table.period_start, table.period_end),
+  statusIdx: index("autopay_status_idx").on(table.status),
+}));
+
 // Events table - standalone events like clinics, camps, tryouts
 export const eventsTable = pgTable("events", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -571,6 +609,9 @@ export interface Club {
   billing_locked_at?: string; // When club was locked for non-payment
   last_billed_at?: string; // When the club was last billed
   last_billed_period_start?: string; // Start of the last billed period
+  // Helcim subscription billing (Model A)
+  helcim_subscription_id?: string; // Helcim subscription ID for automatic billing
+  helcim_plan_id?: number; // Helcim plan ID (day-based plan)
   created_at: string;
 }
 
@@ -892,6 +933,31 @@ export interface PlatformInvoice {
   paid_at: string | null;
 }
 
+// Helcim Model A types
+export interface HelcimPlan {
+  id: string;
+  helcim_plan_id: number;
+  billing_day: number;
+  payment_method: 'card' | 'bank';
+  plan_name: string;
+  created_at: string;
+}
+
+export interface PlatformAutopayCharge {
+  id: string;
+  club_id: string;
+  period_start: string;
+  period_end: string;
+  amount: number;
+  convenience_fee: number;
+  status: AutopayChargeStatus;
+  helcim_subscription_id: string | null;
+  helcim_transaction_id: string | null;
+  prepared_at: string;
+  billed_at: string | null;
+  updated_at: string;
+}
+
 // ============ ZOD SCHEMAS ============
 
 // Insert schemas for forms
@@ -1176,6 +1242,16 @@ export type InsertDocuSealSetupRequest = z.infer<typeof insertDocuSealSetupReque
 export type PlatformInvoiceRecord = typeof platformInvoicesTable.$inferSelect;
 export const insertPlatformInvoiceSchema = createInsertSchema(platformInvoicesTable).omit({ id: true, created_at: true, paid_at: true });
 export type InsertPlatformInvoice = z.infer<typeof insertPlatformInvoiceSchema>;
+
+// Helcim plans types
+export type HelcimPlanRecord = typeof helcimPlansTable.$inferSelect;
+export const insertHelcimPlanSchema = createInsertSchema(helcimPlansTable).omit({ id: true, created_at: true });
+export type InsertHelcimPlan = z.infer<typeof insertHelcimPlanSchema>;
+
+// Platform autopay charges types
+export type PlatformAutopayChargeRecord = typeof platformAutopayChargesTable.$inferSelect;
+export const insertPlatformAutopayChargeSchema = createInsertSchema(platformAutopayChargesTable).omit({ id: true, prepared_at: true, updated_at: true });
+export type InsertPlatformAutopayCharge = z.infer<typeof insertPlatformAutopayChargeSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

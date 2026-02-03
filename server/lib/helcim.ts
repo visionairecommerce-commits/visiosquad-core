@@ -371,6 +371,325 @@ interface PlatformBillingResponse {
   error?: string;
 }
 
+// ============ HELCIM RECURRING API (Model A) ============
+
+// Feature flags for billing mode
+export const BILLING_MODE = (process.env.BILLING_MODE || 'app') as 'helcim' | 'app';
+export const BILLING_AUTOPAY_PREP_ENABLED = process.env.BILLING_AUTOPAY_PREP_ENABLED !== 'false';
+export const BILLING_RECONCILIATION_ENABLED = process.env.BILLING_RECONCILIATION_ENABLED !== 'false';
+
+/**
+ * Calculate deterministic billing period for a given billing day
+ * Rule: Billing on day X covers the period from (X of previous month) to (X-1 of current month)
+ * Example: Billing on Mar 15 covers Feb 15 – Mar 14
+ */
+export function calculateBillingPeriod(billingDay: number, billingDate: Date = new Date()): { periodStart: Date; periodEnd: Date } {
+  const year = billingDate.getFullYear();
+  const month = billingDate.getMonth();
+  
+  // Period end is day before billing day in current month
+  const periodEnd = new Date(year, month, billingDay - 1);
+  
+  // Period start is billing day of previous month
+  const periodStart = new Date(year, month - 1, billingDay);
+  
+  return { periodStart, periodEnd };
+}
+
+/**
+ * Check if we're in the no-touch window (24h before billing through 12h after)
+ * During this window, we should NOT PATCH recurringAmount unless no transaction exists
+ * 
+ * Uses proper date arithmetic to handle month boundaries correctly.
+ */
+export function isInNoTouchWindow(billingDay: number, now: Date = new Date()): boolean {
+  // Calculate the actual billing date for this period
+  // Find the next upcoming billing date (or current if we're on billing day)
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+  const hour = now.getHours();
+  
+  // Determine which billing date is relevant
+  // If we're past the billing day this month, use this month's billing date for the window check
+  // If we're before or on the billing day, use this month's billing date
+  let billingDate: Date;
+  
+  // Handle end-of-month edge case: if billingDay > days in current month, use last day
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const effectiveBillingDay = Math.min(billingDay, daysInMonth);
+  
+  billingDate = new Date(year, month, effectiveBillingDay, 0, 0, 0, 0);
+  
+  // If we're past this month's billing date + 12h window, consider next month's billing date
+  const billingDatePlus12h = new Date(billingDate.getTime() + 12 * 60 * 60 * 1000);
+  if (now > billingDatePlus12h) {
+    // We're past the window for this month, calculate next month's billing date
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
+    const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
+    const nextEffectiveBillingDay = Math.min(billingDay, daysInNextMonth);
+    billingDate = new Date(nextYear, nextMonth, nextEffectiveBillingDay, 0, 0, 0, 0);
+  }
+  
+  // Calculate window boundaries using absolute timestamps
+  // Window starts: 24 hours before billing date midnight
+  const windowStart = new Date(billingDate.getTime() - 24 * 60 * 60 * 1000);
+  // Window ends: 12 hours after billing date midnight
+  const windowEnd = new Date(billingDate.getTime() + 12 * 60 * 60 * 1000);
+  
+  // Check if now is within the window
+  return now >= windowStart && now <= windowEnd;
+}
+
+/**
+ * Get or create a Helcim payment plan for a specific billing day and payment method
+ * Plans are created lazily on demand
+ */
+export async function getOrCreatePlan(
+  billingDay: number, 
+  paymentMethod: 'card' | 'bank'
+): Promise<{ planId: number; error?: string }> {
+  if (!HELCIM_API_TOKEN || !HELCIM_ACCOUNT_ID) {
+    return { planId: 0, error: 'Helcim credentials not configured' };
+  }
+  
+  const planName = `visiosquad-${paymentMethod}-day-${String(billingDay).padStart(2, '0')}`;
+  
+  try {
+    // First, try to find existing plan
+    const searchResponse = await fetch(`${HELCIM_BASE_URL}/payment-plans?name=${encodeURIComponent(planName)}`, {
+      method: 'GET',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (searchResponse.ok) {
+      const plans = await searchResponse.json();
+      if (Array.isArray(plans) && plans.length > 0) {
+        const existingPlan = plans.find((p: any) => p.name === planName && p.status === 'active');
+        if (existingPlan) {
+          console.log(`[Helcim] Found existing plan: ${planName} (ID: ${existingPlan.id})`);
+          return { planId: existingPlan.id };
+        }
+      }
+    }
+    
+    // Create new plan if not found
+    console.log(`[Helcim] Creating new payment plan: ${planName}`);
+    const createResponse = await fetch(`${HELCIM_BASE_URL}/payment-plans`, {
+      method: 'POST',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: planName,
+        description: `VisioSquad platform fees - Day ${billingDay} (${paymentMethod})`,
+        type: 'cycle',
+        billingPeriod: 'monthly',
+        billingPeriodIncrements: 1,
+        dateBilling: String(billingDay),
+        termType: 'forever',
+        recurringAmount: 0, // Set per-subscription
+        paymentMethod: paymentMethod,
+        taxType: 'no_tax',
+        currency: 'USD',
+      }),
+    });
+    
+    const planData = await createResponse.json();
+    
+    if (createResponse.ok && planData.id) {
+      console.log(`[Helcim] Created plan: ${planName} (ID: ${planData.id})`);
+      return { planId: planData.id };
+    } else {
+      return { planId: 0, error: planData.errors?.[0]?.message || 'Failed to create plan' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error getting/creating plan:', error);
+    return { planId: 0, error: 'Failed to get or create payment plan' };
+  }
+}
+
+/**
+ * Create a subscription for a club to a specific payment plan
+ */
+export async function createSubscription(
+  customerCode: string,
+  planId: number,
+  recurringAmount: number = 0
+): Promise<{ subscriptionId: string; error?: string }> {
+  if (!HELCIM_API_TOKEN) {
+    return { subscriptionId: '', error: 'Helcim credentials not configured' };
+  }
+  
+  try {
+    const response = await fetch(`${HELCIM_BASE_URL}/subscriptions`, {
+      method: 'POST',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        paymentPlanId: planId,
+        customerCode: customerCode,
+        recurringAmount: recurringAmount,
+      }),
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.id) {
+      console.log(`[Helcim] Created subscription ${data.id} for customer ${customerCode}`);
+      return { subscriptionId: String(data.id) };
+    } else {
+      return { subscriptionId: '', error: data.errors?.[0]?.message || 'Failed to create subscription' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error creating subscription:', error);
+    return { subscriptionId: '', error: 'Failed to create subscription' };
+  }
+}
+
+/**
+ * Update subscription recurring amount (PATCH)
+ * Used by prep job to set variable monthly fees
+ */
+export async function updateSubscriptionAmount(
+  subscriptionId: string,
+  recurringAmount: number
+): Promise<{ success: boolean; error?: string }> {
+  if (!HELCIM_API_TOKEN) {
+    return { success: false, error: 'Helcim credentials not configured' };
+  }
+  
+  try {
+    const response = await fetch(`${HELCIM_BASE_URL}/subscriptions/${subscriptionId}`, {
+      method: 'PATCH',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        recurringAmount: recurringAmount,
+      }),
+    });
+    
+    if (response.ok) {
+      console.log(`[Helcim] Updated subscription ${subscriptionId} amount to $${recurringAmount.toFixed(2)}`);
+      return { success: true };
+    } else {
+      const data = await response.json();
+      return { success: false, error: data.errors?.[0]?.message || 'Failed to update subscription' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error updating subscription:', error);
+    return { success: false, error: 'Failed to update subscription amount' };
+  }
+}
+
+/**
+ * Get subscription details including payment history
+ */
+export async function getSubscription(subscriptionId: string): Promise<{ subscription: any; error?: string }> {
+  if (!HELCIM_API_TOKEN) {
+    return { subscription: null, error: 'Helcim credentials not configured' };
+  }
+  
+  try {
+    const response = await fetch(`${HELCIM_BASE_URL}/subscriptions/${subscriptionId}`, {
+      method: 'GET',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { subscription: data };
+    } else {
+      const data = await response.json();
+      return { subscription: null, error: data.errors?.[0]?.message || 'Failed to get subscription' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error getting subscription:', error);
+    return { subscription: null, error: 'Failed to get subscription' };
+  }
+}
+
+/**
+ * Get transaction details by ID (used by webhook handler)
+ */
+export async function getTransactionDetails(transactionId: string): Promise<{ transaction: any; error?: string }> {
+  if (!HELCIM_API_TOKEN) {
+    return { transaction: null, error: 'Helcim credentials not configured' };
+  }
+  
+  try {
+    const response = await fetch(`${HELCIM_BASE_URL}/card-transactions/${transactionId}`, {
+      method: 'GET',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { transaction: data };
+    } else {
+      const data = await response.json();
+      return { transaction: null, error: data.errors?.[0]?.message || 'Failed to get transaction' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error getting transaction:', error);
+    return { transaction: null, error: 'Failed to get transaction details' };
+  }
+}
+
+/**
+ * Get transactions for a date range (used by reconciliation)
+ */
+export async function getTransactionsInRange(
+  dateFrom: string,
+  dateTo: string,
+  customerCode?: string
+): Promise<{ transactions: any[]; error?: string }> {
+  if (!HELCIM_API_TOKEN) {
+    return { transactions: [], error: 'Helcim credentials not configured' };
+  }
+  
+  try {
+    let url = `${HELCIM_BASE_URL}/card-transactions?dateFrom=${dateFrom}&dateTo=${dateTo}`;
+    if (customerCode) {
+      url += `&customerCode=${encodeURIComponent(customerCode)}`;
+    }
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'api-token': HELCIM_API_TOKEN,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return { transactions: Array.isArray(data) ? data : [] };
+    } else {
+      const data = await response.json();
+      return { transactions: [], error: data.errors?.[0]?.message || 'Failed to get transactions' };
+    }
+  } catch (error) {
+    console.error('[Helcim] Error getting transactions:', error);
+    return { transactions: [], error: 'Failed to get transactions' };
+  }
+}
+
 export async function chargePlatformBilling(request: PlatformBillingRequest): Promise<PlatformBillingResponse> {
   if (!HELCIM_API_TOKEN || !HELCIM_ACCOUNT_ID) {
     console.warn('[Helcim Platform Billing] Credentials not configured');

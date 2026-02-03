@@ -13,7 +13,17 @@ import {
   PLATFORM_FEES
 } from '@shared/schema';
 import { eq, lte, and, isNotNull, ne, sql, inArray } from 'drizzle-orm';
-import { cancelRecurringPayment } from './helcim';
+import { 
+  cancelRecurringPayment, 
+  BILLING_MODE, 
+  BILLING_AUTOPAY_PREP_ENABLED,
+  BILLING_RECONCILIATION_ENABLED,
+  calculateBillingPeriod,
+  isInNoTouchWindow,
+  updateSubscriptionAmount,
+  getTransactionsInRange,
+  getTransactionDetails
+} from './helcim';
 import { storage } from '../storage';
 
 // Advisory lock IDs for preventing concurrent cron job execution
@@ -21,6 +31,8 @@ const AUTO_RELEASE_LOCK_ID = 1234567890;
 const EVENT_CHAT_CLEANUP_LOCK_ID = 1234567891;
 const SEASON_CHAT_CLEANUP_LOCK_ID = 1234567892;
 const MONTHLY_BILLING_LOCK_ID = 1234567893;
+const AUTOPAY_PREP_LOCK_ID = 1234567894;
+const BILLING_RECONCILIATION_LOCK_ID = 1234567895;
 
 export function initializeScheduledJobs() {
   console.log('[Scheduled Jobs] Initializing scheduled jobs...');
@@ -44,7 +56,12 @@ export function initializeScheduledJobs() {
   });
 
   // Run daily at 3 AM - Automatic monthly billing for clubs on their billing day
+  // DISABLED when BILLING_MODE=helcim (Helcim handles billing automatically)
   cron.schedule('0 3 * * *', async () => {
+    if (BILLING_MODE === 'helcim') {
+      console.log('[Daily Club Billing] SKIPPED - BILLING_MODE=helcim (Helcim handles billing)');
+      return;
+    }
     console.log('[Daily Club Billing] Running club billing check...');
     await runWithLock(MONTHLY_BILLING_LOCK_ID, processDailyClubBilling);
   });
@@ -53,6 +70,28 @@ export function initializeScheduledJobs() {
   cron.schedule('0 4 * * *', async () => {
     console.log('[Grace Period Check] Checking for clubs past grace period...');
     await runWithLock(MONTHLY_BILLING_LOCK_ID + 1, processGracePeriodLocking);
+  });
+
+  // Run daily at 5 AM - Autopay prep job (prepare amounts for Helcim automatic billing)
+  // Only runs when BILLING_MODE=helcim and BILLING_AUTOPAY_PREP_ENABLED=true
+  cron.schedule('0 5 * * *', async () => {
+    if (BILLING_MODE !== 'helcim' || !BILLING_AUTOPAY_PREP_ENABLED) {
+      console.log('[Autopay Prep] SKIPPED - Not enabled or BILLING_MODE != helcim');
+      return;
+    }
+    console.log('[Autopay Prep] Running autopay prep job...');
+    await runWithLock(AUTOPAY_PREP_LOCK_ID, processAutopayPrep);
+  });
+
+  // Run daily at 6 AM - Billing reconciliation (read-only, fixes mismatches)
+  // Runs when BILLING_MODE=helcim and BILLING_RECONCILIATION_ENABLED=true
+  cron.schedule('0 6 * * *', async () => {
+    if (BILLING_MODE !== 'helcim' || !BILLING_RECONCILIATION_ENABLED) {
+      console.log('[Billing Reconciliation] SKIPPED - Not enabled or BILLING_MODE != helcim');
+      return;
+    }
+    console.log('[Billing Reconciliation] Running reconciliation job...');
+    await runWithLock(BILLING_RECONCILIATION_LOCK_ID, processBillingReconciliation);
   });
 
   // Also run immediately on startup for testing/catchup (with slight delay)
@@ -522,5 +561,236 @@ async function processMonthlyClubBilling() {
     console.log(`[Monthly Billing] Complete: Created ${totalEntriesCreated} ledger entries, total amount: $${totalAmount.toFixed(2)}`);
   } catch (error) {
     console.error('[Monthly Billing] Error in processMonthlyClubBilling:', error);
+  }
+}
+
+// ============ HELCIM MODEL A JOBS ============
+
+/**
+ * Autopay Prep Job - Prepares variable monthly amounts for Helcim automatic billing
+ * Runs daily at 5 AM when BILLING_MODE=helcim
+ * 
+ * This job:
+ * 1. For each club with an active Helcim subscription
+ * 2. Calculates the platform fee for the upcoming billing period
+ * 3. PATCH the subscription's recurringAmount (unless in no-touch window)
+ * 4. Creates/updates platform_autopay_charges record with status=prepared
+ * 
+ * IMPORTANT: This job does NOT charge anyone. It only prepares amounts.
+ */
+async function processAutopayPrep() {
+  try {
+    const now = new Date();
+    console.log(`[Autopay Prep] Starting autopay prep at ${now.toISOString()}`);
+    
+    // Get all clubs with active Helcim subscriptions
+    const clubsWithSubscriptions = await storage.getClubsWithHelcimSubscriptions();
+    
+    console.log(`[Autopay Prep] Found ${clubsWithSubscriptions.length} clubs with Helcim subscriptions`);
+    
+    let preparedCount = 0;
+    let skippedNoTouchCount = 0;
+    let errorCount = 0;
+    
+    for (const club of clubsWithSubscriptions) {
+      try {
+        // Skip test clubs
+        const clubNameUpper = club.name.toUpperCase();
+        if (clubNameUpper.includes('TEST') || clubNameUpper.includes('DO NOT BILL')) {
+          console.log(`[Autopay Prep] Skipping test club: ${club.name}`);
+          continue;
+        }
+        
+        const billingDay = club.billing_day ?? 1;
+        
+        // Check no-touch window (24h before through 12h after billing day)
+        if (isInNoTouchWindow(billingDay, now)) {
+          // In no-touch window - check if transaction already exists for this cycle
+          const existingCharge = await storage.getAutopayChargeForPeriod(
+            club.id,
+            billingDay,
+            now
+          );
+          
+          if (existingCharge && existingCharge.status !== 'prepared') {
+            console.log(`[Autopay Prep] Skipping ${club.name} - in no-touch window and charge already processed`);
+            skippedNoTouchCount++;
+            continue;
+          }
+        }
+        
+        // Calculate billing period deterministically
+        const { periodStart, periodEnd } = calculateBillingPeriod(billingDay, now);
+        const periodStartStr = periodStart.toISOString().split('T')[0];
+        const periodEndStr = periodEnd.toISOString().split('T')[0];
+        
+        // Get ledger summary for this period (same logic as preview)
+        const ledgerSummary = await storage.getPlatformLedgerSummary(
+          club.id,
+          periodStart,
+          periodEnd
+        );
+        
+        // Calculate total with convenience fee
+        const subtotal = ledgerSummary.totalAmount;
+        const paymentMethod = club.billing_method || 'card';
+        const convenienceFee = paymentMethod === 'card' 
+          ? Math.round(subtotal * 0.03 * 100) / 100 
+          : 1.00;
+        const totalAmount = subtotal + convenienceFee;
+        
+        if (totalAmount <= 0) {
+          console.log(`[Autopay Prep] Skipping ${club.name} - no billable amount`);
+          continue;
+        }
+        
+        // Update Helcim subscription amount
+        if (club.helcim_subscription_id) {
+          const updateResult = await updateSubscriptionAmount(
+            club.helcim_subscription_id,
+            totalAmount
+          );
+          
+          if (!updateResult.success) {
+            console.error(`[Autopay Prep] Failed to update subscription for ${club.name}: ${updateResult.error}`);
+            errorCount++;
+            continue;
+          }
+        }
+        
+        // Create or update autopay charge record
+        await storage.upsertAutopayCharge({
+          club_id: club.id,
+          period_start: periodStartStr,
+          period_end: periodEndStr,
+          amount: String(subtotal),
+          convenience_fee: String(convenienceFee),
+          status: 'prepared',
+          helcim_subscription_id: club.helcim_subscription_id || null,
+        });
+        
+        preparedCount++;
+        console.log(`[Autopay Prep] Prepared ${club.name}: $${totalAmount.toFixed(2)} for period ${periodStartStr} to ${periodEndStr}`);
+        
+      } catch (clubError) {
+        console.error(`[Autopay Prep] Error processing club ${club.name}:`, clubError);
+        errorCount++;
+      }
+    }
+    
+    console.log(`[Autopay Prep] Complete: ${preparedCount} prepared, ${skippedNoTouchCount} skipped (no-touch), ${errorCount} errors`);
+  } catch (error) {
+    console.error('[Autopay Prep] Error:', error);
+  }
+}
+
+/**
+ * Billing Reconciliation Job - Syncs Helcim transaction status with our records
+ * Runs daily at 6 AM when BILLING_MODE=helcim
+ * 
+ * This job:
+ * 1. Pulls Helcim transactions for the last 14 days
+ * 2. Matches to platform_autopay_charges by customerCode + amount + date window
+ * 3. Updates invoice/ledger status for any mismatches
+ * 4. Logs unresolved items for manual review
+ * 
+ * IMPORTANT: This job NEVER charges anyone. It only reads and updates local records.
+ */
+async function processBillingReconciliation() {
+  try {
+    const now = new Date();
+    const dateFrom = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const dateTo = now;
+    
+    const dateFromStr = dateFrom.toISOString().split('T')[0];
+    const dateToStr = dateTo.toISOString().split('T')[0];
+    
+    console.log(`[Billing Reconciliation] Checking transactions from ${dateFromStr} to ${dateToStr}`);
+    
+    // Get all transactions from Helcim for the date range
+    const { transactions, error } = await getTransactionsInRange(dateFromStr, dateToStr);
+    
+    if (error) {
+      console.error(`[Billing Reconciliation] Failed to fetch transactions: ${error}`);
+      return;
+    }
+    
+    console.log(`[Billing Reconciliation] Found ${transactions.length} transactions to reconcile`);
+    
+    let reconciledCount = 0;
+    let alreadyMatchedCount = 0;
+    let unresolvedCount = 0;
+    
+    for (const tx of transactions) {
+      try {
+        const customerCode = tx.customerCode;
+        const transactionId = tx.transactionId?.toString();
+        const amount = parseFloat(tx.amount || '0');
+        const status = tx.status?.toUpperCase();
+        
+        if (!customerCode || !transactionId) {
+          continue;
+        }
+        
+        // Find club by customer code
+        const club = await storage.getClubByCustomerCode(customerCode);
+        if (!club) {
+          // Not a platform billing transaction
+          continue;
+        }
+        
+        // Check if we already have this transaction recorded
+        const existingCharge = await storage.getAutopayChargeByTransactionId(transactionId);
+        if (existingCharge) {
+          alreadyMatchedCount++;
+          continue;
+        }
+        
+        // Try to match to a prepared autopay charge
+        const billingDay = club.billing_day ?? 1;
+        const txDate = new Date(tx.dateCreated || tx.date);
+        const { periodStart, periodEnd } = calculateBillingPeriod(billingDay, txDate);
+        
+        const pendingCharge = await storage.getAutopayChargeForPeriod(
+          club.id,
+          billingDay,
+          txDate
+        );
+        
+        if (pendingCharge && pendingCharge.status === 'prepared') {
+          // Match found - update status based on Helcim status
+          const newStatus = status === 'APPROVED' ? 'paid' : 'failed';
+          
+          await storage.updateAutopayChargeStatus(
+            pendingCharge.id,
+            newStatus,
+            transactionId
+          );
+          
+          // If paid, mark ledger entries as paid
+          if (newStatus === 'paid') {
+            await storage.markLedgerEntriesPaidForPeriod(
+              club.id,
+              periodStart,
+              periodEnd
+            );
+          }
+          
+          reconciledCount++;
+          console.log(`[Billing Reconciliation] Reconciled ${club.name}: txn ${transactionId} -> ${newStatus}`);
+        } else {
+          // No matching charge found - log for manual review
+          console.warn(`[Billing Reconciliation] Unresolved: club ${club.name}, txn ${transactionId}, amount $${amount}`);
+          unresolvedCount++;
+        }
+        
+      } catch (txError) {
+        console.error(`[Billing Reconciliation] Error processing transaction:`, txError);
+      }
+    }
+    
+    console.log(`[Billing Reconciliation] Complete: ${reconciledCount} reconciled, ${alreadyMatchedCount} already matched, ${unresolvedCount} unresolved`);
+  } catch (error) {
+    console.error('[Billing Reconciliation] Error:', error);
   }
 }

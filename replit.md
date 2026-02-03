@@ -66,7 +66,21 @@ Preferred communication style: Simple, everyday language.
 - **Daily Club Billing System**: Platform fees are automatically calculated and billed based on active player count:
   - **Active Athlete Definition**: Athletes with payments in the billing period, valid paid_through_date, or session attendance
   - **Club Billing Day**: Clubs choose their billing day (1-28), stored in `clubs.billing_day` column
-  - **Daily Billing Job**: `processDailyClubBilling` runs at 3 AM daily, bills clubs on their chosen billing_day
+  - **Billing Modes**: Two modes controlled by `BILLING_MODE` environment variable:
+    - `BILLING_MODE=app` (default): App runs billing cron job at 3 AM (legacy)
+    - `BILLING_MODE=helcim`: Helcim subscription billing with automatic charges
+  - **Helcim Subscription Billing (Model A)**: When BILLING_MODE=helcim:
+    - Helcim handles recurring charges automatically via subscriptions
+    - **56 Plans Strategy**: 28 billing days × 2 payment methods (card/bank), created lazily
+    - **Plan Naming**: `visiosquad-{card|bank}-day-{01-28}`
+    - **Autopay Prep Job**: Runs at 5 AM, calculates variable monthly fees, PATCH subscription amounts
+    - **Reconciliation Job**: Runs at 6 AM, read-only sync with Helcim transactions
+    - **No-Touch Window**: 24h before through 12h after billing day - prevents PATCH during charge processing
+    - **Deterministic Periods**: Billing on day X covers X of previous month through X-1 of current month
+    - **Autopay Charge Status Flow**: prepared → paid/failed (reconciliation matches Helcim transactions by customerCode and updates status with transactionId)
+    - **Schema**: `platform_autopay_charges` table, `helcim_plans` table, `clubs.helcim_subscription_id` column
+    - **Feature Flags**: `BILLING_AUTOPAY_PREP_ENABLED`, `BILLING_RECONCILIATION_ENABLED`
+  - **Daily Billing Job**: `processDailyClubBilling` runs at 3 AM daily (SKIPPED when BILLING_MODE=helcim)
   - **End-of-Month Handling**: Clubs with billing_day > days in current month are billed on last day of month
   - **Grace Period**: 7 days for clubs to pay before locking, tracked via `billing_locked_at` timestamp
   - **Grace Period Job**: `processGracePeriodLocking` runs at 4 AM daily, locks clubs 7 days after billing

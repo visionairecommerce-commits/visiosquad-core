@@ -19,6 +19,13 @@ export interface Club {
   billing_bank_token?: string;
   billing_bank_last_four?: string;
   billing_method?: 'card' | 'bank';
+  billing_day?: number;
+  billing_locked_at?: string;
+  last_billed_at?: string;
+  last_billed_period_start?: string;
+  // Helcim subscription billing (Model A)
+  helcim_subscription_id?: string;
+  helcim_plan_id?: number;
   // DocuSeal onboarding status
   docuseal_onboarded: boolean;
   docuseal_team_name?: string;
@@ -706,6 +713,39 @@ export interface IStorage {
   updateDocuSealSetupRequest(requestId: string, data: { status?: 'open' | 'in_progress' | 'completed' | 'rejected'; notes?: string }): Promise<DocuSealSetupRequest>;
   markClubDocuSealOnboarded(clubId: string, onboardedByUserId?: string, teamName?: string): Promise<Club>;
   isClubDocuSealOnboarded(clubId: string): Promise<boolean>;
+
+  // ============ HELCIM MODEL A - AUTOPAY ============
+  
+  // Get clubs with active Helcim subscriptions for autopay prep
+  getClubsWithHelcimSubscriptions(): Promise<Club[]>;
+  
+  // Get club by Helcim customer code for reconciliation matching
+  getClubByCustomerCode(customerCode: string): Promise<Club | undefined>;
+  
+  // Platform ledger summary for calculating billing amounts
+  getPlatformLedgerSummary(clubId: string, periodStart: Date, periodEnd: Date): Promise<{ totalAmount: number; entryCount: number }>;
+  
+  // Autopay charge management
+  upsertAutopayCharge(charge: {
+    club_id: string;
+    period_start: string;
+    period_end: string;
+    amount: string;
+    convenience_fee: string;
+    status: 'prepared' | 'billed' | 'paid' | 'failed';
+    helcim_subscription_id?: string | null;
+    helcim_transaction_id?: string | null;
+  }): Promise<PlatformAutopayCharge>;
+  
+  getAutopayChargeForPeriod(clubId: string, billingDay: number, referenceDate: Date): Promise<PlatformAutopayCharge | undefined>;
+  getAutopayChargeByTransactionId(transactionId: string): Promise<PlatformAutopayCharge | undefined>;
+  updateAutopayChargeStatus(chargeId: string, status: 'prepared' | 'billed' | 'paid' | 'failed', transactionId?: string): Promise<PlatformAutopayCharge>;
+  
+  // Mark ledger entries as paid for a period (for reconciliation)
+  markLedgerEntriesPaidForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<void>;
+  
+  // Update club's Helcim subscription info
+  updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club>;
 }
 
 // Season interface
@@ -718,6 +758,22 @@ export interface Season {
   is_active: boolean;
   chat_data_deleted: boolean;
   created_at: string;
+}
+
+// Platform Autopay Charge interface (Helcim Model A)
+export interface PlatformAutopayCharge {
+  id: string;
+  club_id: string;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  convenience_fee: string;
+  status: 'prepared' | 'billed' | 'paid' | 'failed';
+  helcim_subscription_id?: string;
+  helcim_transaction_id?: string;
+  failure_reason?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // In-memory storage implementation
@@ -2040,6 +2096,53 @@ export class MemStorage implements IStorage {
   }
 
   async createAutoBillingLedgerEntry(clubId: string, athleteId: string, amount: number, feeType: 'monthly' | 'clinic' | 'drop_in' | 'event', billingPeriodStart: string): Promise<PlatformLedger> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  // ============ HELCIM MODEL A - AUTOPAY (MemStorage stubs) ============
+  
+  async getClubsWithHelcimSubscriptions(): Promise<Club[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getClubByCustomerCode(customerCode: string): Promise<Club | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getPlatformLedgerSummary(clubId: string, periodStart: Date, periodEnd: Date): Promise<{ totalAmount: number; entryCount: number }> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async upsertAutopayCharge(charge: {
+    club_id: string;
+    period_start: string;
+    period_end: string;
+    amount: string;
+    convenience_fee: string;
+    status: 'prepared' | 'billed' | 'paid' | 'failed';
+    helcim_subscription_id?: string | null;
+    helcim_transaction_id?: string | null;
+  }): Promise<PlatformAutopayCharge> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getAutopayChargeForPeriod(clubId: string, billingDay: number, referenceDate: Date): Promise<PlatformAutopayCharge | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getAutopayChargeByTransactionId(transactionId: string): Promise<PlatformAutopayCharge | undefined> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async updateAutopayChargeStatus(chargeId: string, status: 'prepared' | 'billed' | 'paid' | 'failed', transactionId?: string): Promise<PlatformAutopayCharge> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async markLedgerEntriesPaidForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club> {
     throw new Error('Not implemented in MemStorage');
   }
 }

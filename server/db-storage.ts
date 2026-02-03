@@ -15,8 +15,9 @@ import type {
   Facility, Court, Session, Registration, Payment, PlatformLedger, PlatformInvoice,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
-  PushSubscription as PushSub, Season, DocuSealSetupRequest
+  PushSubscription as PushSub, Season, DocuSealSetupRequest, PlatformAutopayCharge
 } from './storage';
+import { calculateBillingPeriod } from './lib/helcim';
 import type { IStorage } from './storage';
 import { randomUUID } from 'crypto';
 
@@ -2990,6 +2991,200 @@ export class DatabaseStorage implements IStorage {
       status: r.status,
       notes: r.notes,
       payload: r.payload,
+    };
+  }
+
+  // ============ HELCIM MODEL A - AUTOPAY ============
+
+  async getClubsWithHelcimSubscriptions(): Promise<Club[]> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('*')
+      .not('helcim_subscription_id', 'is', null)
+      .eq('onboarding_complete', true);
+    if (error) throw error;
+    return (data || []).map(c => this.mapClub(c));
+  }
+
+  async getClubByCustomerCode(customerCode: string): Promise<Club | undefined> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .select('*')
+      .eq('billing_customer_code', customerCode)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data ? this.mapClub(data) : undefined;
+  }
+
+  async getPlatformLedgerSummary(clubId: string, periodStart: Date, periodEnd: Date): Promise<{ totalAmount: number; entryCount: number }> {
+    const { data, error } = await supabase
+      .from('platform_ledger')
+      .select('amount')
+      .eq('club_id', clubId)
+      .gte('created_at', periodStart.toISOString())
+      .lte('created_at', periodEnd.toISOString())
+      .is('is_paid', false);
+    if (error) throw error;
+    
+    const entries = data || [];
+    const totalAmount = entries.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0);
+    return { totalAmount, entryCount: entries.length };
+  }
+
+  async upsertAutopayCharge(charge: {
+    club_id: string;
+    period_start: string;
+    period_end: string;
+    amount: string;
+    convenience_fee: string;
+    status: 'prepared' | 'billed' | 'paid' | 'failed';
+    helcim_subscription_id?: string | null;
+    helcim_transaction_id?: string | null;
+  }): Promise<PlatformAutopayCharge> {
+    // Check if charge exists for this club/period
+    const { data: existing, error: lookupError } = await supabase
+      .from('platform_autopay_charges')
+      .select('id')
+      .eq('club_id', charge.club_id)
+      .eq('period_start', charge.period_start)
+      .eq('period_end', charge.period_end)
+      .single();
+    
+    // PGRST116 means "no rows found" which is expected when inserting new
+    if (lookupError && lookupError.code !== 'PGRST116') {
+      throw lookupError;
+    }
+    
+    if (existing) {
+      // Update existing
+      const { data, error } = await supabase
+        .from('platform_autopay_charges')
+        .update({
+          amount: charge.amount,
+          convenience_fee: charge.convenience_fee,
+          status: charge.status,
+          helcim_subscription_id: charge.helcim_subscription_id,
+          helcim_transaction_id: charge.helcim_transaction_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return this.mapAutopayCharge(data);
+    } else {
+      // Insert new
+      const { data, error } = await supabase
+        .from('platform_autopay_charges')
+        .insert({
+          id: randomUUID(),
+          ...charge,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return this.mapAutopayCharge(data);
+    }
+  }
+
+  async getAutopayChargeForPeriod(clubId: string, billingDay: number, referenceDate: Date): Promise<PlatformAutopayCharge | undefined> {
+    // Calculate the expected period for this billing cycle
+    const { periodStart, periodEnd } = calculateBillingPeriod(billingDay, referenceDate);
+    const periodStartStr = periodStart.toISOString().split('T')[0];
+    const periodEndStr = periodEnd.toISOString().split('T')[0];
+    
+    const { data, error } = await supabase
+      .from('platform_autopay_charges')
+      .select('*')
+      .eq('club_id', clubId)
+      .eq('period_start', periodStartStr)
+      .eq('period_end', periodEndStr)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data ? this.mapAutopayCharge(data) : undefined;
+  }
+
+  async getAutopayChargeByTransactionId(transactionId: string): Promise<PlatformAutopayCharge | undefined> {
+    const { data, error } = await supabase
+      .from('platform_autopay_charges')
+      .select('*')
+      .eq('helcim_transaction_id', transactionId)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return undefined;
+      throw error;
+    }
+    return data ? this.mapAutopayCharge(data) : undefined;
+  }
+
+  async updateAutopayChargeStatus(chargeId: string, status: 'prepared' | 'billed' | 'paid' | 'failed', transactionId?: string): Promise<PlatformAutopayCharge> {
+    const updateData: any = {
+      status,
+      updated_at: new Date().toISOString(),
+    };
+    if (transactionId) {
+      updateData.helcim_transaction_id = transactionId;
+    }
+    
+    const { data, error } = await supabase
+      .from('platform_autopay_charges')
+      .update(updateData)
+      .eq('id', chargeId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapAutopayCharge(data);
+  }
+
+  async markLedgerEntriesPaidForPeriod(clubId: string, periodStart: Date, periodEnd: Date): Promise<void> {
+    const { error } = await supabase
+      .from('platform_ledger')
+      .update({ is_paid: true, updated_at: new Date().toISOString() })
+      .eq('club_id', clubId)
+      .gte('created_at', periodStart.toISOString())
+      .lte('created_at', periodEnd.toISOString())
+      .is('is_paid', false);
+    if (error) throw error;
+  }
+
+  async updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club> {
+    const { data, error } = await supabase
+      .from('clubs')
+      .update({
+        helcim_subscription_id: subscriptionId,
+        helcim_plan_id: planId,
+      })
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapClub(data);
+  }
+
+  private mapAutopayCharge(r: any): PlatformAutopayCharge {
+    return {
+      id: r.id,
+      club_id: r.club_id,
+      period_start: r.period_start,
+      period_end: r.period_end,
+      amount: r.amount,
+      convenience_fee: r.convenience_fee,
+      status: r.status,
+      helcim_subscription_id: r.helcim_subscription_id,
+      helcim_transaction_id: r.helcim_transaction_id,
+      failure_reason: r.failure_reason,
+      created_at: r.created_at?.toISOString?.() ?? r.created_at,
+      updated_at: r.updated_at?.toISOString?.() ?? r.updated_at,
     };
   }
 }

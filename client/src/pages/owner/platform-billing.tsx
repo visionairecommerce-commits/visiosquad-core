@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import {
   DollarSign,
   CreditCard,
@@ -85,10 +85,10 @@ interface PlatformInvoice {
 
 export default function PlatformBillingPage() {
   const { toast } = useToast();
-  const lastMonth = subMonths(new Date(), 1);
+  const currentMonth = new Date();
   
-  const [periodStart, setPeriodStart] = useState(format(startOfMonth(lastMonth), 'yyyy-MM-dd'));
-  const [periodEnd, setPeriodEnd] = useState(format(endOfMonth(lastMonth), 'yyyy-MM-dd'));
+  const [periodStart, setPeriodStart] = useState(format(startOfMonth(currentMonth), 'yyyy-MM-dd'));
+  const [periodEnd, setPeriodEnd] = useState(format(endOfMonth(currentMonth), 'yyyy-MM-dd'));
   const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'ach'>('credit_card');
   const [preview, setPreview] = useState<BillingPreview | null>(null);
   const [results, setResults] = useState<BillingResult | null>(null);

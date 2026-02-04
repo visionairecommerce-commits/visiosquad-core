@@ -8,14 +8,14 @@ import {
   programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
   clubFormsTable, clubFormViewsTable,
   chatChannelsTable, channelParticipantsTable, messagesTable,
-  bulletinPostsTable, bulletinReadsTable, pushSubscriptionsTable
+  bulletinPostsTable, bulletinReadsTable, pushSubscriptionsTable, snackItemsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger, PlatformInvoice,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
-  PushSubscription as PushSub, Season, DocuSealSetupRequest, PlatformAutopayCharge
+  PushSubscription as PushSub, Season, DocuSealSetupRequest, PlatformAutopayCharge, SnackItem
 } from './storage';
 import { calculateBillingPeriod } from './lib/helcim';
 import type { IStorage } from './storage';
@@ -3197,6 +3197,80 @@ export class DatabaseStorage implements IStorage {
       failure_reason: r.failure_reason,
       created_at: r.created_at?.toISOString?.() ?? r.created_at,
       updated_at: r.updated_at?.toISOString?.() ?? r.updated_at,
+    };
+  }
+
+  // ============ SNACK HUB METHODS ============
+
+  async getSnackItems(eventId: string, clubId: string): Promise<SnackItem[]> {
+    const items = await db.select().from(snackItemsTable)
+      .where(and(eq(snackItemsTable.event_id, eventId), eq(snackItemsTable.club_id, clubId)));
+    return items.map(this.mapSnackItem);
+  }
+
+  async createSnackItem(eventId: string, clubId: string, data: { category: string; item_name: string; quantity_needed: number; is_custom: boolean; created_by: string }): Promise<SnackItem> {
+    const [item] = await db.insert(snackItemsTable).values({
+      event_id: eventId,
+      club_id: clubId,
+      category: data.category as any,
+      item_name: data.item_name,
+      quantity_needed: data.quantity_needed,
+      is_custom: data.is_custom,
+      created_by: data.created_by,
+    }).returning();
+    return this.mapSnackItem(item);
+  }
+
+  async claimSnackItem(snackItemId: string, userId: string, userName: string): Promise<SnackItem> {
+    const [item] = await db.update(snackItemsTable)
+      .set({ claimed_by: userId, claimed_by_name: userName })
+      .where(eq(snackItemsTable.id, snackItemId))
+      .returning();
+    return this.mapSnackItem(item);
+  }
+
+  async unclaimSnackItem(snackItemId: string): Promise<SnackItem> {
+    const [item] = await db.update(snackItemsTable)
+      .set({ claimed_by: null, claimed_by_name: null })
+      .where(eq(snackItemsTable.id, snackItemId))
+      .returning();
+    return this.mapSnackItem(item);
+  }
+
+  async deleteSnackItem(snackItemId: string): Promise<void> {
+    await db.delete(snackItemsTable).where(eq(snackItemsTable.id, snackItemId));
+  }
+
+  async getEventAthleteAllergies(eventId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('event_rosters')
+      .select('athletes:athlete_id(food_allergies)')
+      .eq('event_id', eventId);
+    if (error) throw error;
+    
+    const allergies: string[] = [];
+    for (const row of (data || [])) {
+      const athlete = (row as any).athletes;
+      if (athlete?.food_allergies) {
+        allergies.push(athlete.food_allergies);
+      }
+    }
+    return allergies;
+  }
+
+  private mapSnackItem(r: any): SnackItem {
+    return {
+      id: r.id,
+      event_id: r.event_id,
+      club_id: r.club_id,
+      category: r.category,
+      item_name: r.item_name,
+      quantity_needed: r.quantity_needed,
+      claimed_by: r.claimed_by,
+      claimed_by_name: r.claimed_by_name,
+      is_custom: r.is_custom,
+      created_by: r.created_by,
+      created_at: r.created_at?.toISOString?.() ?? r.created_at,
     };
   }
 }

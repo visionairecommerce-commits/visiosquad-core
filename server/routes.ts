@@ -2053,6 +2053,94 @@ export async function registerRoutes(
     }
   });
 
+  // ============ SNACK HUB ============
+  
+  // Get snack items for an event
+  app.get('/api/events/:eventId/snacks', requireAuth, async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const items = await storage.getSnackItems(req.params.eventId, clubId);
+      res.json(items);
+    } catch (error) {
+      console.error('Error fetching snack items:', error);
+      res.status(500).json({ error: 'Failed to fetch snack items' });
+    }
+  });
+
+  // Get allergies for event athletes
+  app.get('/api/events/:eventId/allergies', requireAuth, async (req, res) => {
+    try {
+      const allergies = await storage.getEventAthleteAllergies(req.params.eventId);
+      res.json(allergies);
+    } catch (error) {
+      console.error('Error fetching allergies:', error);
+      res.status(500).json({ error: 'Failed to fetch allergies' });
+    }
+  });
+
+  // Create snack item (admin/coach/parent can add)
+  app.post('/api/events/:eventId/snacks', requireAuth, async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { category, item_name, quantity_needed = 1, is_custom = false } = req.body;
+      
+      if (!category || !item_name) {
+        return res.status(400).json({ error: 'Category and item name are required' });
+      }
+      
+      const item = await storage.createSnackItem(req.params.eventId, clubId, {
+        category,
+        item_name,
+        quantity_needed,
+        is_custom,
+        created_by: userId,
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      console.error('Error creating snack item:', error);
+      res.status(500).json({ error: 'Failed to create snack item' });
+    }
+  });
+
+  // Claim a snack item
+  app.post('/api/snacks/:snackId/claim', requireAuth, async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      
+      const item = await storage.claimSnackItem(req.params.snackId, userId, user.full_name);
+      res.json(item);
+    } catch (error) {
+      console.error('Error claiming snack item:', error);
+      res.status(500).json({ error: 'Failed to claim snack item' });
+    }
+  });
+
+  // Unclaim a snack item
+  app.post('/api/snacks/:snackId/unclaim', requireAuth, async (req, res) => {
+    try {
+      const item = await storage.unclaimSnackItem(req.params.snackId);
+      res.json(item);
+    } catch (error) {
+      console.error('Error unclaiming snack item:', error);
+      res.status(500).json({ error: 'Failed to unclaim snack item' });
+    }
+  });
+
+  // Delete snack item (admin/coach only)
+  app.delete('/api/snacks/:snackId', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      await storage.deleteSnackItem(req.params.snackId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting snack item:', error);
+      res.status(500).json({ error: 'Failed to delete snack item' });
+    }
+  });
+
   // ============ TEAMS ============
   app.get('/api/teams', requireAuth, async (req, res) => {
     try {

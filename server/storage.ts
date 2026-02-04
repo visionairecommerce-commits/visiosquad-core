@@ -777,6 +777,16 @@ export interface IStorage {
   
   // Update club's Helcim subscription info
   updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club>;
+  
+  // Snack Hub - collaborative snack management for events
+  getSnackItems(eventId: string, clubId: string): Promise<SnackItem[]>;
+  createSnackItem(eventId: string, clubId: string, data: { category: string; item_name: string; quantity_needed: number; is_custom: boolean; created_by: string }): Promise<SnackItem>;
+  claimSnackItem(snackItemId: string, userId: string, userName: string): Promise<SnackItem>;
+  unclaimSnackItem(snackItemId: string): Promise<SnackItem>;
+  deleteSnackItem(snackItemId: string): Promise<void>;
+  
+  // Athlete allergies for snack hub
+  getEventAthleteAllergies(eventId: string): Promise<string[]>;
 }
 
 // Season interface
@@ -805,6 +815,20 @@ export interface PlatformAutopayCharge {
   failure_reason?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SnackItem {
+  id: string;
+  event_id: string;
+  club_id: string;
+  category: 'infrastructure' | 'hydration' | 'protein' | 'fruit_veg' | 'snacks' | 'other';
+  item_name: string;
+  quantity_needed: number;
+  claimed_by?: string | null;
+  claimed_by_name?: string | null;
+  is_custom: boolean;
+  created_by: string;
+  created_at: string;
 }
 
 // In-memory storage implementation
@@ -2255,6 +2279,30 @@ export class MemStorage implements IStorage {
   }
   
   async updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getSnackItems(eventId: string, clubId: string): Promise<SnackItem[]> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async createSnackItem(eventId: string, clubId: string, data: { category: string; item_name: string; quantity_needed: number; is_custom: boolean; created_by: string }): Promise<SnackItem> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async claimSnackItem(snackItemId: string, userId: string, userName: string): Promise<SnackItem> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async unclaimSnackItem(snackItemId: string): Promise<SnackItem> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async deleteSnackItem(snackItemId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+  
+  async getEventAthleteAllergies(eventId: string): Promise<string[]> {
     throw new Error('Not implemented in MemStorage');
   }
 }

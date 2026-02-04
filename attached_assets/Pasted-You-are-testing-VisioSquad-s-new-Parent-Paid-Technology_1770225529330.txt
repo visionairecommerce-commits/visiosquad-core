@@ -1,0 +1,85 @@
+You are testing VisioSquad’s new Parent-Paid “Technology and Service Fees” v2 zero-loss model. I do NOT want manual setup. Create an automated test harness that seeds minimal data, runs end-to-end flows, and prints a clear report.
+
+Hard requirements:
+- Do NOT create a new fee system. Use the existing shared/pricing.ts v2 implementation.
+- Do NOT require real Helcim transactions. Use mocking/stubbing so tests can run locally/CI without money moving.
+- Tests must prove:
+  1) v2 fee math is applied everywhere (contracts + events)
+  2) debit never has a percentage
+  3) discounts are represented as discounts (negative line item) and terminology is compliant
+  4) payments written to DB contain correct accounting fields (base_amount, tech_fee_amount, amount, payment_rail, payment_kind, months_count, fee_version=v2_2026_02_zero_loss_discounts)
+  5) revenue dashboard queries include v2
+  6) no club billing jobs run when PARENT_PAID_FEES_ENABLED=true
+
+Test strategy:
+A) Create a dedicated e2e test file (tests/billing-v2.e2e.test.ts) that:
+  - Boots the server in test mode
+  - Uses a temporary test database schema (or transaction rollback) and seeds:
+    * 1 club
+    * 1 director user
+    * 1 parent user
+    * 1 athlete
+    * 1 contract option that supports monthly/3-month/9-month
+    * 1 event (one-time)
+  - IMPORTANT: Seed must be deterministic and not rely on UI clicking.
+
+B) Mock Helcim:
+  - Intercept Helcim API calls used for charging (purchase) and transaction lookups (webhook fetch if relevant).
+  - Return realistic success payloads with transactionId and method classification fields where your code expects them.
+  - Provide three mocked rails: card_credit, card_debit, ach.
+  - Ensure card “unknown” defaults to debit in the server logic; test that path too.
+
+C) Execute end-to-end flows (server route level):
+  1) Contract recurring (monthsCount=1) base=50
+     - credit: expect techFee = (50*0.0375)+(1*3.50)=5.38
+     - debit: techFee = 3.50
+     - ach: techFee = max( (5.38 - (50*0.02+0.5)=3.88), min 3.00 ) => 3.88
+     - verify DB writes correct fields and totals
+     - verify receipt email payload (stub resend) includes:
+       “Technology and Service Fees”, and if discount: “ACH Discount” or “Debit Discount”
+  2) Contract upfront (monthsCount=9) base=900
+     - credit: techFee = 65.25
+     - debit: techFee = 31.50
+     - ach: techFee = 46.75 (min 27.00 not binding)
+     - verify DB fields
+  3) One-time event base=50
+     - credit: 3.38
+     - debit: 1.50
+     - ach: 1.88 (min 1.00 not binding)
+     - verify DB fields
+  4) “Unknown card type” path:
+     - mock Helcim response without debit/credit classification
+     - ensure server assigns payment_rail=card_debit and techFee has no percent
+
+D) Verify terminology compliance:
+  - Scan rendered receipt email text or the email builder output:
+    must NOT contain “surcharge”, “processing fee”, “convenience fee”, “credit card fee”.
+    must contain “Technology and Service Fees”.
+  - If any forbidden terms exist, fail the test.
+
+E) Verify revenue dashboard:
+  - Call the revenue API route used by /owner/revenue
+  - Assert that v2 payments are included in totals and grouped by rail/kind.
+  - If dashboard filtering only includes v1, fix it so it includes v2 (or supports both).
+
+F) Verify club billing is disabled:
+  - With PARENT_PAID_FEES_ENABLED=true, ensure any scheduled club billing functions either do not run or early-exit.
+  - Add a unit test that imports scheduled job module and asserts that billing functions are not invoked in v2 mode (use spies/mocks).
+
+G) Create a test runner script:
+  - tests/run-billing-v2-e2e.ts that runs the suite and prints a readable summary:
+    PASS/FAIL counts + key computed fee results + sample DB rows (sanitized).
+  - Ensure it can be run as:
+    PARENT_PAID_FEES_ENABLED=true npx tsx tests/run-billing-v2-e2e.ts
+
+Implementation notes:
+- Stub Resend in tests so emails don’t send; capture “to/subject/body” for assertions.
+- Use existing db utilities and storage layer where possible; avoid brittle direct SQL unless necessary.
+- No unrelated formatting diffs.
+- After implementing, run the tests and report:
+  - number of tests
+  - pass/fail
+  - sample computed fee values
+  - confirmation of fee_version = v2_2026_02_zero_loss_discounts on created payments
+
+Proceed and implement this test harness now.

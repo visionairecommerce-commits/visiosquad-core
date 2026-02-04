@@ -1,0 +1,31 @@
+We have a critical compliance issue: debit payments must NOT be charged a percentage fee. Replit notes the system “charges the credit rate upfront and only adjusts for reporting.” That is not allowed.
+
+Task: verify and fix so that the amount we send to Helcim for debit equals baseAmount + flatFee ONLY (no percent), and receipts show correct discount framing.
+
+Requirements:
+1) Identify exactly where the Helcim purchase amount is computed for card payments.
+2) For debit rail, ensure the computed TOTAL (base + tech fee) is used in the Helcim purchase request amount.
+3) The system must not charge the credit standard amount and then “adjust for reporting.”
+4) Update tests to assert the Helcim purchase payload amount is correct:
+   - recurring debit base=50 months=1 => total must be 53.50
+   - one-time debit base=50 => total must be 51.50
+5) Add a test assertion that intercepts the mocked Helcim purchase request body and validates `amount` equals expected total for each rail.
+6) Ensure card type detection happens early enough to choose debit vs credit BEFORE finalizing the amount sent to Helcim.
+   - If Helcim only returns cardFunding AFTER purchase, then you cannot safely decide debit vs credit after charging.
+   - In that case, implement a compliance-safe approach:
+     A) Require user to select “Debit” vs “Credit” at checkout, and treat it as payment_rail input.
+     B) Default unknown to debit (flat only).
+   - The purchase amount must be based on that selection.
+7) Update receipts to match the actual charged amount:
+   - Base
+   - Technology and Service Fees (final)
+   - Discount line item if applicable
+   - Total must equal what was charged.
+8) Database: do not hand-edit constraints. Make schema changes via the normal migration/push process. Output the exact commands needed and ensure they are repeatable.
+
+Deliverables:
+- List files changed
+- Explain how debit/credit decision is made BEFORE charging
+- Re-run the HTTP E2E payment tests and full suite and report pass counts
+- Print one sample mocked Helcim purchase payload for each rail (credit, debit, ach) showing the `amount` sent
+Proceed now.

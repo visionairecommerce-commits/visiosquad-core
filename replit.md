@@ -153,9 +153,9 @@ Preferred communication style: Simple, everyday language.
 - **TRUE HTTP-level E2E tests** in `tests/billing-v2.payments.http-e2e.test.ts`
 - **Test Helpers**:
   - `tests/helpers/seedBillingFixtures.ts`: Raw SQL database seeding (bypasses Drizzle schema issues)
-  - `tests/helpers/mockServices.ts`: Global fetch mock for Helcim/Resend API interception
-- **Coverage**: 29 tests covering credit, debit, ACH, one-time events, and unknown card type compliance
+  - `tests/helpers/mockServices.ts`: Global fetch mock for Helcim/Resend API interception (captures request payloads)
+- **Coverage**: 40 tests covering credit, debit, ACH, one-time events, and unknown card type compliance
 - **Run tests**: `PARENT_PAID_FEES_ENABLED=true npx tsx tests/billing-v2.payments.http-e2e.test.ts`
-- **Card Detection**: processPayment returns `cardFunding`/`cardType` fields from Helcim response
-- **Debit Compliance**: Unknown card types default to debit (flat fee only) for compliance safety
+- **Debit Compliance**: User selects card_type (credit/debit) at checkout. Amount is calculated BEFORE charging Helcim. Unknown defaults to debit (flat fee only).
 - **Fee Version**: `v2_2026_02_zero_loss_discounts` validated across all test suites
+- **Helcim Payload Verification**: Tests assert the `amount` sent to Helcim is correct for each payment rail

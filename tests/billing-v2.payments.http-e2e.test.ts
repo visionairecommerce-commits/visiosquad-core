@@ -26,7 +26,8 @@ import {
   clearCapturedEmails, 
   getCapturedEmails,
   getHelcimCallCount,
-  assertEmailContent
+  assertEmailContent,
+  getLatestHelcimRequest
 } from './helpers/mockServices';
 import { db } from '../server/lib/db';
 import { paymentsTable } from '../shared/schema';
@@ -120,11 +121,18 @@ async function runTests() {
         payment_method: 'credit_card',
         months_count: 1,
         card_token: 'test-token-credit',
+        card_type: 'credit',  // COMPLIANCE: User selects card type at checkout
       });
 
     assert(creditRes.status === 201, 'Credit', 'HTTP 201 Created', `Got ${creditRes.status}`);
     assert(creditRes.body.success === true, 'Credit', 'Response success=true', `Got ${creditRes.body.success}`);
     assert(getHelcimCallCount() === 1, 'Credit', 'Helcim API called once', `Called ${getHelcimCallCount()} times`);
+    
+    // Verify Helcim was charged the correct amount
+    const creditHelcimReq = getLatestHelcimRequest();
+    assert(creditHelcimReq?.amount === 55.38, 'Credit', 
+      'Helcim charged $55.38 (base $50 + fee $5.38)', `Got ${creditHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${creditHelcimReq?.amount}`);
 
     const creditPayment = await getLatestPayment(fixtures.athlete.id);
     assert(creditPayment !== undefined, 'Credit', 'Payment record created in DB');
@@ -182,9 +190,16 @@ async function runTests() {
         payment_method: 'credit_card',
         months_count: 1,
         card_token: 'test-token-debit',
+        card_type: 'debit',  // COMPLIANCE: User selects card type at checkout
       });
 
     assert(debitRes.status === 201, 'Debit', 'HTTP 201 Created', `Got ${debitRes.status}`);
+    
+    // COMPLIANCE: Verify Helcim was charged ONLY flat fee (no percentage)
+    const debitHelcimReq = getLatestHelcimRequest();
+    assert(debitHelcimReq?.amount === 53.50, 'Debit', 
+      'Helcim charged $53.50 (base $50 + flat fee $3.50, NO percentage)', `Got ${debitHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${debitHelcimReq?.amount}`);
 
     const debitPayment = await getLatestPayment(fixtures.athlete.id);
     if (debitPayment) {
@@ -192,11 +207,9 @@ async function runTests() {
         'tech_fee_amount = 3.50 (flat only)', `Got ${debitPayment.tech_fee_amount}`);
       assert(debitPayment.payment_rail === 'card_debit', 'Debit', 
         'payment_rail = card_debit', `Got ${debitPayment.payment_rail}`);
-      // Note: Amount is $55.38 because credit rate was charged initially, then debit detected
-      // The tech_fee_amount and payment_rail reflect actual card type for reporting
-      // In production, a partial refund would be issued for the $1.88 difference
-      assert(parseFloat(debitPayment.amount) === 55.38, 'Debit', 
-        'amount (charged) = 55.38 (credit rate charged, debit detected after)', `Got ${debitPayment.amount}`);
+      // COMPLIANCE: Amount charged is exactly base + flat fee (NO percentage fee)
+      assert(parseFloat(debitPayment.amount) === 53.50, 'Debit', 
+        'amount (total) = 53.50 (flat fee only, compliant)', `Got ${debitPayment.amount}`);
     }
 
     const debitEmails = getCapturedEmails();
@@ -227,6 +240,12 @@ async function runTests() {
       });
 
     assert(achRes.status === 201, 'ACH', 'HTTP 201 Created', `Got ${achRes.status}`);
+    
+    // Verify Helcim was charged the correct discounted amount
+    const achHelcimReq = getLatestHelcimRequest();
+    assert(achHelcimReq?.amount === 53.88, 'ACH', 
+      'Helcim charged $53.88 (base $50 + discounted fee $3.88)', `Got ${achHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${achHelcimReq?.amount}`);
 
     const achPayment = await getLatestPayment(fixtures.athlete.id);
     if (achPayment) {
@@ -263,9 +282,16 @@ async function runTests() {
         payment_type: 'clinic',
         payment_method: 'credit_card',
         card_token: 'test-token-event',
+        card_type: 'credit',  // COMPLIANCE: User selects card type at checkout
       });
 
     assert(eventRes.status === 201, 'Event', 'HTTP 201 Created', `Got ${eventRes.status}`);
+    
+    // Verify Helcim was charged the correct one-time amount
+    const eventHelcimReq = getLatestHelcimRequest();
+    assert(eventHelcimReq?.amount === 53.38, 'Event', 
+      'Helcim charged $53.38 (base $50 + one-time fee $3.38)', `Got ${eventHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${eventHelcimReq?.amount}`);
 
     const eventPayment = await getLatestPayment(fixtures.athlete.id);
     if (eventPayment) {
@@ -278,12 +304,50 @@ async function runTests() {
     }
 
     console.log('\n──────────────────────────────────────────────────────────────────────');
-    console.log('TEST E: Unknown Card Type - Defaults to Debit (Compliance)');
+    console.log('TEST E: One-Time Event Payment - Debit Card (Compliance)');
+    console.log('──────────────────────────────────────────────────────────────────────');
+    
+    configureHelcimMock({ rail: 'card_debit', transactionId: 'T1006' });
+    clearCapturedEmails();
+
+    const eventDebitRes = await request(app)
+      .post('/api/payments/process')
+      .set(authHeaders)
+      .send({
+        athlete_id: fixtures.athlete.id,
+        amount: 50,
+        payment_type: 'clinic',
+        payment_method: 'credit_card',
+        card_token: 'test-token-event-debit',
+        card_type: 'debit',  // COMPLIANCE: User selects debit at checkout
+      });
+
+    assert(eventDebitRes.status === 201, 'EventDebit', 'HTTP 201 Created', `Got ${eventDebitRes.status}`);
+    
+    // COMPLIANCE: One-time debit = base + flat fee only ($1.50)
+    const eventDebitHelcimReq = getLatestHelcimRequest();
+    assert(eventDebitHelcimReq?.amount === 51.50, 'EventDebit', 
+      'Helcim charged $51.50 (base $50 + flat fee $1.50, NO percentage)', `Got ${eventDebitHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${eventDebitHelcimReq?.amount}`);
+
+    const eventDebitPayment = await getLatestPayment(fixtures.athlete.id);
+    if (eventDebitPayment) {
+      assert(parseFloat(eventDebitPayment.tech_fee_amount || '0') === 1.50, 'EventDebit', 
+        'tech_fee_amount = 1.50 (one-time flat only)', `Got ${eventDebitPayment.tech_fee_amount}`);
+      assert(eventDebitPayment.payment_rail === 'card_debit', 'EventDebit', 
+        'payment_rail = card_debit', `Got ${eventDebitPayment.payment_rail}`);
+      assert(parseFloat(eventDebitPayment.amount) === 51.50, 'EventDebit', 
+        'amount (total) = 51.50 (flat fee only, compliant)', `Got ${eventDebitPayment.amount}`);
+    }
+
+    console.log('\n──────────────────────────────────────────────────────────────────────');
+    console.log('TEST F: Unknown Card Type - Defaults to Debit (Compliance)');
     console.log('──────────────────────────────────────────────────────────────────────');
     
     configureHelcimMock({ rail: 'unknown', transactionId: 'T1005' });
     clearCapturedEmails();
 
+    // NO card_type specified - should default to debit for compliance
     const unknownRes = await request(app)
       .post('/api/payments/process')
       .set(authHeaders)
@@ -294,9 +358,16 @@ async function runTests() {
         payment_method: 'credit_card',
         months_count: 1,
         card_token: 'test-token-unknown',
+        // card_type intentionally omitted - tests compliance default
       });
 
     assert(unknownRes.status === 201, 'Unknown', 'HTTP 201 Created', `Got ${unknownRes.status}`);
+    
+    // COMPLIANCE: When card_type not specified, defaults to debit (flat fee only)
+    const unknownHelcimReq = getLatestHelcimRequest();
+    assert(unknownHelcimReq?.amount === 53.50, 'Unknown', 
+      'Helcim charged $53.50 (defaults to debit flat fee)', `Got ${unknownHelcimReq?.amount}`);
+    console.log(`  ✓ Helcim payload amount: $${unknownHelcimReq?.amount}`);
 
     const unknownPayment = await getLatestPayment(fixtures.athlete.id);
     if (unknownPayment) {
@@ -304,6 +375,8 @@ async function runTests() {
         'tech_fee_amount = 3.50 (defaults to debit)', `Got ${unknownPayment.tech_fee_amount}`);
       assert(unknownPayment.payment_rail === 'card_debit', 'Unknown', 
         'payment_rail = card_debit (compliance default)', `Got ${unknownPayment.payment_rail}`);
+      assert(parseFloat(unknownPayment.amount) === 53.50, 'Unknown', 
+        'amount (total) = 53.50 (flat fee only)', `Got ${unknownPayment.amount}`);
     }
 
   } finally {

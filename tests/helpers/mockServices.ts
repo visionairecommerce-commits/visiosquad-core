@@ -35,6 +35,7 @@ let helcimMockConfig: {
 
 let capturedEmails: CapturedEmail[] = [];
 let helcimCallCount = 0;
+let capturedHelcimRequests: { url: string; body: any; amount?: number }[] = [];
 
 /**
  * Configure Helcim mock behavior
@@ -50,6 +51,7 @@ export function configureHelcimMock(config: {
     shouldSucceed: config.shouldSucceed ?? true,
   };
   helcimCallCount = 0;
+  capturedHelcimRequests = [];
 }
 
 /**
@@ -78,6 +80,27 @@ export function getCapturedEmails(): CapturedEmail[] {
  */
 export function getLatestEmail(): CapturedEmail | undefined {
   return capturedEmails[capturedEmails.length - 1];
+}
+
+/**
+ * Get all captured Helcim requests
+ */
+export function getCapturedHelcimRequests(): { url: string; body: any; amount?: number }[] {
+  return [...capturedHelcimRequests];
+}
+
+/**
+ * Get the most recent Helcim request
+ */
+export function getLatestHelcimRequest(): { url: string; body: any; amount?: number } | undefined {
+  return capturedHelcimRequests[capturedHelcimRequests.length - 1];
+}
+
+/**
+ * Clear captured Helcim requests
+ */
+export function clearCapturedHelcimRequests(): void {
+  capturedHelcimRequests = [];
 }
 
 /**
@@ -122,6 +145,21 @@ export function installGlobalMocks(): void {
       helcimCallCount++;
       const mockResponse = createHelcimMockResponse();
       
+      // Capture the request payload for verification
+      let requestBody: any = {};
+      if (init?.body) {
+        try {
+          requestBody = JSON.parse(init.body as string);
+        } catch (e) {
+          requestBody = {};
+        }
+      }
+      capturedHelcimRequests.push({
+        url,
+        body: requestBody,
+        amount: requestBody.amount,
+      });
+      
       if (!mockResponse.success) {
         return new Response(
           JSON.stringify({ errors: [{ message: 'Payment failed' }] }),
@@ -135,7 +173,7 @@ export function installGlobalMocks(): void {
           status: 'APPROVED',
           cardFunding: mockResponse.cardFunding,
           cardType: mockResponse.cardType,
-          amount: 100,
+          amount: requestBody.amount || 100,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );

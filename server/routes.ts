@@ -236,6 +236,7 @@ const paymentSchema = z.object({
   payment_method: z.enum(['credit_card', 'ach']),
   card_token: z.string().optional(),
   months_count: z.number().min(1).optional(),
+  card_type: z.enum(['credit', 'debit']).optional(),
 }).refine((data) => {
   // Require card_token for credit card payments (unless in demo mode)
   if (data.payment_method === 'credit_card' && !data.card_token) {
@@ -3559,13 +3560,23 @@ export async function registerRoutes(
 
       if (PARENT_PAID_FEES_ENABLED) {
         // NEW MODEL: Parent pays Technology and Service Fees
-        // Determine payment rail (only credit_card or ach - cash handled separately)
+        // COMPLIANCE: Determine payment rail BEFORE charging
+        // Debit cards MUST NOT be charged percentage fees
         if (data.payment_method === 'ach') {
           paymentRail = 'ach';
         } else {
-          // Card payment - will detect credit/debit after processing
-          // Initially calculate as credit, may adjust after transaction
-          paymentRail = 'card_credit';
+          // Card payment - user selects credit/debit at checkout
+          // COMPLIANCE: Default to debit (flat fee only) if not specified
+          // This ensures we never overcharge debit card users
+          if (data.card_type === 'credit') {
+            paymentRail = 'card_credit';
+          } else {
+            // Default to debit for compliance safety
+            paymentRail = 'card_debit';
+            if (!data.card_type) {
+              console.log('[Payment] No card_type specified, defaulting to debit for compliance');
+            }
+          }
         }
 
         const pricing = calculateTechnologyAndServiceFees({
@@ -3577,6 +3588,8 @@ export async function registerRoutes(
         totalAmount = pricing.totalAmount;
         techFeeAmount = pricing.techFee;
         feeVersion = pricing.feeVersion;
+        
+        console.log(`[Payment] Rail: ${paymentRail}, Base: $${baseAmount}, Fee: $${techFeeAmount}, Total: $${totalAmount}`);
       } else {
         // OLD MODEL: Legacy convenience fee structure
         totalAmount = calculateTotalWithFee(data.amount, data.payment_method);
@@ -3585,34 +3598,13 @@ export async function registerRoutes(
         feeVersion = undefined;
       }
 
-      // Process payment through Helcim
+      // Process payment through Helcim with the CORRECTLY CALCULATED amount
+      // The amount sent to Helcim equals baseAmount + techFeeAmount (no post-charge adjustment)
       const paymentResult = await processPayment({
         amount: totalAmount!,
         cardToken: data.card_token,
         comments: `${data.payment_type} payment for ${athlete.first_name} ${athlete.last_name}`,
       });
-
-      // If PARENT_PAID_FEES_ENABLED and card payment, detect actual card type
-      if (PARENT_PAID_FEES_ENABLED && paymentResult.success && data.payment_method === 'credit_card') {
-        const detectedFunding = detectCardFundingType(paymentResult);
-        const actualPaymentRail = cardFundingToPaymentRail(detectedFunding);
-        
-        // If it was actually a debit card, recalculate with debit pricing (flat only)
-        if (actualPaymentRail === 'card_debit' && paymentRail !== 'card_debit') {
-          const debitPricing = calculateTechnologyAndServiceFees({
-            baseAmount,
-            monthsCount,
-            paymentKind,
-            paymentRail: 'card_debit',
-          });
-          // Note: We already charged the credit rate. 
-          // In production, you might issue a partial refund for the difference.
-          // For now, we record the actual detected rail for reporting.
-          paymentRail = 'card_debit';
-          techFeeAmount = debitPricing.techFee;
-          console.log(`[Payment] Detected debit card, fee adjusted: $${techFeeAmount}`);
-        }
-      }
 
       const payment = await storage.createPayment(clubId, {
         athlete_id: data.athlete_id,

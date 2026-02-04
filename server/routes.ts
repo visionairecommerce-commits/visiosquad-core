@@ -1805,6 +1805,7 @@ export async function registerRoutes(
     location: z.string().optional(),
     capacity: z.number().optional(),
     price: z.number().min(0),
+    snack_hub_enabled: z.boolean().optional(),
   });
 
   const addEventRosterSchema = z.object({
@@ -1859,6 +1860,7 @@ export async function registerRoutes(
         location: data.location,
         capacity: data.capacity,
         price: data.price,
+        snack_hub_enabled: data.snack_hub_enabled ?? false,
       });
       res.status(201).json(event);
     } catch (error) {

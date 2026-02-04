@@ -1886,6 +1886,7 @@ export class DatabaseStorage implements IStorage {
       capacity: event.capacity ?? null,
       price: event.price.toString(),
       status: 'scheduled',
+      snack_hub_enabled: event.snack_hub_enabled ?? false,
     }).returning();
     return this.mapEvent(e);
   }
@@ -1903,6 +1904,7 @@ export class DatabaseStorage implements IStorage {
     if (data.capacity !== undefined) updateData.capacity = data.capacity;
     if (data.price !== undefined) updateData.price = data.price.toString();
     if (data.status !== undefined) updateData.status = data.status;
+    if (data.snack_hub_enabled !== undefined) updateData.snack_hub_enabled = data.snack_hub_enabled;
     
     const [e] = await db.update(eventsTable)
       .set(updateData)
@@ -2005,6 +2007,7 @@ export class DatabaseStorage implements IStorage {
       capacity: e.capacity ?? undefined,
       price: parseFloat(e.price),
       status: e.status,
+      snack_hub_enabled: e.snack_hub_enabled ?? false,
       created_at: e.created_at?.toISOString?.() ?? e.created_at,
     };
   }

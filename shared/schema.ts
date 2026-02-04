@@ -562,6 +562,7 @@ export const eventsTable = pgTable("events", {
   capacity: integer("capacity"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   status: text("status", { enum: ["scheduled", "cancelled", "completed"] }).default("scheduled").notNull(),
+  snack_hub_enabled: boolean("snack_hub_enabled").default(false).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -860,6 +861,7 @@ export interface Event {
   capacity?: number;
   price: number;
   status: 'scheduled' | 'cancelled' | 'completed';
+  snack_hub_enabled: boolean;
   created_at: string;
 }
 
@@ -1103,6 +1105,7 @@ export const insertEventSchema = z.object({
   location: z.string().optional(),
   capacity: z.number().optional(),
   price: z.number().min(0, "Price must be non-negative"),
+  snack_hub_enabled: z.boolean().optional().default(false),
 });
 
 export const insertEventRosterSchema = z.object({

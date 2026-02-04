@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
@@ -83,6 +84,7 @@ interface EventFormData {
   location: string;
   capacity: number | undefined;
   price: number;
+  snack_hub_enabled: boolean;
   selectedAthletes: { id: string; first_name: string; last_name: string }[];
 }
 
@@ -97,6 +99,7 @@ const initialFormData: EventFormData = {
   location: '',
   capacity: undefined,
   price: 0,
+  snack_hub_enabled: false,
   selectedAthletes: [],
 };
 
@@ -151,6 +154,7 @@ export default function EventsPage() {
         location: data.location || undefined,
         capacity: data.capacity || undefined,
         price: data.price,
+        snack_hub_enabled: data.snack_hub_enabled,
       });
       const event = await response.json();
       
@@ -393,6 +397,7 @@ export default function EventsPage() {
       location: event.location || '',
       capacity: event.capacity || undefined,
       price: event.price,
+      snack_hub_enabled: event.snack_hub_enabled || false,
       selectedAthletes: [], // For editing, use the roster dialog instead
     });
     setFormAthleteSearch('');
@@ -599,6 +604,18 @@ export default function EventsPage() {
                       data-testid="input-event-capacity"
                     />
                   </div>
+                </div>
+
+                <div className="flex items-center space-x-2 py-2">
+                  <Checkbox
+                    id="snack_hub_enabled"
+                    checked={formData.snack_hub_enabled}
+                    onCheckedChange={(checked) => setFormData({ ...formData, snack_hub_enabled: checked === true })}
+                    data-testid="checkbox-snack-hub"
+                  />
+                  <Label htmlFor="snack_hub_enabled" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Enable Snack Hub for this event
+                  </Label>
                 </div>
 
                 <div className="space-y-2">
@@ -848,15 +865,17 @@ export default function EventsPage() {
                           <Users className="h-3.5 w-3.5 mr-1" />
                           Roster
                         </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setSnackEventId(event.id)}
-                          data-testid={`button-snacks-${event.id}`}
-                        >
-                          <Cookie className="h-3.5 w-3.5 mr-1" />
-                          Snacks
-                        </Button>
+                        {event.snack_hub_enabled && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSnackEventId(event.id)}
+                            data-testid={`button-snacks-${event.id}`}
+                          >
+                            <Cookie className="h-3.5 w-3.5 mr-1" />
+                            Snacks
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"

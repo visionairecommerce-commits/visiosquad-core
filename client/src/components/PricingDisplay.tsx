@@ -9,9 +9,10 @@ import {
 } from '@/components/ui/tooltip';
 import { 
   calculateTechnologyAndServiceFees, 
+  getTriplePricing,
+  formatFeeDescription,
   type PaymentKind, 
   type PaymentRail,
-  FEE_CONFIG 
 } from '@shared/pricing';
 
 interface PricingDisplayProps {
@@ -19,8 +20,8 @@ interface PricingDisplayProps {
   monthsCount?: number;
   isRecurring?: boolean;
   showComparison?: boolean;
-  selectedMethod?: 'card' | 'ach';
-  onMethodChange?: (method: 'card' | 'ach') => void;
+  selectedMethod?: 'card' | 'debit' | 'ach';
+  onMethodChange?: (method: 'card' | 'debit' | 'ach') => void;
 }
 
 export function PricingDisplay({
@@ -33,50 +34,19 @@ export function PricingDisplay({
 }: PricingDisplayProps) {
   const paymentKind: PaymentKind = isRecurring ? 'recurring_contract' : 'one_time_event';
   
-  const cardCreditPricing = calculateTechnologyAndServiceFees({
+  const { standard, debit, ach, debitSavings, achSavings } = getTriplePricing(
     baseAmount,
     monthsCount,
-    paymentKind,
-    paymentRail: 'card_credit',
-  });
+    paymentKind
+  );
   
-  const cardDebitPricing = calculateTechnologyAndServiceFees({
-    baseAmount,
-    monthsCount,
-    paymentKind,
-    paymentRail: 'card_debit',
-  });
-  
-  const achPricing = calculateTechnologyAndServiceFees({
-    baseAmount,
-    monthsCount,
-    paymentKind,
-    paymentRail: 'ach',
-  });
-  
-  const cardSavingsVsCredit = cardCreditPricing.totalAmount - cardDebitPricing.totalAmount;
-  const achSavingsVsCredit = cardCreditPricing.totalAmount - achPricing.totalAmount;
-  
-  const activePricing = selectedMethod === 'card' ? cardCreditPricing : achPricing;
-  
-  const formatFeeDescription = (rail: PaymentRail, kind: PaymentKind) => {
-    const isRecurring = kind === 'recurring_contract';
-    const flatFee = isRecurring ? FEE_CONFIG.RECURRING_FLAT_PER_MONTH : FEE_CONFIG.ONE_TIME_FLAT;
-    
-    switch (rail) {
-      case 'card_credit':
-        return isRecurring ? `3% + $${flatFee.toFixed(2)}/month` : `3% + $${flatFee.toFixed(2)}`;
-      case 'card_debit':
-        return isRecurring ? `$${flatFee.toFixed(2)}/month (no %)` : `$${flatFee.toFixed(2)} flat`;
-      case 'ach':
-        return isRecurring ? `1.5% + $${flatFee.toFixed(2)}/month` : `1.5% + $${flatFee.toFixed(2)}`;
-    }
-  };
+  const activePricing = selectedMethod === 'ach' ? ach : 
+                        selectedMethod === 'debit' ? debit : standard;
 
   return (
     <div className="space-y-4">
       {showComparison && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3">
           <Card 
             className={`cursor-pointer transition-all ${
               selectedMethod === 'card' 
@@ -87,27 +57,49 @@ export function PricingDisplay({
             data-testid="button-payment-method-card"
           >
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <CreditCard className="h-4 w-4 text-primary" />
-                <span className="font-medium text-sm">Card</span>
-              </div>
-              <div className="text-lg font-bold">
-                ${cardCreditPricing.totalAmount.toFixed(2)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {formatFeeDescription('card_credit', paymentKind)}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  <span className="font-medium text-sm">Pay by Card</span>
+                </div>
+                <div className="text-lg font-bold">
+                  ${standard.totalAmount.toFixed(2)}
+                </div>
               </div>
               <div className="text-xs text-muted-foreground mt-1">
-                <Tooltip>
-                  <TooltipTrigger className="underline decoration-dotted cursor-help">
-                    Debit: ${cardDebitPricing.totalAmount.toFixed(2)}
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>Debit cards get the percentage fee waived. Your card type will be automatically detected at checkout.</p>
-                  </TooltipContent>
-                </Tooltip>
-                {cardSavingsVsCredit > 0 && (
-                  <span className="text-accent ml-1">(save ${cardSavingsVsCredit.toFixed(2)})</span>
+                Standard fee: {formatFeeDescription('card_credit', paymentKind)}
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className={`cursor-pointer transition-all ${
+              selectedMethod === 'debit' 
+                ? 'ring-2 ring-primary border-primary' 
+                : 'hover-elevate'
+            }`}
+            onClick={() => onMethodChange?.('debit')}
+            data-testid="button-payment-method-debit"
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-accent" />
+                  <span className="font-medium text-sm">Pay by Debit Card</span>
+                  {debitSavings > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      Discount Applied
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-lg font-bold">
+                  ${debit.totalAmount.toFixed(2)}
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {formatFeeDescription('card_debit', paymentKind)}
+                {debitSavings > 0 && (
+                  <span className="text-accent ml-2">Save ${debitSavings.toFixed(2)}</span>
                 )}
               </div>
             </CardContent>
@@ -123,20 +115,25 @@ export function PricingDisplay({
             data-testid="button-payment-method-ach"
           >
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Landmark className="h-4 w-4 text-accent" />
-                <span className="font-medium text-sm">Bank (ACH)</span>
-                {achSavingsVsCredit > 0 && (
-                  <Badge variant="secondary" className="text-xs">
-                    Save ${achSavingsVsCredit.toFixed(2)}
-                  </Badge>
-                )}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Landmark className="h-4 w-4 text-accent" />
+                  <span className="font-medium text-sm">Pay by ACH</span>
+                  {achSavings > 0 && (
+                    <Badge variant="secondary" className="text-xs">
+                      ACH Discount
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-lg font-bold">
+                  ${ach.totalAmount.toFixed(2)}
+                </div>
               </div>
-              <div className="text-lg font-bold">
-                ${achPricing.totalAmount.toFixed(2)}
-              </div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground mt-1">
                 {formatFeeDescription('ach', paymentKind)}
+                {achSavings > 0 && (
+                  <span className="text-accent ml-2">Save ${achSavings.toFixed(2)}</span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -152,7 +149,7 @@ export function PricingDisplay({
                 <Info className="h-4 w-4 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p>Technology and Service Fees help cover payment processing and platform costs. Debit cards receive a discount (no percentage fee).</p>
+                <p>Technology and Service Fees help cover payment processing and platform costs. Debit cards and ACH receive discounts.</p>
               </TooltipContent>
             </Tooltip>
           </CardTitle>
@@ -171,20 +168,20 @@ export function PricingDisplay({
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">
               Technology and Service Fees
-              <span className="text-xs ml-1">({formatFeeDescription(activePricing.paymentRail, activePricing.paymentKind)})</span>
             </span>
-            <span>${activePricing.techFee.toFixed(2)}</span>
+            <span>${activePricing.displayBreakdown.standardFee.toFixed(2)}</span>
           </div>
+          {activePricing.displayBreakdown.discountAmount && activePricing.displayBreakdown.discountAmount > 0 && (
+            <div className="flex justify-between text-sm text-accent">
+              <span>{activePricing.displayBreakdown.discountLabel}</span>
+              <span>-${activePricing.displayBreakdown.discountAmount.toFixed(2)}</span>
+            </div>
+          )}
           <Separator className="my-2" />
           <div className="flex justify-between font-semibold">
             <span>Total</span>
             <span>${activePricing.totalAmount.toFixed(2)}</span>
           </div>
-          {activePricing.displayBreakdown.discountMessage && (
-            <div className="text-xs text-accent">
-              {activePricing.displayBreakdown.discountMessage}
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
@@ -195,15 +192,22 @@ export function SimplePricingBreakdown({
   baseAmount, 
   techFee, 
   total,
-  paymentMethod 
+  paymentMethod,
+  discountAmount,
+  discountLabel
 }: { 
   baseAmount: number; 
   techFee: number;
   total: number;
-  paymentMethod: 'card' | 'ach' | 'cash';
+  paymentMethod: 'card' | 'debit' | 'ach' | 'cash';
+  discountAmount?: number;
+  discountLabel?: string;
 }) {
   const methodLabel = paymentMethod === 'ach' ? 'Bank (ACH)' : 
+                      paymentMethod === 'debit' ? 'Debit Card' :
                       paymentMethod === 'cash' ? 'Cash' : 'Card';
+  
+  const standardFee = techFee + (discountAmount || 0);
   
   return (
     <div className="text-sm space-y-1">
@@ -212,10 +216,18 @@ export function SimplePricingBreakdown({
         <span>${baseAmount.toFixed(2)}</span>
       </div>
       {techFee > 0 && (
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Technology and Service Fees</span>
-          <span>${techFee.toFixed(2)}</span>
-        </div>
+        <>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Technology and Service Fees</span>
+            <span>${standardFee.toFixed(2)}</span>
+          </div>
+          {discountAmount && discountAmount > 0 && (
+            <div className="flex justify-between text-accent">
+              <span>{discountLabel || 'Discount'}</span>
+              <span>-${discountAmount.toFixed(2)}</span>
+            </div>
+          )}
+        </>
       )}
       <Separator className="my-1" />
       <div className="flex justify-between font-medium">

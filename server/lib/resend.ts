@@ -158,6 +158,10 @@ export async function sendPaymentConfirmation(
     baseAmount: number;
     techFeeAmount: number;
     paymentRail: string;
+    standardFee?: number;
+    discountAmount?: number;
+    discountLabel?: string;
+    transactionId?: string;
   }
 ): Promise<EmailResult> {
   let amountSection: string;
@@ -165,12 +169,32 @@ export async function sendPaymentConfirmation(
   if (feeBreakdown) {
     const railLabel = feeBreakdown.paymentRail === 'ach' ? 'ACH' : 
                       feeBreakdown.paymentRail === 'card_debit' ? 'Debit Card' : 'Card';
+    
+    const standardFee = feeBreakdown.standardFee ?? feeBreakdown.techFeeAmount;
+    const hasDiscount = feeBreakdown.discountAmount && feeBreakdown.discountAmount > 0;
+    
+    let discountLine = '';
+    if (hasDiscount) {
+      discountLine = `
+        <p style="margin: 8px 0 0; color: #16a34a;"><strong>${feeBreakdown.discountLabel || 'Discount'}:</strong> -$${feeBreakdown.discountAmount!.toFixed(2)}</p>
+      `;
+    }
+    
+    let transactionLine = '';
+    if (feeBreakdown.transactionId) {
+      transactionLine = `
+        <p style="margin: 8px 0 0;"><strong>Transaction ID:</strong> ${feeBreakdown.transactionId}</p>
+      `;
+    }
+    
     amountSection = `
         <p style="margin: 8px 0 0;"><strong>Base Amount:</strong> $${feeBreakdown.baseAmount.toFixed(2)}</p>
-        <p style="margin: 8px 0 0;"><strong>Technology and Service Fees:</strong> $${feeBreakdown.techFeeAmount.toFixed(2)}</p>
+        <p style="margin: 8px 0 0;"><strong>Technology and Service Fees:</strong> $${standardFee.toFixed(2)}</p>
+        ${discountLine}
         <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 8px 0;" />
         <p style="margin: 8px 0 0;"><strong>Total Charged:</strong> $${amount.toFixed(2)}</p>
         <p style="margin: 8px 0 0;"><strong>Payment Method:</strong> ${railLabel}</p>
+        ${transactionLine}
     `;
   } else {
     amountSection = `

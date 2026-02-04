@@ -46,7 +46,6 @@ assert(
 
 console.log('\n=== TESTING SCHEDULED JOBS SKIP LOGIC ===\n');
 
-// Simulate the scheduled job skip conditions
 const shouldSkipDailyClubBilling = PARENT_PAID_FEES_ENABLED;
 const shouldSkipGracePeriodCheck = PARENT_PAID_FEES_ENABLED;
 const shouldSkipAutopayPrep = PARENT_PAID_FEES_ENABLED;
@@ -82,7 +81,6 @@ assert(
 
 console.log('\n=== TESTING CLUB BILLING DISABLED ===\n');
 
-// These functions should never execute when PARENT_PAID_FEES_ENABLED=true
 const clubBillingFunctions = [
   'processDailyClubBilling',
   'processMonthlyClubBilling',
@@ -137,11 +135,6 @@ assert(
 
 console.log('\n=== TESTING REVENUE SOURCE ===\n');
 
-// When PARENT_PAID_FEES_ENABLED=true, revenue comes from:
-// - payments.tech_fee_amount (NOT platform_ledger)
-// - payments.fee_version starting with 'v1_2026'
-// - payments.status = 'completed'
-
 const correctRevenueSource = PARENT_PAID_FEES_ENABLED;
 
 assert(
@@ -152,8 +145,8 @@ assert(
 
 assert(
   correctRevenueSource,
-  'Revenue filtered by fee_version',
-  'Revenue should filter by fee_version starting with v1_2026'
+  'Revenue filtered by fee_version v2',
+  'Revenue should filter by fee_version starting with v2_2026'
 );
 
 // =========================================

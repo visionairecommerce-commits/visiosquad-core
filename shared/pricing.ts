@@ -1,20 +1,22 @@
 /**
  * VisioSquad Technology and Service Fees Pricing Engine
  * 
- * SINGLE SOURCE OF TRUTH for all parent/athlete checkout fees.
- * This replaces the old club-pays platform fee model.
+ * ZERO-LOSS FEE SCHEDULE - Parents pay Technology & Service Fees at checkout.
+ * Uses a STANDARD fee with DISCOUNTS for ACH and Debit payments.
  * 
- * @version v1_2026_02_parent_paid
+ * @version v2_2026_02_zero_loss_discounts
  */
 
-export const FEE_VERSION = 'v1_2026_02_parent_paid';
+export const FEE_VERSION = 'v2_2026_02_zero_loss_discounts';
 
 export const FEE_CONFIG = {
-  CARD_CREDIT_PERCENT: 0.03,
-  CARD_DEBIT_PERCENT: 0,
-  ACH_PERCENT: 0.015,
-  RECURRING_FLAT_PER_MONTH: 3.00,
-  ONE_TIME_FLAT: 1.00,
+  STANDARD_PERCENT: 0.0375,
+  ACH_DISCOUNT_PERCENT: 0.0200,
+  RECURRING_FLAT_PER_MONTH: 3.50,
+  ONE_TIME_FLAT: 1.50,
+  ACH_DISCOUNT_FLAT: 0.50,
+  RECURRING_MIN_PER_MONTH: 3.00,
+  ONE_TIME_MIN: 1.00,
 } as const;
 
 export type PaymentRail = 'card_credit' | 'card_debit' | 'ach';
@@ -31,18 +33,18 @@ export interface PricingResult {
   baseAmount: number;
   techFee: number;
   totalAmount: number;
-  percentFee: number;
-  flatFee: number;
+  standardFee: number;
+  discountAmount: number;
   paymentRail: PaymentRail;
   paymentKind: PaymentKind;
   monthsCount: number;
   feeVersion: string;
   displayBreakdown: {
     label: string;
-    percentApplied: number;
-    flatApplied: number;
+    standardFee: number;
+    discountLabel?: string;
+    discountAmount?: number;
     totalFee: number;
-    discountMessage?: string;
   };
 }
 
@@ -53,17 +55,28 @@ function roundToCents(amount: number): number {
 /**
  * Calculate Technology and Service Fees for checkout
  * 
- * PRICING RULES:
+ * ZERO-LOSS PRICING MODEL:
+ * Apply a STANDARD fee first, then apply discounts by payment rail.
  * 
- * Recurring contract payments (monthly/quarterly/season):
- * - Card CREDIT: techFee = (baseAmount * 0.03) + (3.00 * monthsCount)
- * - Card DEBIT:  techFee = (3.00 * monthsCount) -- NO PERCENT
- * - ACH:         techFee = (baseAmount * 0.015) + (3.00 * monthsCount)
+ * A) Recurring contracts (monthsCount >= 1):
+ *    STANDARD = (baseAmount * 0.0375) + (monthsCount * 3.50)
+ *    
+ *    Discounts:
+ *    - ACH: subtract (baseAmount * 0.0200) + 0.50
+ *      => effective = (baseAmount * 0.0175) + (monthsCount * 3.50) - 0.50
+ *      (min: $3.00 * monthsCount)
+ *    - Debit: subtract (baseAmount * 0.0375)
+ *      => effective = (monthsCount * 3.50) (flat only)
  * 
- * One-time payments (tournament/clinic/event/drop-in):
- * - Card CREDIT: techFee = (baseAmount * 0.03) + 1.00
- * - Card DEBIT:  techFee = 1.00 -- NO PERCENT
- * - ACH:         techFee = (baseAmount * 0.015) + 1.00
+ * B) One-time events:
+ *    STANDARD = (baseAmount * 0.0375) + 1.50
+ *    
+ *    Discounts:
+ *    - ACH: subtract (baseAmount * 0.0200) + 0.50
+ *      => effective = (baseAmount * 0.0175) + 1.00
+ *      (min: $1.00)
+ *    - Debit: subtract (baseAmount * 0.0375)
+ *      => effective = 1.50 (flat only)
  * 
  * @param input - Pricing calculation input
  * @returns PricingResult with all fee details
@@ -71,65 +84,112 @@ function roundToCents(amount: number): number {
 export function calculateTechnologyAndServiceFees(input: PricingInput): PricingResult {
   const { baseAmount, monthsCount, paymentKind, paymentRail } = input;
   
-  let percentRate: number;
-  let flatFee: number;
+  const isRecurring = paymentKind === 'recurring_contract';
+  const flatFee = isRecurring 
+    ? FEE_CONFIG.RECURRING_FLAT_PER_MONTH * monthsCount 
+    : FEE_CONFIG.ONE_TIME_FLAT;
   
-  switch (paymentRail) {
-    case 'card_credit':
-      percentRate = FEE_CONFIG.CARD_CREDIT_PERCENT;
-      break;
-    case 'card_debit':
-      percentRate = FEE_CONFIG.CARD_DEBIT_PERCENT;
-      break;
-    case 'ach':
-      percentRate = FEE_CONFIG.ACH_PERCENT;
-      break;
-  }
+  const standardFee = roundToCents((baseAmount * FEE_CONFIG.STANDARD_PERCENT) + flatFee);
   
-  if (paymentKind === 'recurring_contract') {
-    flatFee = FEE_CONFIG.RECURRING_FLAT_PER_MONTH * monthsCount;
-  } else {
-    flatFee = FEE_CONFIG.ONE_TIME_FLAT;
-  }
+  let discountAmount = 0;
+  let discountLabel: string | undefined;
+  let techFee: number;
+  let minFee: number;
   
-  const percentFee = roundToCents(baseAmount * percentRate);
-  const techFee = roundToCents(percentFee + flatFee);
-  const totalAmount = roundToCents(baseAmount + techFee);
-  
-  let discountMessage: string | undefined;
   if (paymentRail === 'card_debit') {
-    discountMessage = 'Debit card discount applied (percentage waived)';
+    discountAmount = roundToCents(baseAmount * FEE_CONFIG.STANDARD_PERCENT);
+    discountLabel = 'Debit Discount';
+    techFee = flatFee;
   } else if (paymentRail === 'ach') {
-    discountMessage = 'ACH Discount Applied';
+    const achDiscountAmount = (baseAmount * FEE_CONFIG.ACH_DISCOUNT_PERCENT) + FEE_CONFIG.ACH_DISCOUNT_FLAT;
+    discountAmount = roundToCents(achDiscountAmount);
+    discountLabel = 'ACH Discount';
+    techFee = roundToCents(standardFee - discountAmount);
+    
+    minFee = isRecurring 
+      ? FEE_CONFIG.RECURRING_MIN_PER_MONTH * monthsCount 
+      : FEE_CONFIG.ONE_TIME_MIN;
+    
+    if (techFee < minFee) {
+      discountAmount = roundToCents(standardFee - minFee);
+      techFee = minFee;
+    }
+  } else {
+    techFee = standardFee;
   }
+  
+  techFee = roundToCents(techFee);
+  const totalAmount = roundToCents(baseAmount + techFee);
   
   return {
     baseAmount,
     techFee,
     totalAmount,
-    percentFee,
-    flatFee,
+    standardFee,
+    discountAmount,
     paymentRail,
     paymentKind,
     monthsCount,
     feeVersion: FEE_VERSION,
     displayBreakdown: {
       label: 'Technology and Service Fees',
-      percentApplied: percentRate * 100,
-      flatApplied: flatFee,
+      standardFee,
+      discountLabel: discountAmount > 0 ? discountLabel : undefined,
+      discountAmount: discountAmount > 0 ? discountAmount : undefined,
       totalFee: techFee,
-      discountMessage,
     },
   };
 }
 
 /**
- * Calculate pricing for both Card and ACH to show dual pricing at checkout
+ * Get pricing for all three payment methods to show at checkout
  * 
  * @param baseAmount - Base amount the club is charging
  * @param monthsCount - Number of months (1 for one-time, or derived from pay schedule)
  * @param paymentKind - 'recurring_contract' or 'one_time_event'
- * @returns Object with card and ACH pricing for display
+ * @returns Object with standard (credit), debit, and ACH pricing for display
+ */
+export function getTriplePricing(
+  baseAmount: number, 
+  monthsCount: number, 
+  paymentKind: PaymentKind
+): {
+  standard: PricingResult;
+  debit: PricingResult;
+  ach: PricingResult;
+  debitSavings: number;
+  achSavings: number;
+} {
+  const standard = calculateTechnologyAndServiceFees({
+    baseAmount,
+    monthsCount,
+    paymentKind,
+    paymentRail: 'card_credit',
+  });
+  
+  const debit = calculateTechnologyAndServiceFees({
+    baseAmount,
+    monthsCount,
+    paymentKind,
+    paymentRail: 'card_debit',
+  });
+  
+  const ach = calculateTechnologyAndServiceFees({
+    baseAmount,
+    monthsCount,
+    paymentKind,
+    paymentRail: 'ach',
+  });
+  
+  const debitSavings = roundToCents(standard.totalAmount - debit.totalAmount);
+  const achSavings = roundToCents(standard.totalAmount - ach.totalAmount);
+  
+  return { standard, debit, ach, debitSavings, achSavings };
+}
+
+/**
+ * Legacy function for backward compatibility
+ * @deprecated Use getTriplePricing instead
  */
 export function getDualPricing(
   baseAmount: number, 
@@ -140,23 +200,12 @@ export function getDualPricing(
   ach: PricingResult;
   savings: number;
 } {
-  const card = calculateTechnologyAndServiceFees({
-    baseAmount,
-    monthsCount,
-    paymentKind,
-    paymentRail: 'card_credit',
-  });
-  
-  const ach = calculateTechnologyAndServiceFees({
-    baseAmount,
-    monthsCount,
-    paymentKind,
-    paymentRail: 'ach',
-  });
-  
-  const savings = roundToCents(card.totalAmount - ach.totalAmount);
-  
-  return { card, ach, savings };
+  const triple = getTriplePricing(baseAmount, monthsCount, paymentKind);
+  return {
+    card: triple.standard,
+    ach: triple.ach,
+    savings: triple.achSavings,
+  };
 }
 
 /**
@@ -181,5 +230,22 @@ export function deriveMonthsCount(
       return 1;
     default:
       return 1;
+  }
+}
+
+/**
+ * Format fee description for display
+ */
+export function formatFeeDescription(rail: PaymentRail, kind: PaymentKind): string {
+  const isRecurring = kind === 'recurring_contract';
+  const flatFee = isRecurring ? FEE_CONFIG.RECURRING_FLAT_PER_MONTH : FEE_CONFIG.ONE_TIME_FLAT;
+  
+  switch (rail) {
+    case 'card_credit':
+      return isRecurring ? `3.75% + $${flatFee.toFixed(2)}/month` : `3.75% + $${flatFee.toFixed(2)}`;
+    case 'card_debit':
+      return isRecurring ? `$${flatFee.toFixed(2)}/month (no %)` : `$${flatFee.toFixed(2)} flat`;
+    case 'ach':
+      return isRecurring ? `1.75% + $${(flatFee - 0.50).toFixed(2)}/month` : `1.75% + $${(flatFee - 0.50).toFixed(2)}`;
   }
 }

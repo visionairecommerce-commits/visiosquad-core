@@ -225,9 +225,9 @@ export default function PlatformRevenuePage() {
               <Users className="h-4 w-4 text-chart-3" />
             </CardHeader>
             <CardContent>
-              <div className="text-lg font-bold">v1_2026_02</div>
+              <div className="text-lg font-bold">v2_2026_02</div>
               <Badge variant="secondary" className="text-xs">
-                Parent-Paid Model
+                Zero-Loss Discounts
               </Badge>
             </CardContent>
           </Card>
@@ -305,7 +305,7 @@ export default function PlatformRevenuePage() {
                     ${(metrics?.by_payment_kind?.recurring?.total ?? 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    $3/player/month flat fee included
+                    $3.50/player/month + 3.75% standard
                   </div>
                 </div>
                 
@@ -320,7 +320,7 @@ export default function PlatformRevenuePage() {
                     ${(metrics?.by_payment_kind?.one_time?.total ?? 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    $1/event flat fee included
+                    $1.50/event + 3.75% standard
                   </div>
                 </div>
               </div>

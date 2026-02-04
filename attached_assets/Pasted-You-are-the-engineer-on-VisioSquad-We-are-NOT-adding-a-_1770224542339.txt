@@ -1,0 +1,122 @@
+You are the engineer on VisioSquad. We are NOT adding a second fee system. We are REPLACING the current parent-paid fee schedule with a new “zero-loss” fee schedule that guarantees the platform never loses money on any transaction while staying compliant in all 50 states.
+
+Core requirements (must satisfy all):
+1) The fee label everywhere must remain exactly: “Technology and Service Fees” (never “processing fee”, “surcharge”, “credit card fee”, “convenience fee”).
+2) The model must be payment-method-neutral by default (one STANDARD fee), and differences must be presented as DISCOUNTS for ACH and Debit (not extra charges for credit).
+3) Debit cards must NEVER be charged a percentage. Debit should be a flat fee only (discount removes %).
+4) ACH should be cheaper than credit and shown as “ACH Discount”, but still must cover all ACH costs + margin (never negative margin).
+5) The system must guarantee “no loss” by using a conservative base fee that covers worst-case processing costs, then applying discounts.
+6) This must be a safe replacement in ONE pass:
+   - find and remove/replace old parent-paid fee constants and calculations (do not keep dead alternate logic)
+   - update UI displays, receipt emails, and the revenue dashboard to match the new model
+   - update tests accordingly
+7) Do not re-introduce club billing, subscriptions, or Fee Saver. Clubs remain free. Parents pay.
+
+NEW ZERO-LOSS FEE SCHEDULE (REPLACES CURRENT):
+We apply a STANDARD Technology & Service Fee first, then apply discounts by payment rail.
+
+A) Recurring contracts (monthsCount >= 1):
+STANDARD Tech Fee = (baseAmount * 0.0375) + (monthsCount * 3.50)
+
+Discounts:
+- ACH Discount: subtract (baseAmount * 0.0200) + 0.50
+  => effective ACH Tech Fee = (baseAmount * 0.0175) + (monthsCount * 3.50) - 0.50
+  (ensure never below a minimum of $3.00 * monthsCount)
+- Debit Discount: subtract (baseAmount * 0.0375)
+  => effective Debit Tech Fee = (monthsCount * 3.50)
+  (percent fully removed; flat only)
+
+B) One-time events (monthsCount is always 1):
+STANDARD Tech Fee = (baseAmount * 0.0375) + 1.50
+
+Discounts:
+- ACH Discount: subtract (baseAmount * 0.0200) + 0.50
+  => effective ACH Tech Fee = (baseAmount * 0.0175) + 1.00
+  (ensure never below $1.00)
+- Debit Discount: subtract (baseAmount * 0.0375)
+  => effective Debit Tech Fee = 1.50 (flat only)
+
+Rounding:
+- Round tech fees to 2 decimals with standard rounding.
+- Never allow techFee < minimums noted above.
+
+Payment rails:
+- credit card = card_credit (no discount)
+- debit card = card_debit (apply debit discount)
+- ACH = ach (apply ach discount)
+If card type is unknown, default to debit (apply debit discount) for compliance safety.
+
+DISPLAY REQUIREMENTS (UI + receipts):
+- Always show 3 options at checkout:
+  1) “Pay by Card” (standard fee)
+  2) “Pay by Debit Card (Discount Applied)” (no % fee)
+  3) “Pay by ACH (ACH Discount)” (lower fee)
+- Show:
+  Base amount
+  Technology and Service Fees (standard)
+  Discount line item if applicable (e.g., “ACH Discount” or “Debit Discount” as a negative amount)
+  Total charged
+- Receipts must include the same breakdown and transaction id.
+
+DATA MODEL:
+Keep using existing fields:
+- payments.base_amount
+- payments.tech_fee_amount (store FINAL tech fee after discount)
+- payments.amount (total charged)
+- payments.payment_rail (card_credit / card_debit / ach)
+- payments.payment_kind (recurring_contract / one_time_event)
+- payments.months_count
+- payments.fee_version (update to a new version string)
+
+Set fee_version to:
+"v2_2026_02_zero_loss_discounts"
+
+REPLACEMENT INSTRUCTIONS (must follow exactly):
+1) Identify all places that calculate technology/service fees:
+   - shared/pricing.ts (current parent-paid schedule)
+   - any UI components that show pricing options
+   - server payment routes that compute totals
+   - receipt email builders
+2) Replace the calculation logic with the new schedule above.
+   - Do not keep the old v1 schedule.
+   - Keep function names stable where possible to avoid broad refactors, but ensure the implementation is replaced.
+3) Update UI copy to reflect “Standard” + “Discount” framing.
+   - No mention of “processing”, “convenience”, “surcharge”.
+4) Update receipt emails (server/lib/resend.ts):
+   - Include base amount, tech fee, discount line item (if applied), total, payment method, transaction id.
+5) Update revenue dashboard:
+   - Revenue = SUM(tech_fee_amount) grouped by club, rail, kind
+   - It should still work; only fee_version filter should include both v1 and v2 or provide toggle.
+   - Add v2 to queries so the dashboard shows new revenue.
+6) Update tests:
+   - Replace old expected fee values with new ones.
+   - Add tests proving debit never has percent and tech fee never goes below minimums.
+7) Add a single migration safety guard:
+   - If PARENT_PAID_FEES_ENABLED is false, do not run any new fee logic.
+   - If true, use the new v2 logic.
+   - Do not re-enable old club billing jobs.
+
+VALIDATION (must perform and report):
+- Run unit tests for pricing with at least these cases:
+  Recurring (monthsCount=1):
+   base=50 credit -> tech=(50*0.0375)+3.5=1.875+3.5=5.38
+   base=50 debit -> tech=3.50
+   base=50 ach -> standard 5.38 - (50*0.02+0.5=1.5)=3.88 but min is 3.00 => 3.88 (ok)
+  Recurring (monthsCount=9):
+   base=900 credit -> (900*0.0375)+31.5=33.75+31.5=65.25
+   debit -> 31.5
+   ach -> 65.25 - (18+0.5)=46.75 but min is 27.00 => 46.75
+  One-time event:
+   base=50 credit -> (50*0.0375)+1.5=1.875+1.5=3.38
+   debit -> 1.50
+   ach -> 3.38 - 1.5 = 1.88 but min is 1.00 => 1.88
+- Confirm the server uses tech_fee_amount after discounts and amount is base+techFee.
+- Confirm receipts render discount line when applicable.
+- Confirm dashboard includes v2 fee_version.
+
+OUTPUT FORMAT REQUIREMENT:
+- Implement changes as a true replacement. Show a concise summary of changed files and key diff notes.
+- If you touch any code, do not introduce unrelated formatting diffs.
+- If anything is ambiguous, make the most conservative compliance-safe choice (default to debit discount, never percent on debit).
+
+Proceed to implement now.

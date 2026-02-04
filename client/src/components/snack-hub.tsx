@@ -35,20 +35,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface SnackItem {
-  id: string;
-  event_id: string;
-  club_id: string;
-  category: 'infrastructure' | 'hydration' | 'protein' | 'fruit_veg' | 'snacks' | 'other';
-  item_name: string;
-  quantity_needed: number;
-  claimed_by: string | null;
-  claimed_by_name: string | null;
-  is_custom: boolean;
-  created_by: string;
-  created_at: string;
-}
+import type { SnackItem } from '@shared/schema';
 
 interface SnackHubProps {
   eventId: string;

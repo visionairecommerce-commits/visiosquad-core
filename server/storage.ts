@@ -120,6 +120,7 @@ export interface Athlete {
   email?: string;
   has_login: boolean;
   user_id?: string; // Athlete's own user profile (when they have login)
+  food_allergies?: string;
   created_at: string;
 }
 

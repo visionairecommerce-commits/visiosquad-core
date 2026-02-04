@@ -126,6 +126,8 @@ interface PaymentResponse {
   transactionId?: string;
   message?: string;
   error?: string;
+  cardFunding?: string;
+  cardType?: string;
 }
 
 export async function processPayment(request: PaymentRequest): Promise<PaymentResponse> {
@@ -162,6 +164,8 @@ export async function processPayment(request: PaymentRequest): Promise<PaymentRe
         success: true,
         transactionId: data.transactionId,
         message: 'Payment processed successfully',
+        cardFunding: data.cardFunding,
+        cardType: data.cardType,
       };
     } else {
       return {

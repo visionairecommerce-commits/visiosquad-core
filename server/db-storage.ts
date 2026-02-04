@@ -1066,6 +1066,12 @@ export class DatabaseStorage implements IStorage {
       payment_type: payment.payment_type,
       helcim_transaction_id: payment.helcim_transaction_id,
       status: payment.status,
+      base_amount: payment.base_amount !== undefined ? String(payment.base_amount) : undefined,
+      tech_fee_amount: payment.tech_fee_amount !== undefined ? String(payment.tech_fee_amount) : undefined,
+      payment_rail: payment.payment_rail,
+      payment_kind: payment.payment_kind,
+      months_count: payment.months_count,
+      fee_version: payment.fee_version,
     }).returning();
     return this.mapPayment(p);
   }
@@ -1660,6 +1666,12 @@ export class DatabaseStorage implements IStorage {
       status: p.status,
       description: p.description ?? undefined,
       helcim_transaction_id: p.helcim_transaction_id ?? undefined,
+      base_amount: p.base_amount ? parseFloat(p.base_amount) : undefined,
+      tech_fee_amount: p.tech_fee_amount ? parseFloat(p.tech_fee_amount) : undefined,
+      payment_rail: p.payment_rail ?? undefined,
+      payment_kind: p.payment_kind ?? undefined,
+      months_count: p.months_count ?? undefined,
+      fee_version: p.fee_version ?? undefined,
       created_at: p.created_at?.toISOString?.() ?? p.created_at,
     };
   }

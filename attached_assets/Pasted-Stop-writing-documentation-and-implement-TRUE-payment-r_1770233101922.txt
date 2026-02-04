@@ -1,0 +1,91 @@
+Stop writing documentation and implement TRUE payment-route HTTP E2E tests with real DB seeding.
+
+Non-negotiable: the tests must create the minimum required relational rows in the test DB and then call the REAL payment endpoints via supertest, mocking Helcim + Resend, and asserting that a payments row is persisted with correct fields and amounts.
+
+1) Discover the real endpoints (do not guess)
+- Inspect server/routes.ts and identify the exact endpoints used for:
+  A) contract/recurring payment checkout (parent pays)
+  B) one-time event registration payment
+- Print those exact endpoint paths in the test output (or in a comment at top of the test file) with the request body shape expected.
+
+2) Create deterministic DB seed helper (must use actual schema)
+Create: tests/helpers/seedBillingFixtures.ts that inserts:
+- club (id, name, etc.)
+- director user linked to club
+- parent user linked to club
+- athlete linked to parent + club
+- a contract/plan record that the payment endpoint expects (or athlete_contract / contract_option etc.)
+- an event record that the event register/payment endpoint expects
+- any required join rows (club_memberships, athlete_roster, etc.) based on schema
+
+Rules:
+- Use the same DB adapter/storage layer as the server uses in tests.
+- If storage layer is too heavy, use direct SQL inserts using Drizzle or whatever your db layer is, but MUST match real schema constraints.
+- Do not skip foreign keys; satisfy them.
+
+3) Mock Helcim and Resend (required)
+- Mock Helcim purchase call to return transactionId "T1000"
+- Provide classification variants for rail:
+  - card_credit
+  - card_debit
+  - ach
+  - unknown -> should default to debit in app logic
+- Mock Resend to capture email text/html for assertions
+
+4) Implement 4 TRUE E2E tests (HTTP -> DB -> email assertions)
+File: tests/billing-v2.payments.http-e2e.test.ts
+
+Test A: Contract payment, credit
+- Seed fixtures
+- Auth as parent (use your real auth mechanism; if needed add a TEST_AUTH_BYPASS=true gate ONLY in test env)
+- POST to the real contract payment endpoint with:
+  baseAmount = 50 and monthsCount=1 (or whatever the endpoint derives)
+  rail = card_credit
+- Assert HTTP 200 and response includes computed breakdown
+- Assert DB payments row created:
+  fee_version=v2_2026_02_zero_loss_discounts
+  base_amount=50
+  tech_fee_amount=5.38
+  amount=55.38
+  payment_rail=card_credit
+  payment_kind=recurring_contract
+  months_count=1
+- Assert captured email includes:
+  "Technology and Service Fees"
+  does NOT include: surcharge, processing fee, convenience fee, credit card fee
+  includes correct discount line items if any (none for credit)
+
+Test B: Contract payment, debit
+- Same but rail=card_debit
+- Assert tech_fee_amount=3.50 and no percent applied
+- Assert email includes “Debit Discount” line item (negative) OR equivalent discount messaging per implementation
+
+Test C: Contract payment, ACH
+- rail=ach
+- Assert tech_fee_amount=3.88 (for base 50, months 1) and min logic respected
+- Assert email includes “ACH Discount” line item (negative)
+
+Test D: One-time event payment, credit
+- Call real event registration/payment endpoint
+- baseAmount=50
+- Assert tech_fee_amount=3.38, payment_kind=one_time_event
+
+5) Fix any blockers in code (do not dodge)
+If the payment endpoint requires context like club_id from session, implement a test-only auth bypass:
+- Env var TEST_AUTH_BYPASS=true
+- When true AND NODE_ENV=test, accept header:
+  x-test-user-id and set req.user accordingly
+This must NOT affect production.
+
+6) Update runner
+Update tests/run-billing-v2-e2e.ts to run the new file and print:
+- endpoints tested
+- sample created payment row (sanitized)
+- captured email subject + first 200 chars
+
+7) Run and prove
+- Run only these tests first
+- Then run the full suite
+- Report pass counts
+
+Proceed now. No more documentation-only changes.

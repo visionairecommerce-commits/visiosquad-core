@@ -1,0 +1,184 @@
+You are the lead engineer for VisioSquad. We are doing a FULL billing model replacement. Do NOT create a second payment structure. You must REPLACE the existing club-pays/platform-billing logic everywhere it exists with the new parent/athlete-paid model described below.
+
+IMPORTANT CONTEXT (DO NOT IGNORE)
+- There are currently NO clubs/accounts with billing set up yet (nothing to cancel/migrate).
+- All payments are processed through MY single Helcim account (platform merchant of record). Clubs do NOT have their own Helcim accounts.
+- Clubs must be FREE to use the app. All platform monetization comes from “Technology and Service Fees” added to parent/athlete checkout.
+- Clubs still create contracts and use Docuseal exactly as they do now.
+
+========================
+NEW BILLING MODEL (PARENT-PAID FEES)
+========================
+Whenever a parent/athlete pays anything in the app (contract installment, seasonal payment, tournament, clinic, drop-in), the checkout must add a compliant line item:
+
+Label: "Technology and Service Fees"
+
+We must be compliant in all 50 states:
+- Never call these fees “surcharge” or “credit card fee.”
+- Show totals up front.
+- Debit cards must not be assessed a percentage fee (flat only).
+- Show both Card and ACH totals; label ACH as a discount.
+
+========================
+PRICING RULES (SINGLE SOURCE OF TRUTH)
+========================
+Define:
+- baseAmount = the amount the club is charging for the item
+- monthsCount = number of months covered by this checkout (1, 3, 9, etc.)
+- paymentKind = 'recurring_contract' | 'one_time_event'
+- paymentRail = 'card_credit' | 'card_debit' | 'ach'
+
+Recurring contract payments:
+- Card CREDIT: techFee = roundToCents(baseAmount * 0.03) + (3.00 * monthsCount)
+- Card DEBIT:  techFee = (3.00 * monthsCount)           // NO PERCENT
+- ACH:         techFee = roundToCents(baseAmount * 0.015) + (3.00 * monthsCount)
+
+One-time payments (tournament/clinic/event/drop-in):
+- Card CREDIT: techFee = roundToCents(baseAmount * 0.03) + 1.00
+- Card DEBIT:  techFee = 1.00                           // NO PERCENT
+- ACH:         techFee = roundToCents(baseAmount * 0.015) + 1.00
+
+Total charged to payer:
+totalAmount = baseAmount + techFee
+
+Fee config must be adjustable (do NOT hardcode in multiple places):
+- CARD_PERCENT = 0.03
+- ACH_PERCENT = 0.015
+- RECURRING_FLAT_PER_MONTH = 3.00
+- ONE_TIME_FLAT = 1.00
+
+========================
+CRITICAL: REPLACE OLD MODEL (NO PARALLEL SYSTEM)
+========================
+Remove/disable/hide ALL “clubs owe platform fees” logic:
+- any club platform billing dashboard that shows what clubs paid/owe
+- any scheduled jobs related to billing clubs
+- any locking/unlocking based on club non-payment
+- any “platform invoices” meant for club billing
+- any “club billing mode” toggles and endpoints that would charge clubs
+
+Instead, migrate reporting to show:
+“Technology and Service Fees Collected (by Club)”
+- total tech fees collected per club
+- breakdown by payment rail: credit/debit/ACH
+- breakdown by payment kind: recurring_contract vs one_time_event
+- date range filters + export
+
+========================
+IMPLEMENTATION REQUIREMENTS
+========================
+
+PHASE 0 — REPLACEMENT PLAN (NO CODE YET)
+Before coding, output a Replacement Plan that:
+- lists every file/module/page touching the old billing model
+- states exactly what will be removed/disabled vs repurposed
+- states exactly what will change in checkout flows (contracts + events)
+- states how receipts/invoices will work
+Then STOP and wait for me to paste “APPROVED — IMPLEMENT”.
+
+PHASE 1 — ONE PRICING ENGINE USED EVERYWHERE
+Create shared/pricing.ts with:
+calculateTechnologyAndServiceFees({ baseAmount, monthsCount, paymentKind, paymentRail })
+Return:
+- baseAmount, techFee, totalAmount
+- percentFee, flatFee (for display)
+- feeVersion = 'v1_2026_02_parent_paid'
+Absolutely every checkout path MUST use this function.
+Remove/replace existing fee helpers (convenience fee, old constants, etc.).
+
+PHASE 2 — DEBIT vs CREDIT DETECTION (NO USER SELF-SELECTION)
+You may NOT ask the user to choose “debit vs credit.”
+Implement detection like this:
+1) Prefer Helcim response/transaction detail fields that indicate debit/credit.
+2) If Helcim doesn’t supply debit/credit explicitly, implement BIN-based detection (first 6–8 digits) without storing the full PAN.
+3) If BIN detection is not feasible, default unknown cards to debit behavior (flat only) as the compliance-safe fallback and log a warning.
+
+Document where detection happens and how it is tested.
+
+PHASE 3 — DATA MODEL CHANGES (PAYMENTS AS SOURCE OF TRUTH)
+Modify payments table to store:
+- base_amount
+- tech_fee_amount
+- total_amount (or reuse amount as total)
+- payment_rail
+- payment_kind
+- months_count
+- fee_version
+- helcim_transaction_id (already exists or ensure it does)
+Keep legacy columns so older records remain readable.
+
+PHASE 4 — UPDATE ALL CHECKOUT FLOWS (REPLACE, DON’T ADD)
+Update:
+- contract payments (monthly / multi-month / season upfront)
+- event registration payments
+- any “pay now” endpoints
+So that:
+- baseAmount is what the club charges
+- techFee is added according to rules
+- totalAmount is charged via Helcim
+- receipts/invoices show the two line items and totals
+
+monthsCount must be derived from the pay option/schedule (not hand-typed).
+Examples:
+- Monthly: monthsCount=1
+- Quarterly: monthsCount=3
+- Season upfront (9-month season): monthsCount=9
+
+PHASE 5 — COMPLIANT UI COPY (EVERYWHERE)
+Replace all language about club platform fees with:
+- "Technology and Service Fees"
+Show:
+- Base Amount
+- Technology and Service Fees
+- Total
+Show two totals pre-payment selection:
+- Pay by Card: $X
+- Pay by ACH: $Y (ACH Discount Applied)
+
+If the final method is debit and percent was removed, show:
+- “Debit card discount applied (percentage waived)”
+
+PHASE 6 — RECEIPTS + DOWNLOADABLE INVOICES (GUARANTEED)
+Parents must receive a receipt automatically:
+- email via Resend on successful payment
+- include base, tech fees, total, method label, club, athlete, what it was for
+Helcim hosted receipt link:
+- include it if available, but do not depend on it.
+
+Also generate a PDF invoice/receipt in-app:
+- downloadable from payment detail page for admins/directors
+- emailable to club directors on demand
+- compliant wording and line items
+
+PHASE 7 — REPORTING DASHBOARD MIGRATION
+Replace existing “clubs billing” owner dashboard with:
+- “Technology & Service Fees Collected”
+- grouped by club, filter by date range
+- sums from payments.tech_fee_amount
+- export CSV
+
+PHASE 8 — REMOVE OLD JOBS + FLAGS SAFELY (NO CANCELLATIONS NEEDED)
+Since no billing is currently set up:
+- Remove or fully disable all club billing scheduled jobs
+- Remove lock/unlock logic tied to club non-payment
+- Keep old tables read-only only if needed, but stop writing to them
+Do NOT build any club subscription billing logic.
+
+========================
+OUTPUT REQUIREMENTS
+========================
+- First output the Replacement Plan only (no code changes).
+- After approval, implement using minimal chunk-based patches only:
+  - exact old code + exact replacement code
+  - include insertion anchors
+- Provide a test checklist:
+  - contract monthly credit
+  - contract multi-month credit
+  - contract ACH
+  - contract debit (percent removed)
+  - event pay-now credit/ACH/debit
+  - email receipt
+  - PDF invoice download
+  - revenue dashboard totals
+
+Start now with the Replacement Plan.

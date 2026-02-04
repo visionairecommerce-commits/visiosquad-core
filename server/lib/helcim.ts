@@ -374,9 +374,78 @@ interface PlatformBillingResponse {
 // ============ HELCIM RECURRING API (Model A) ============
 
 // Feature flags for billing mode
+// DEPRECATED: These flags are being phased out. Use PARENT_PAID_FEES_ENABLED instead.
 export const BILLING_MODE = (process.env.BILLING_MODE || 'app') as 'helcim' | 'app';
 export const BILLING_AUTOPAY_PREP_ENABLED = process.env.BILLING_AUTOPAY_PREP_ENABLED !== 'false';
 export const BILLING_RECONCILIATION_ENABLED = process.env.BILLING_RECONCILIATION_ENABLED !== 'false';
+
+// NEW: Parent-paid fees model flag
+// When true, parents/athletes pay Technology and Service Fees at checkout
+// When false, old club-pays model applies (legacy)
+export const PARENT_PAID_FEES_ENABLED = process.env.PARENT_PAID_FEES_ENABLED === 'true';
+
+// ============ CARD TYPE DETECTION ============
+
+export type CardFundingType = 'credit' | 'debit' | 'unknown';
+
+/**
+ * Detect if a card is credit or debit from Helcim transaction response
+ * 
+ * Detection strategy:
+ * 1. Check Helcim response for cardType/fundingType fields (if provided)
+ * 2. Check for debit indicators in card brand (e.g., "DEBIT" in type string)
+ * 3. If BIN is available, could use BIN lookup (not storing full PAN)
+ * 4. Fallback: Default to DEBIT (flat-only) as compliance-safe fallback
+ * 
+ * @param helcimResponse - Transaction response from Helcim API
+ * @returns 'credit' | 'debit' | 'unknown'
+ */
+export function detectCardFundingType(helcimResponse: any): CardFundingType {
+  if (!helcimResponse) return 'unknown';
+  
+  // Check explicit funding type field (if Helcim provides it)
+  if (helcimResponse.cardFunding) {
+    const funding = helcimResponse.cardFunding.toLowerCase();
+    if (funding === 'debit') return 'debit';
+    if (funding === 'credit') return 'credit';
+  }
+  
+  // Check cardType field for debit indicator
+  if (helcimResponse.cardType) {
+    const cardType = helcimResponse.cardType.toLowerCase();
+    if (cardType.includes('debit')) return 'debit';
+    if (cardType.includes('credit')) return 'credit';
+  }
+  
+  // Check card brand for common debit indicators
+  if (helcimResponse.cardBrand) {
+    const brand = helcimResponse.cardBrand.toLowerCase();
+    // Maestro and Interac are typically debit
+    if (brand.includes('maestro') || brand.includes('interac')) return 'debit';
+  }
+  
+  // Check for debit network indicator
+  if (helcimResponse.debitNetwork || helcimResponse.isPinDebit) {
+    return 'debit';
+  }
+  
+  // Fallback: Default to debit for compliance safety
+  // This ensures we never overcharge (flat fee only for unknown cards)
+  console.log('[Card Detection] Unable to determine card type, defaulting to debit for compliance');
+  return 'debit';
+}
+
+/**
+ * Convert detected card funding type to payment rail
+ * 
+ * @param fundingType - 'credit' | 'debit' | 'unknown'
+ * @returns Payment rail for fee calculation
+ */
+export function cardFundingToPaymentRail(fundingType: CardFundingType): 'card_credit' | 'card_debit' {
+  if (fundingType === 'credit') return 'card_credit';
+  // Default unknown to debit for compliance (flat fee only)
+  return 'card_debit';
+}
 
 /**
  * Calculate deterministic billing period for a given billing day

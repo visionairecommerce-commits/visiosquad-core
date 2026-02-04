@@ -47,8 +47,16 @@ Preferred communication style: Simple, everyday language.
 
 - **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
 - **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
-- **Payment Processing**: Integrates with Helcim, calculates convenience fees (3% for credit card, $1.00 flat fee for ACH). Requires billing card on file for clubs.
-- **Platform Fees**: $3.00/player/month for regular athletes, $1.00/player for events, $0.75/player for drop-ins. Defined in `PLATFORM_FEES` constant in `shared/schema.ts`.
+- **Payment Processing**: Integrates with Helcim for credit card and ACH transactions.
+- **Technology and Service Fees (Parent-Paid Model)**: When `PARENT_PAID_FEES_ENABLED=true`, parents pay platform fees at checkout:
+  - **Recurring Payments (Contracts)**: 3% + $3/month for credit, $3/month flat for debit, 1.5% + $3/month for ACH
+  - **One-Time Payments (Events)**: 3% + $1 for credit, $1 flat for debit, 1.5% + $1 for ACH
+  - **Card Type Detection**: Automatically detects credit vs debit cards via Helcim response, defaults to debit for compliance
+  - **Pricing Engine**: Centralized in `shared/pricing.ts` with `calculateTechnologyAndServiceFees()`
+  - **Payment Fields**: `base_amount`, `tech_fee_amount`, `payment_rail`, `payment_kind`, `months_count`, `fee_version`
+  - **Revenue Tracking**: Owner dashboard at `/owner/revenue` shows platform fee collection by payment method
+  - **Feature Flag**: Controlled by `PARENT_PAID_FEES_ENABLED` environment variable
+- **Legacy Platform Fees (Deprecated)**: When `PARENT_PAID_FEES_ENABLED=false`, old club-billed model applies: $3.00/player/month for regular athletes, $1.00/player for events, $0.75/player for drop-ins. Defined in `PLATFORM_FEES` constant in `shared/schema.ts`.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and standalone events. Features recurring sessions, facility-specific conflict detection (soft/hard blocks), and athlete registration gates based on program/team membership.
 - **Event Management**: Dedicated system for standalone events (clinics, camps, tryouts) with separate rosters, pricing, and check-in.
 - **Attendance Tracking**: Check-in/check-out for sessions and events, flags athletes with overdue payments.
@@ -63,7 +71,7 @@ Preferred communication style: Simple, everyday language.
   - **Season-End Cleanup**: All chat data (except event chats) is automatically deleted when a season ends
   - **Scheduled Jobs**: Runs hourly for event cleanup, daily at 2 AM for season cleanup
   - **UI**: Directors manage seasons in Settings → Seasons section
-- **Daily Club Billing System**: Platform fees are automatically calculated and billed based on active player count:
+- **Daily Club Billing System (Deprecated when PARENT_PAID_FEES_ENABLED=true)**: Platform fees are automatically calculated and billed based on active player count:
   - **Active Athlete Definition**: Athletes with payments in the billing period, valid paid_through_date, or session attendance
   - **Club Billing Day**: Clubs choose their billing day (1-28), stored in `clubs.billing_day` column
   - **Billing Modes**: Two modes controlled by `BILLING_MODE` environment variable:

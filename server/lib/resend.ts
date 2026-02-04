@@ -153,8 +153,31 @@ export async function sendPaymentConfirmation(
   email: string,
   athleteName: string,
   amount: number,
-  description: string
+  description: string,
+  feeBreakdown?: {
+    baseAmount: number;
+    techFeeAmount: number;
+    paymentRail: string;
+  }
 ): Promise<EmailResult> {
+  let amountSection: string;
+  
+  if (feeBreakdown) {
+    const railLabel = feeBreakdown.paymentRail === 'ach' ? 'ACH' : 
+                      feeBreakdown.paymentRail === 'card_debit' ? 'Debit Card' : 'Card';
+    amountSection = `
+        <p style="margin: 8px 0 0;"><strong>Base Amount:</strong> $${feeBreakdown.baseAmount.toFixed(2)}</p>
+        <p style="margin: 8px 0 0;"><strong>Technology and Service Fees:</strong> $${feeBreakdown.techFeeAmount.toFixed(2)}</p>
+        <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 8px 0;" />
+        <p style="margin: 8px 0 0;"><strong>Total Charged:</strong> $${amount.toFixed(2)}</p>
+        <p style="margin: 8px 0 0;"><strong>Payment Method:</strong> ${railLabel}</p>
+    `;
+  } else {
+    amountSection = `
+        <p style="margin: 8px 0 0;"><strong>Amount:</strong> $${amount.toFixed(2)}</p>
+    `;
+  }
+
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h2 style="color: #2563eb;">Payment Confirmed</h2>
@@ -162,7 +185,7 @@ export async function sendPaymentConfirmation(
       <div style="background-color: #eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2563eb;">
         <p style="margin: 0;"><strong>Athlete:</strong> ${athleteName}</p>
         <p style="margin: 8px 0 0;"><strong>Description:</strong> ${description}</p>
-        <p style="margin: 8px 0 0;"><strong>Amount:</strong> $${amount.toFixed(2)}</p>
+        ${amountSection}
         <p style="margin: 8px 0 0;"><strong>Date:</strong> ${new Date().toLocaleString()}</p>
       </div>
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />

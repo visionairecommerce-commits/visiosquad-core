@@ -18,6 +18,7 @@ import {
   BILLING_MODE, 
   BILLING_AUTOPAY_PREP_ENABLED,
   BILLING_RECONCILIATION_ENABLED,
+  PARENT_PAID_FEES_ENABLED,
   calculateBillingPeriod,
   isInNoTouchWindow,
   updateSubscriptionAmount,
@@ -56,8 +57,13 @@ export function initializeScheduledJobs() {
   });
 
   // Run daily at 3 AM - Automatic monthly billing for clubs on their billing day
-  // DISABLED when BILLING_MODE=helcim (Helcim handles billing automatically)
+  // DEPRECATED: Disabled when PARENT_PAID_FEES_ENABLED=true (parents pay at checkout instead)
+  // Also disabled when BILLING_MODE=helcim (Helcim handles billing automatically)
   cron.schedule('0 3 * * *', async () => {
+    if (PARENT_PAID_FEES_ENABLED) {
+      console.log('[Daily Club Billing] SKIPPED - PARENT_PAID_FEES_ENABLED=true (parents pay fees at checkout)');
+      return;
+    }
     if (BILLING_MODE === 'helcim') {
       console.log('[Daily Club Billing] SKIPPED - BILLING_MODE=helcim (Helcim handles billing)');
       return;
@@ -67,14 +73,24 @@ export function initializeScheduledJobs() {
   });
 
   // Run daily at 4 AM - Check for clubs past grace period and lock them
+  // DEPRECATED: Disabled when PARENT_PAID_FEES_ENABLED=true (no club billing = no grace period)
   cron.schedule('0 4 * * *', async () => {
+    if (PARENT_PAID_FEES_ENABLED) {
+      console.log('[Grace Period Check] SKIPPED - PARENT_PAID_FEES_ENABLED=true (no club billing)');
+      return;
+    }
     console.log('[Grace Period Check] Checking for clubs past grace period...');
     await runWithLock(MONTHLY_BILLING_LOCK_ID + 1, processGracePeriodLocking);
   });
 
   // Run daily at 5 AM - Autopay prep job (prepare amounts for Helcim automatic billing)
+  // DEPRECATED: Disabled when PARENT_PAID_FEES_ENABLED=true
   // Only runs when BILLING_MODE=helcim and BILLING_AUTOPAY_PREP_ENABLED=true
   cron.schedule('0 5 * * *', async () => {
+    if (PARENT_PAID_FEES_ENABLED) {
+      console.log('[Autopay Prep] SKIPPED - PARENT_PAID_FEES_ENABLED=true (no club billing)');
+      return;
+    }
     if (BILLING_MODE !== 'helcim' || !BILLING_AUTOPAY_PREP_ENABLED) {
       console.log('[Autopay Prep] SKIPPED - Not enabled or BILLING_MODE != helcim');
       return;
@@ -84,8 +100,13 @@ export function initializeScheduledJobs() {
   });
 
   // Run daily at 6 AM - Billing reconciliation (read-only, fixes mismatches)
+  // DEPRECATED: Disabled when PARENT_PAID_FEES_ENABLED=true
   // Runs when BILLING_MODE=helcim and BILLING_RECONCILIATION_ENABLED=true
   cron.schedule('0 6 * * *', async () => {
+    if (PARENT_PAID_FEES_ENABLED) {
+      console.log('[Billing Reconciliation] SKIPPED - PARENT_PAID_FEES_ENABLED=true (no club billing)');
+      return;
+    }
     if (BILLING_MODE !== 'helcim' || !BILLING_RECONCILIATION_ENABLED) {
       console.log('[Billing Reconciliation] SKIPPED - Not enabled or BILLING_MODE != helcim');
       return;

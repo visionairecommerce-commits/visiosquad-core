@@ -428,6 +428,37 @@ export interface IStorage {
   lockClub(clubId: string): Promise<Club>;
   unlockClub(clubId: string): Promise<Club>;
   updateClubBillingStatus(clubId: string, lastBilledAt: Date, lastBilledPeriodStart: Date): Promise<Club>;
+  
+  // Platform Revenue Metrics (Parent-paid tech fees)
+  getPlatformRevenueMetrics(startDate: Date, endDate: Date): Promise<{
+    total_tech_fees: number;
+    total_payments: number;
+    payment_count: number;
+    avg_fee_per_payment: number;
+    by_payment_rail: {
+      card_credit: { count: number; total: number };
+      card_debit: { count: number; total: number };
+      ach: { count: number; total: number };
+    };
+    by_payment_kind: {
+      recurring: { count: number; total: number };
+      one_time: { count: number; total: number };
+    };
+    trend_vs_previous: number;
+  }>;
+  getPlatformRevenuePayments(startDate: Date, endDate: Date, limit: number): Promise<Array<{
+    id: string;
+    amount: number;
+    base_amount: number;
+    tech_fee_amount: number;
+    payment_rail: string;
+    payment_kind: string;
+    fee_version: string;
+    status: string;
+    created_at: string;
+    club_name: string;
+    athlete_name: string;
+  }>>;
   getClubsDueToBill(dayOfMonth: number): Promise<Club[]>;
   getLockedClubs(): Promise<Club[]>;
   getClubsPastGracePeriod(gracePeriodDays: number): Promise<Club[]>;
@@ -1050,6 +1081,87 @@ export class MemStorage implements IStorage {
     club.last_billed_period_start = lastBilledPeriodStart.toISOString();
     this.clubs.set(clubId, club);
     return club;
+  }
+
+  async getPlatformRevenueMetrics(startDate: Date, endDate: Date) {
+    const payments = Array.from(this.payments.values()).filter(p => {
+      const createdAt = new Date(p.created_at);
+      return createdAt >= startDate && createdAt <= endDate && 
+             p.status === 'completed' && 
+             p.fee_version?.startsWith('v1_2026');
+    });
+
+    const total_tech_fees = payments.reduce((sum, p) => sum + (p.tech_fee_amount || 0), 0);
+    const total_payments = payments.reduce((sum, p) => sum + p.amount, 0);
+    const payment_count = payments.length;
+    const avg_fee_per_payment = payment_count > 0 ? total_tech_fees / payment_count : 0;
+
+    const by_payment_rail = {
+      card_credit: { count: 0, total: 0 },
+      card_debit: { count: 0, total: 0 },
+      ach: { count: 0, total: 0 },
+    };
+
+    payments.forEach(p => {
+      const rail = p.payment_rail as keyof typeof by_payment_rail;
+      if (by_payment_rail[rail]) {
+        by_payment_rail[rail].count++;
+        by_payment_rail[rail].total += p.tech_fee_amount || 0;
+      }
+    });
+
+    const by_payment_kind = {
+      recurring: { count: 0, total: 0 },
+      one_time: { count: 0, total: 0 },
+    };
+
+    payments.forEach(p => {
+      const kind = p.payment_kind as keyof typeof by_payment_kind;
+      if (by_payment_kind[kind]) {
+        by_payment_kind[kind].count++;
+        by_payment_kind[kind].total += p.tech_fee_amount || 0;
+      }
+    });
+
+    return {
+      total_tech_fees,
+      total_payments,
+      payment_count,
+      avg_fee_per_payment,
+      by_payment_rail,
+      by_payment_kind,
+      trend_vs_previous: 0,
+    };
+  }
+
+  async getPlatformRevenuePayments(startDate: Date, endDate: Date, limit: number) {
+    const payments = Array.from(this.payments.values())
+      .filter(p => {
+        const createdAt = new Date(p.created_at);
+        return createdAt >= startDate && createdAt <= endDate && 
+               p.status === 'completed' && 
+               p.fee_version?.startsWith('v1_2026');
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
+
+    return payments.map(p => {
+      const athlete = this.athletes.get(p.athlete_id);
+      const club = this.clubs.get(p.club_id);
+      return {
+        id: p.id,
+        amount: p.amount,
+        base_amount: p.base_amount || p.amount,
+        tech_fee_amount: p.tech_fee_amount || 0,
+        payment_rail: p.payment_rail || 'card_credit',
+        payment_kind: p.payment_kind || 'recurring',
+        fee_version: p.fee_version || '',
+        status: p.status,
+        created_at: p.created_at,
+        club_name: club?.name || 'Unknown',
+        athlete_name: athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Unknown',
+      };
+    });
   }
 
   async getClubsDueToBill(dayOfMonth: number): Promise<Club[]> {

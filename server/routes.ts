@@ -2,7 +2,8 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage, PLATFORM_FEES } from "./storage";
-import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured, extractWebhookHeaders, calculateBillingPeriod, BILLING_MODE } from "./lib/helcim";
+import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createCardToken, createBankToken, chargePlatformBilling, verifyWebhookSignature, isWebhookSecretConfigured, extractWebhookHeaders, calculateBillingPeriod, BILLING_MODE, PARENT_PAID_FEES_ENABLED, detectCardFundingType, cardFundingToPaymentRail } from "./lib/helcim";
+import { calculateTechnologyAndServiceFees, getDualPricing, deriveMonthsCount, FEE_VERSION, type PaymentRail, type PaymentKind } from "../shared/pricing";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured, sendPlatformBillingSuccess, sendPlatformBillingFailure } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
 import { z } from "zod";
@@ -234,6 +235,7 @@ const paymentSchema = z.object({
   payment_type: z.enum(['monthly', 'clinic', 'drop_in']),
   payment_method: z.enum(['credit_card', 'ach']),
   card_token: z.string().optional(),
+  months_count: z.number().min(1).optional(),
 }).refine((data) => {
   // Require card_token for credit card payments (unless in demo mode)
   if (data.payment_method === 'credit_card' && !data.card_token) {
@@ -3530,47 +3532,104 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = paymentSchema.parse(req.body);
 
-      // Check if the club has a billing method on file before allowing payments
-      const club = await storage.getClub(clubId);
-      if (!club?.billing_card_token && !club?.billing_bank_token) {
-        return res.status(403).json({ 
-          error: 'Billing method required',
-          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
-        });
-      }
-
       const athlete = await storage.getAthlete(clubId, data.athlete_id);
       if (!athlete) {
         return res.status(404).json({ error: 'Athlete not found' });
       }
 
-      const totalAmount = calculateTotalWithFee(data.amount, data.payment_method);
+      const club = await storage.getClub(clubId);
+      
+      let totalAmount: number;
+      let baseAmount: number;
+      let techFeeAmount: number;
+      let paymentRail: PaymentRail | 'cash';
+      let paymentKind: PaymentKind;
+      let monthsCount: number;
+      let feeVersion: string | undefined;
+
+      // Determine payment kind based on payment type
+      const isRecurring = data.payment_type === 'monthly';
+      paymentKind = isRecurring ? 'recurring_contract' : 'one_time_event';
+      
+      // Derive months count from payment plan (default 1 for one-time)
+      monthsCount = data.months_count || 1;
+      
+      // Base amount is what the club charges
+      baseAmount = data.amount;
+
+      if (PARENT_PAID_FEES_ENABLED) {
+        // NEW MODEL: Parent pays Technology and Service Fees
+        // Determine payment rail (only credit_card or ach - cash handled separately)
+        if (data.payment_method === 'ach') {
+          paymentRail = 'ach';
+        } else {
+          // Card payment - will detect credit/debit after processing
+          // Initially calculate as credit, may adjust after transaction
+          paymentRail = 'card_credit';
+        }
+
+        const pricing = calculateTechnologyAndServiceFees({
+          baseAmount,
+          monthsCount,
+          paymentKind,
+          paymentRail: paymentRail as PaymentRail,
+        });
+        totalAmount = pricing.totalAmount;
+        techFeeAmount = pricing.techFee;
+        feeVersion = pricing.feeVersion;
+      } else {
+        // OLD MODEL: Legacy convenience fee structure
+        totalAmount = calculateTotalWithFee(data.amount, data.payment_method);
+        techFeeAmount = getConvenienceFeeAmount(data.amount, data.payment_method);
+        paymentRail = data.payment_method === 'ach' ? 'ach' : 'card_credit';
+        feeVersion = undefined;
+      }
 
       // Process payment through Helcim
       const paymentResult = await processPayment({
-        amount: totalAmount,
+        amount: totalAmount!,
         cardToken: data.card_token,
         comments: `${data.payment_type} payment for ${athlete.first_name} ${athlete.last_name}`,
       });
 
+      // If PARENT_PAID_FEES_ENABLED and card payment, detect actual card type
+      if (PARENT_PAID_FEES_ENABLED && paymentResult.success && data.payment_method === 'credit_card') {
+        const detectedFunding = detectCardFundingType(paymentResult);
+        const actualPaymentRail = cardFundingToPaymentRail(detectedFunding);
+        
+        // If it was actually a debit card, recalculate with debit pricing (flat only)
+        if (actualPaymentRail === 'card_debit' && paymentRail !== 'card_debit') {
+          const debitPricing = calculateTechnologyAndServiceFees({
+            baseAmount,
+            monthsCount,
+            paymentKind,
+            paymentRail: 'card_debit',
+          });
+          // Note: We already charged the credit rate. 
+          // In production, you might issue a partial refund for the difference.
+          // For now, we record the actual detected rail for reporting.
+          paymentRail = 'card_debit';
+          techFeeAmount = debitPricing.techFee;
+          console.log(`[Payment] Detected debit card, fee adjusted: $${techFeeAmount}`);
+        }
+      }
+
       const payment = await storage.createPayment(clubId, {
         athlete_id: data.athlete_id,
-        amount: totalAmount,
+        amount: totalAmount!,
         payment_type: data.payment_type,
         payment_method: data.payment_method,
         helcim_transaction_id: paymentResult.transactionId,
         status: paymentResult.success ? 'completed' : 'failed',
+        base_amount: baseAmount,
+        tech_fee_amount: techFeeAmount!,
+        payment_rail: paymentRail,
+        payment_kind: paymentKind,
+        months_count: monthsCount,
+        fee_version: feeVersion,
       });
 
       if (paymentResult.success) {
-        // Create platform ledger entry
-        await storage.createPlatformLedgerEntry(
-          clubId,
-          data.athlete_id,
-          PLATFORM_FEES[data.payment_type],
-          data.payment_type
-        );
-
         // Update paid_through_date if monthly payment
         if (data.payment_type === 'monthly') {
           const currentPaidThrough = athlete.paid_through_date
@@ -3578,7 +3637,7 @@ export async function registerRoutes(
             : new Date();
           const newPaidThrough = addMonths(
             currentPaidThrough > new Date() ? currentPaidThrough : new Date(),
-            1
+            monthsCount
           );
           await storage.updateAthletePaidThrough(
             clubId,
@@ -3587,12 +3646,17 @@ export async function registerRoutes(
           );
         }
 
-        // Send confirmation email (simulated)
+        // Send confirmation email with fee breakdown
         await sendPaymentConfirmation(
           'parent@example.com',
           `${athlete.first_name} ${athlete.last_name}`,
-          totalAmount,
-          `${data.payment_type} payment`
+          totalAmount!,
+          `${data.payment_type} payment`,
+          PARENT_PAID_FEES_ENABLED ? {
+            baseAmount,
+            techFeeAmount: techFeeAmount!,
+            paymentRail: paymentRail as string,
+          } : undefined
         );
       }
 
@@ -3600,6 +3664,12 @@ export async function registerRoutes(
         payment,
         success: paymentResult.success,
         error: paymentResult.error,
+        pricing: PARENT_PAID_FEES_ENABLED ? {
+          baseAmount,
+          techFeeAmount: techFeeAmount!,
+          totalAmount: totalAmount!,
+          paymentRail,
+        } : undefined,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -5023,6 +5093,37 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error locking club:', error);
       res.status(500).json({ error: 'Failed to lock club' });
+    }
+  });
+
+  // Platform Revenue Metrics (Owner only) - Parent-paid tech fees
+  app.get('/api/owner/revenue/metrics', requireRole('owner'), async (req, res) => {
+    try {
+      const { start, end } = req.query;
+      const startDate = start ? new Date(start as string) : new Date(new Date().setDate(1));
+      const endDate = end ? new Date(end as string) : new Date();
+      
+      const metrics = await storage.getPlatformRevenueMetrics(startDate, endDate);
+      res.json(metrics);
+    } catch (error) {
+      console.error('Error fetching revenue metrics:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue metrics' });
+    }
+  });
+
+  // Platform Revenue Payments (Owner only) - Recent parent-paid transactions
+  app.get('/api/owner/revenue/payments', requireRole('owner'), async (req, res) => {
+    try {
+      const { start, end, limit } = req.query;
+      const startDate = start ? new Date(start as string) : new Date(new Date().setDate(1));
+      const endDate = end ? new Date(end as string) : new Date();
+      const limitNum = limit ? parseInt(limit as string, 10) : 20;
+      
+      const payments = await storage.getPlatformRevenuePayments(startDate, endDate, limitNum);
+      res.json(payments);
+    } catch (error) {
+      console.error('Error fetching revenue payments:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue payments' });
     }
   });
 

@@ -454,6 +454,12 @@ export const paymentsTable = pgTable("payments", {
   status: text("status", { enum: ["pending", "completed", "failed"] }).default("pending").notNull(),
   description: text("description"),
   helcim_transaction_id: text("helcim_transaction_id"),
+  base_amount: decimal("base_amount", { precision: 10, scale: 2 }),
+  tech_fee_amount: decimal("tech_fee_amount", { precision: 10, scale: 2 }),
+  payment_rail: text("payment_rail", { enum: ["card_credit", "card_debit", "ach", "cash"] }),
+  payment_kind: text("payment_kind", { enum: ["recurring_contract", "one_time_event"] }),
+  months_count: integer("months_count").default(1),
+  fee_version: text("fee_version"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -899,6 +905,12 @@ export interface Payment {
   status: 'pending' | 'completed' | 'failed';
   description?: string;
   helcim_transaction_id?: string;
+  base_amount?: number;
+  tech_fee_amount?: number;
+  payment_rail?: 'card_credit' | 'card_debit' | 'ach' | 'cash';
+  payment_kind?: 'recurring_contract' | 'one_time_event';
+  months_count?: number;
+  fee_version?: string;
   created_at: string;
 }
 

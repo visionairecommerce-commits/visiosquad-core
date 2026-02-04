@@ -48,11 +48,20 @@ Preferred communication style: Simple, everyday language.
 - **Program Contracts & Pricing**: Directors define pricing tiers (monthly, paid-in-full, initiation fees) per program or team. Athletes enroll in contracts, which manage recurring billing and payment plans.
 - **Athlete Management**: Roster management, payment status tracking, custom pricing overrides for individual athletes.
 - **Payment Processing**: Integrates with Helcim for credit card and ACH transactions.
-- **Technology and Service Fees (Parent-Paid Model)**: When `PARENT_PAID_FEES_ENABLED=true`, parents pay platform fees at checkout:
-  - **Recurring Payments (Contracts)**: 3% + $3/month for credit, $3/month flat for debit, 1.5% + $3/month for ACH
-  - **One-Time Payments (Events)**: 3% + $1 for credit, $1 flat for debit, 1.5% + $1 for ACH
+- **Technology and Service Fees (Parent-Paid Model v2 Zero-Loss)**: When `PARENT_PAID_FEES_ENABLED=true`, parents pay platform fees at checkout with a STANDARD fee + DISCOUNTS structure:
+  - **Fee Version**: `v2_2026_02_zero_loss_discounts`
+  - **Recurring Payments (Contracts)**:
+    - STANDARD: (baseAmount × 3.75%) + $3.50/month
+    - ACH Discount: subtract (baseAmount × 2%) + $0.50 (minimum $3.00/month after discount)
+    - Debit Discount: subtract (baseAmount × 3.75%) → flat $3.50/month only
+  - **One-Time Payments (Events)**:
+    - STANDARD: (baseAmount × 3.75%) + $1.50
+    - ACH Discount: subtract (baseAmount × 2%) + $0.50 (minimum $1.00 after discount)
+    - Debit Discount: subtract (baseAmount × 3.75%) → flat $1.50 only
+  - **Debit Compliance**: Debit cards NEVER have percentage fees (flat only)
   - **Card Type Detection**: Automatically detects credit vs debit cards via Helcim response, defaults to debit for compliance
-  - **Pricing Engine**: Centralized in `shared/pricing.ts` with `calculateTechnologyAndServiceFees()`
+  - **Pricing Engine**: Centralized in `shared/pricing.ts` with `calculateTechnologyAndServiceFees()` and `getTriplePricing()`
+  - **Display Format**: Shows standard fee + discount as negative line item (green text)
   - **Payment Fields**: `base_amount`, `tech_fee_amount`, `payment_rail`, `payment_kind`, `months_count`, `fee_version`
   - **Revenue Tracking**: Owner dashboard at `/owner/revenue` shows platform fee collection by payment method
   - **Feature Flag**: Controlled by `PARENT_PAID_FEES_ENABLED` environment variable

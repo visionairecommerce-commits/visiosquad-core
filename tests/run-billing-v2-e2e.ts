@@ -68,9 +68,15 @@ async function main() {
 
   const suites: SuiteResult[] = [];
 
-  // Run E2E test suite
-  console.log('▶ Running Billing V2 E2E Tests...');
-  const e2eResult = await runTest('Billing V2 E2E', 'tests/billing-v2.e2e.test.ts');
+  // Run HTTP E2E test suite (TRUE server-level tests with mocked Helcim/Resend)
+  console.log('▶ Running Billing V2 HTTP E2E Tests...');
+  const httpE2eResult = await runTest('Billing V2 HTTP E2E', 'tests/billing-v2.http-e2e.test.ts');
+  suites.push(httpE2eResult);
+  console.log(`  ${httpE2eResult.status === 'PASS' ? '✅' : '❌'} ${httpE2eResult.suite}: ${httpE2eResult.passed}/${httpE2eResult.total} tests`);
+
+  // Run simulation E2E test suite
+  console.log('▶ Running Billing V2 Simulation Tests...');
+  const e2eResult = await runTest('Billing V2 Simulation', 'tests/billing-v2.e2e.test.ts');
   suites.push(e2eResult);
   console.log(`  ${e2eResult.status === 'PASS' ? '✅' : '❌'} ${e2eResult.suite}: ${e2eResult.passed}/${e2eResult.total} tests`);
 

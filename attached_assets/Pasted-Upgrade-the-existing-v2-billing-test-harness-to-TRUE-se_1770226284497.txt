@@ -1,0 +1,118 @@
+Upgrade the existing v2 billing test harness to TRUE server-level E2E tests using HTTP requests, while still mocking Helcim and Resend.
+
+Constraints:
+- Do NOT use Playwright/UI. Use Node HTTP-level tests (supertest) so it runs in CI.
+- Do NOT require real Helcim transactions. Mock all Helcim calls.
+- Do NOT require manual setup. Tests must seed data programmatically.
+- Do NOT change the v2 pricing logic. Only improve testing realism.
+
+Goal:
+Create an integration test suite that:
+1) boots the real server/app (Express) the same way production does
+2) uses supertest to call the REAL endpoints used by parents:
+   - contract checkout/payment endpoint(s)
+   - event registration/payment endpoint(s)
+   - revenue dashboard endpoint(s) (owner)
+3) verifies DB writes actually happen through the storage layer
+4) verifies emails are generated via resend module (stubbed), and terminology is compliant
+5) verifies card type detection paths:
+   - credit
+   - debit
+   - ach
+   - unknown => defaults to debit
+6) verifies PARENT_PAID_FEES_ENABLED=true gates the behavior
+7) verifies old club billing jobs are not invoked
+
+Implementation plan (must implement all):
+A) Identify the real server entry and express app export
+- Ensure there is an importable Express app instance for tests.
+- If server currently only starts via listen(), refactor minimally to export `app` without changing runtime behavior.
+  Example pattern:
+   - server/index.ts exports createApp() or app
+   - server/start.ts calls app.listen(...)
+- Keep changes minimal and no unrelated diffs.
+
+B) Add test utilities for DB isolation
+- Use a test database or transaction rollback strategy.
+- If DATABASE_URL points to prod/dev, implement a TEST_DATABASE_URL requirement for tests.
+- Add a helper: withTestDb() that:
+  - runs migrations (or db:push) once per run
+  - truncates relevant tables between tests (clubs, users, athletes, contracts, events, payments, etc.)
+  - seeds deterministic test fixtures
+
+C) Mock external services cleanly
+- Helcim: mock module functions in server/lib/helcim.ts
+  - purchase call returns deterministic transactionId and includes a way to indicate rail/card type
+  - transaction lookup returns consistent status APPROVED
+- Resend: mock server/lib/resend.ts to capture outbound email payloads in memory
+- Ensure mocks are reset per test.
+
+D) Write TRUE HTTP E2E tests using supertest
+Create file: tests/billing-v2.http-e2e.test.ts
+
+Test cases (minimum):
+1) Contract payment credit (base=50, months=1)
+- Auth as parent (use real auth flow or a test bypass token mechanism)
+- POST the real endpoint that processes contract payments
+- Verify response includes totals and fee breakdown
+- Verify DB `payments` row exists and fields match:
+  fee_version = v2_2026_02_zero_loss_discounts
+  base_amount=50
+  tech_fee_amount=5.38
+  amount=55.38
+  payment_rail=card_credit
+  payment_kind=recurring_contract
+  months_count=1
+- Verify captured email contains “Technology and Service Fees” and NOT any forbidden terms
+
+2) Contract payment debit (base=50, months=1)
+- same endpoint, rail=card_debit
+- tech_fee_amount=3.50 and MUST NOT include any percent-based component
+- Ensure UI/API response shows debit discount line item (negative discount)
+
+3) Contract payment ACH (base=50, months=1)
+- rail=ach
+- tech_fee_amount=3.88 (and verify min logic)
+- Ensure response shows “ACH Discount” as a discount line item
+
+4) Event payment credit (base=50, months=1 one-time)
+- tech_fee_amount=3.38
+- payment_kind=one_time_event
+
+5) Unknown card type defaults to debit
+- Mock Helcim response without classification
+- Ensure payment_rail=card_debit and fee uses flat only
+
+6) Revenue endpoint includes v2
+- Auth as owner/director/admin (whatever is required)
+- Call the real /owner/revenue API route
+- Assert totals include summed tech_fee_amount from created payments
+
+7) Feature flag gating
+- Run one test with PARENT_PAID_FEES_ENABLED=false
+- Assert endpoints either reject or use legacy path (whatever intended)
+- Must not accidentally apply v2 when flag is false
+
+E) Add a runnable script
+Update tests/run-billing-v2-e2e.ts to also run the new HTTP E2E suite and print:
+- pass/fail count
+- sample created payment row(s)
+- captured email subject lines
+- confirmation that forbidden terms are absent
+
+F) Forbidden terms check (hard fail):
+Fail the test if any email body or API returned breakdown includes:
+"surcharge", "processing fee", "convenience fee", "credit card fee"
+
+Commands:
+- Ensure it runs via:
+  PARENT_PAID_FEES_ENABLED=true TEST_DATABASE_URL=... npx vitest run
+  or the repo’s existing test runner.
+- If repo uses jest instead of vitest, use that. Use whatever is already installed.
+
+Output required:
+- List files changed/added
+- Explain how to run the new HTTP E2E suite
+- Confirm tests pass
+
+Proceed to implement now.

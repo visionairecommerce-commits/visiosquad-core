@@ -1,0 +1,49 @@
+Objective: Add a collaborative "Snack Hub" feature to the Event page and an "Allergy" field to Player Profiles.
+
+1. Database & Profile Updates:
+
+• Add a food_allergies field (string/text) to the Player Profile model/schema.
+
+• parents register their players under them with a separate login. Update the Player profile forms to include an "Allergies/Dietary Restrictions" input field that allows all allergies to be listed separately.
+
+• Create a SnackTable model that links to an EventID. It should store:
+
+• category (Infrastructure, Hydration, Protein, Fruit/Veg, etc.)
+
+• item_name (string)
+
+• quantity_needed (integer)
+
+• claimed_by (UserID, nullable)
+
+• is_custom (boolean)
+
+• club_id (To ensure custom items remain private to the specific club).
+
+2. The "Allergy Alert" Logic:
+
+• On the Event Snack Page, create a function that checks the roster of the specific event.
+
+• If any player on that roster has data in their food_allergies field, display a prominent Yellow Alert Banner at the top of the snack list stating: "⚠️ ALLERGY ALERT: Players on this roster have the following allergies: [List unique allergies here]. Please ensure all snacks are safe."
+
+• If no allergies are listed for rostered players, do not show the banner.
+
+3. The Snack Hub UI (Event View):
+
+• Progress Bar: Display a visual progress bar at the top showing the percentage of "Slots Filled" vs. "Total Items Requested."
+
+• The List: Display snacks grouped by category.
+
+• The "Claim" Action: Allow parents to click a "Claim" button. This should update the claimed_by field with their name/ID in real-time.
+
+• Organizer Mode: Allow the Coach or the first parent who "joins" as organizer to add items. Provide a "Staple Items" dropdown (Water, Gatorade, Bananas, Oranges, Granola Bars, Jerky) and an "Add Custom" option.
+
+• Privacy: Ensure any "Custom" items added are filtered by club_id so they are only visible and reusable for teams within that specific organization.
+
+4. Styling:
+
+• Use a clean, modern card-based layout for categories.
+
+• Use icons for categories (e.g., a water bottle for Hydration, an apple for Fruit).
+
+• Ensure the "Claim" button is high-contrast and easy to tap on mobile.

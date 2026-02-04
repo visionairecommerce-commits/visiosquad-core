@@ -364,6 +364,8 @@ export const athletesTable = pgTable("athletes", {
   aau_number: text("aau_number"),
   bvne_number: text("bvne_number"),
   p1440_number: text("p1440_number"),
+  // Food allergies/dietary restrictions
+  food_allergies: text("food_allergies"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -581,6 +583,23 @@ export const eventCoachesTable = pgTable("event_coaches", {
   event_id: uuid("event_id").references(() => eventsTable.id).notNull(),
   coach_id: uuid("coach_id").references(() => profilesTable.id).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Snack Hub items table - for collaborative snack organization at events
+export const snackItemsTable = pgTable("snack_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  event_id: uuid("event_id").references(() => eventsTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  category: text("category", { 
+    enum: ["infrastructure", "hydration", "protein", "fruit_veg", "snacks", "other"] 
+  }).notNull(),
+  item_name: text("item_name").notNull(),
+  quantity_needed: integer("quantity_needed").default(1).notNull(),
+  claimed_by: uuid("claimed_by").references(() => profilesTable.id),
+  claimed_by_name: text("claimed_by_name"),
+  is_custom: boolean("is_custom").default(false).notNull(),
+  created_by: uuid("created_by").references(() => profilesTable.id).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1096,6 +1115,22 @@ export const insertEventCoachSchema = z.object({
   coach_id: z.string().min(1, "Coach is required"),
 });
 
+// Snack Hub schemas
+export const snackCategoryEnum = z.enum(["infrastructure", "hydration", "protein", "fruit_veg", "snacks", "other"]);
+export type SnackCategory = z.infer<typeof snackCategoryEnum>;
+
+export const insertSnackItemSchema = z.object({
+  event_id: z.string().min(1, "Event is required"),
+  category: snackCategoryEnum,
+  item_name: z.string().min(1, "Item name is required"),
+  quantity_needed: z.number().min(1).default(1),
+  is_custom: z.boolean().default(false),
+});
+
+export const claimSnackItemSchema = z.object({
+  snack_item_id: z.string().min(1, "Snack item is required"),
+});
+
 // ============ MESSAGING SCHEMAS ============
 
 export const createChatChannelSchema = z.object({
@@ -1211,6 +1246,8 @@ export type CancelSession = z.infer<typeof cancelSessionSchema>;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type InsertEventRoster = z.infer<typeof insertEventRosterSchema>;
 export type InsertEventCoach = z.infer<typeof insertEventCoachSchema>;
+export type InsertSnackItem = z.infer<typeof insertSnackItemSchema>;
+export type SnackItem = typeof snackItemsTable.$inferSelect;
 export type CreateClub = z.infer<typeof createClubSchema>;
 export type RegisterUser = z.infer<typeof registerUserSchema>;
 export type SignDocument = z.infer<typeof signDocumentSchema>;

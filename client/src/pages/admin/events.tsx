@@ -54,7 +54,10 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { Cookie } from 'lucide-react';
 import type { Event, Program, Team, Facility, Athlete } from '@shared/schema';
+import { SnackHub } from '@/components/snack-hub';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface EventRoster {
   id: string;
@@ -99,11 +102,13 @@ const initialFormData: EventFormData = {
 
 export default function EventsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [deleteEventId, setDeleteEventId] = useState<string | null>(null);
   const [formData, setFormData] = useState<EventFormData>(initialFormData);
   const [rosterEventId, setRosterEventId] = useState<string | null>(null);
+  const [snackEventId, setSnackEventId] = useState<string | null>(null);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
   const [athleteSearchQuery, setAthleteSearchQuery] = useState<string>('');
   const [formAthleteSearch, setFormAthleteSearch] = useState<string>('');
@@ -341,6 +346,7 @@ export default function EventsPage() {
     : [];
 
   const rosterEvent = events.find(e => e.id === rosterEventId);
+  const snackEvent = events.find(e => e.id === snackEventId);
 
   const handleExportRoster = async () => {
     if (!rosterEventId) return;
@@ -843,6 +849,15 @@ export default function EventsPage() {
                           Roster
                         </Button>
                         <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setSnackEventId(event.id)}
+                          data-testid={`button-snacks-${event.id}`}
+                        >
+                          <Cookie className="h-3.5 w-3.5 mr-1" />
+                          Snacks
+                        </Button>
+                        <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleOpenEdit(event)}
@@ -1078,6 +1093,32 @@ export default function EventsPage() {
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!snackEventId} onOpenChange={(open) => { if (!open) setSnackEventId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cookie className="h-5 w-5" />
+              {snackEvent?.title} - Snack Hub
+            </DialogTitle>
+            <DialogDescription>
+              {snackEvent && (
+                <>
+                  {format(new Date(snackEvent.start_time), 'EEEE, MMMM d • h:mm a')}
+                  {snackEvent.location && ` • ${snackEvent.location}`}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {snackEventId && user && (
+            <SnackHub 
+              eventId={snackEventId} 
+              currentUserId={user.id}
+              isAdmin={true}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,0 +1,239 @@
+TASK: RUN FULL END-TO-END TESTS FOR PARENT-PAID BILLING (NO MANUAL SETUP)
+
+You are operating inside the VisioSquad codebase.
+
+DO NOT create a new billing system.
+DO NOT preserve any club-paid logic.
+DO NOT require manual UI setup.
+
+Your job is to programmatically run end-to-end tests that validate the existing, implemented Parent-Paid Technology & Service Fees model.
+
+🎯 TESTING GOAL
+
+Prove — end to end — that:
+
+Clubs are never charged
+
+Parents are charged correct Technology & Service Fees
+
+Fee math is correct for all payment types
+
+Compliance logic is respected (debit vs credit vs ACH)
+
+Receipts + reporting are generated correctly
+
+Old club billing paths are fully inert
+
+🔒 PRECONDITIONS (ASSUME TRUE)
+
+PARENT_PAID_FEES_ENABLED=true
+
+Single Helcim merchant account (platform-owned)
+
+No clubs currently have billing configured
+
+Old club billing jobs/routes exist but should be inactive
+
+Shared pricing engine already exists in shared/pricing.ts
+
+🧪 TEST STRATEGY (REQUIRED)
+1️⃣ Create an isolated test harness
+
+Use database transactions or test seeds
+
+No production data pollution
+
+Auto-cleanup after tests complete
+
+Create:
+
+1 test club
+
+1 test director
+
+1 test parent
+
+1 test athlete
+
+1 recurring contract
+
+1 one-time event
+
+All creation must be programmatic, not UI-driven.
+
+2️⃣ Run PRICING ENGINE TESTS (UNIT + INTEGRATION)
+
+For each case, call the real pricing engine:
+
+Recurring Contracts
+Case	Expected Fee
+$100 × 1 month – Credit	3% + $3 = $6
+$300 × 3 months – Credit	3% + $9 = $18
+$900 × 9 months – Credit	3% + $27 = $54
+$100 × 1 month – Debit	$3 flat
+$100 × 1 month – ACH	1.5% + $3 = $4.50
+One-Time Events
+Case	Expected Fee
+$50 – Credit	3% + $1 = $2.50
+$50 – Debit	$1 flat
+$50 – ACH	1.5% + $1 = $1.75
+
+✔️ Assert:
+
+base_amount
+
+tech_fee_amount
+
+total_amount
+
+payment_rail
+
+payment_kind
+
+months_count
+
+fee_version
+
+3️⃣ Simulate HELCIM PAYMENTS (NO REAL CHARGES)
+
+Mock Helcim responses for:
+
+Credit card
+
+Debit card
+
+ACH
+
+Ensure:
+
+Debit removes percentage fee
+
+Credit applies percentage
+
+ACH applies discount logic
+
+Confirm:
+
+Correct payload passed to Helcim
+
+Correct totals charged
+
+Transaction IDs recorded
+
+4️⃣ VERIFY WEBHOOK PROCESSING
+
+Simulate Helcim webhook payloads:
+
+{
+  "id": "test_tx_123",
+  "type": "cardTransaction"
+}
+
+
+Ensure webhook handler:
+
+Resolves transaction
+
+Marks payment completed
+
+Does not attempt any club billing
+
+Updates reporting fields correctly
+
+5️⃣ VERIFY RECEIPTS & EMAILS
+
+Intercept Resend email calls.
+
+Assert email content includes:
+
+Base Amount
+
+Technology & Service Fees
+
+Total Charged
+
+Payment Method
+
+Compliance wording
+
+No reference to “convenience fee” or “surcharge”
+
+6️⃣ VERIFY INVOICES / EXPORTABILITY
+
+Confirm:
+
+Payment records can generate invoice-ready data
+
+Line items match receipt
+
+Terminology uses “Technology and Service Fees”
+
+No club billing invoices are created
+
+7️⃣ VERIFY OWNER REVENUE DASHBOARD DATA
+
+Query payments table and confirm:
+
+Revenue grouped by club
+
+Revenue grouped by payment rail
+
+Revenue grouped by payment kind
+
+Totals equal sum of tech_fee_amount
+
+No reliance on deprecated tables
+
+8️⃣ VERIFY DEAD CODE PATHS
+
+Explicitly assert:
+
+No scheduled jobs attempt to bill clubs
+
+No calls to chargePlatformBilling
+
+No Helcim subscriptions created
+
+No writes to platform_autopay_charges
+
+No writes to platform_invoices
+
+Fail tests if any of these are triggered.
+
+📊 FINAL OUTPUT REQUIRED
+
+At the end, produce a single structured report:
+
+PARENT-PAID BILLING E2E TEST REPORT
+
+Pricing Engine: ✅ PASS
+Debit Compliance: ✅ PASS
+ACH Discount Logic: ✅ PASS
+Helcim Charge Payloads: ✅ PASS
+Webhook Handling: ✅ PASS
+Receipts / Emails: ✅ PASS
+Invoices / Reporting: ✅ PASS
+Club Billing Disabled: ✅ PASS
+
+OVERALL STATUS: READY FOR PRODUCTION
+
+
+If anything fails, list:
+
+File
+
+Function
+
+Exact reason
+
+Recommended fix
+
+🚫 STRICT RULES
+
+Do NOT modify business logic
+
+Do NOT introduce new billing modes
+
+Do NOT leave test code enabled in production paths
+
+Do NOT change fee math unless tests prove incorrect behavio

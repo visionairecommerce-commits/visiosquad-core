@@ -24,7 +24,6 @@ import AdminSchedulePage from "@/pages/admin/schedule";
 import AdminCalendarPage from "@/pages/admin/calendar";
 import AdminPaymentsPage from "@/pages/admin/payments";
 import ContractsPage from "@/pages/admin/contracts";
-import ContractCompliancePage from "@/pages/admin/contract-compliance";
 import ProgramRosterPage from "@/pages/admin/program-roster";
 import CoachDashboard from "@/pages/coach/dashboard";
 import CoachSessionsPage from "@/pages/coach/sessions";
@@ -47,7 +46,6 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import OwnerDashboard from "@/pages/owner/dashboard";
 import DocuSealOnboarding from "@/pages/owner/docuseal-onboarding";
-import PlatformBilling from "@/pages/owner/platform-billing";
 import ClubsBilling from "@/pages/owner/clubs-billing";
 import PlatformRevenue from "@/pages/owner/platform-revenue";
 import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
@@ -79,7 +77,6 @@ function AdminRoutes() {
       <Route path="/programs" component={ProgramsPage} />
       <Route path="/programs/:programId/roster" component={ProgramRosterPage} />
       <Route path="/contracts" component={ContractsPage} />
-      <Route path="/contract-compliance" component={ContractCompliancePage} />
       <Route path="/teams" component={TeamsPage} />
       <Route path="/roster" component={RosterPage} />
       <Route path="/schedule" component={AdminSchedulePage} />
@@ -107,7 +104,6 @@ function CoachRoutes() {
       <Route path="/attendance" component={CoachSessionsPage} />
       <Route path="/programs" component={ProgramsPage} />
       <Route path="/programs/:programId/roster" component={ProgramRosterPage} />
-      <Route path="/contract-compliance" component={ContractCompliancePage} />
       <Route path="/messages" component={MessagesPage} />
       <Route path="/bulletin" component={BulletinPage} />
       <Route component={NotFound} />
@@ -155,7 +151,6 @@ function OwnerRoutes() {
       <Route path="/clubs" component={OwnerDashboard} />
       <Route path="/revenue" component={PlatformRevenue} />
       <Route path="/docuseal-onboarding" component={DocuSealOnboarding} />
-      <Route path="/platform-billing" component={PlatformBilling} />
       <Route path="/clubs-billing" component={ClubsBilling} />
       <Route path="/login" component={RedirectToDashboard} />
       <Route component={NotFound} />

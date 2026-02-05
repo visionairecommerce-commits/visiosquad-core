@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye, Receipt, FileSignature, CreditCard, Landmark, Percent } from "lucide-react";
+import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye, FileSignature, CreditCard, Landmark, Percent } from "lucide-react";
 import { FEE_CONFIG, FEE_VERSION } from "@shared/pricing";
 import { Link } from "wouter";
 import { format } from "date-fns";
@@ -115,12 +115,6 @@ export default function OwnerDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link href="/platform-billing">
-            <Button variant="default" data-testid="button-platform-billing">
-              <Receipt className="h-4 w-4 mr-2" />
-              Platform Billing
-            </Button>
-          </Link>
           <Link href="/docuseal-onboarding">
             <Button variant="outline" data-testid="button-docuseal-onboarding">
               <FileSignature className="h-4 w-4 mr-2" />

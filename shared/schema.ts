@@ -19,6 +19,8 @@ export const clubsTable = pgTable("clubs", {
   sport: text("sport", { enum: ["soccer", "football", "basketball", "indoor_volleyball", "beach_volleyball"] }),
   logo_url: text("logo_url"),
   address: text("address"),
+  contact_phone: text("contact_phone"),
+  contact_email: text("contact_email"),
   join_code: text("join_code").notNull().unique(),
   contract_pdf_url: text("contract_pdf_url"),
   waiver_content: text("waiver_content"),

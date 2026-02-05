@@ -46,7 +46,6 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
 import OwnerDashboard from "@/pages/owner/dashboard";
 import DocuSealOnboarding from "@/pages/owner/docuseal-onboarding";
-import ClubsBilling from "@/pages/owner/clubs-billing";
 import PlatformRevenue from "@/pages/owner/platform-revenue";
 import { WaiverEnforcementModal } from "@/components/WaiverEnforcementModal";
 
@@ -151,7 +150,6 @@ function OwnerRoutes() {
       <Route path="/clubs" component={OwnerDashboard} />
       <Route path="/revenue" component={PlatformRevenue} />
       <Route path="/docuseal-onboarding" component={DocuSealOnboarding} />
-      <Route path="/clubs-billing" component={ClubsBilling} />
       <Route path="/login" component={RedirectToDashboard} />
       <Route component={NotFound} />
     </Switch>

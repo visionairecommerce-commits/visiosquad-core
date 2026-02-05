@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -99,13 +99,13 @@ export default function ContractsPage() {
   const teamsForProgram = teams.filter(t => t.program_id === selectedProgramId);
 
   // Clear team_id when program changes to avoid invalid team/program combinations
-  const prevProgramId = useState<string | null>(null);
-  if (prevProgramId[0] !== selectedProgramId && prevProgramId[0] !== null) {
-    form.setValue("team_id", "");
-  }
-  if (prevProgramId[0] !== selectedProgramId) {
-    prevProgramId[1](selectedProgramId);
-  }
+  const prevProgramIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevProgramIdRef.current !== null && prevProgramIdRef.current !== selectedProgramId) {
+      form.setValue("team_id", "");
+    }
+    prevProgramIdRef.current = selectedProgramId;
+  }, [selectedProgramId, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: ContractFormData) =>

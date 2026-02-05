@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye, Receipt, FileSignature } from "lucide-react";
+import { Building2, Users, DollarSign, TrendingUp, Activity, ChevronRight, Eye, Receipt, FileSignature, CreditCard, Landmark, Percent } from "lucide-react";
+import { FEE_CONFIG, FEE_VERSION } from "@shared/pricing";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { useState } from "react";
@@ -193,39 +194,89 @@ export default function OwnerDashboard() {
 
       <Card data-testid="card-platform-fees">
         <CardHeader>
-          <CardTitle>Platform Fee Structure</CardTitle>
-          <CardDescription>Current pricing for all clubs</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            Technology and Service Fees
+            <Badge variant="outline" className="text-xs">{FEE_VERSION}</Badge>
+          </CardTitle>
+          <CardDescription>Parent-paid fees at checkout — clubs pay $0</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-primary/10 rounded-full">
-                <Activity className="h-5 w-5 text-primary" />
+            <div className="p-4 bg-muted/50 rounded-lg border-2 border-primary/20">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-primary/10 rounded-full">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                </div>
+                <p className="font-semibold">Credit Card</p>
+                <Badge variant="secondary" className="text-xs">Standard</Badge>
               </div>
-              <div>
-                <p className="font-medium">Monthly Fee</p>
-                <p className="text-2xl font-bold text-primary">${metrics?.platform_fee_monthly ?? 3.00}</p>
-                <p className="text-sm text-muted-foreground">Per player/month</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Recurring Contracts</p>
+                  <p className="font-bold text-primary">{(FEE_CONFIG.STANDARD_PERCENT * 100).toFixed(2)}% + ${FEE_CONFIG.RECURRING_FLAT_PER_MONTH.toFixed(2)}/mo</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">One-Time Events</p>
+                  <p className="font-bold text-primary">{(FEE_CONFIG.STANDARD_PERCENT * 100).toFixed(2)}% + ${FEE_CONFIG.ONE_TIME_FLAT.toFixed(2)}</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-primary/10 rounded-full">
-                <Activity className="h-5 w-5 text-primary" />
+
+            <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border-2 border-green-500/20">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-green-500/10 rounded-full">
+                  <CreditCard className="h-5 w-5 text-green-600" />
+                </div>
+                <p className="font-semibold">Debit Card</p>
+                <Badge variant="default" className="bg-green-600 text-xs">Best Value</Badge>
               </div>
-              <div>
-                <p className="font-medium">Event Fee</p>
-                <p className="text-2xl font-bold text-primary">${metrics?.platform_fee_event ?? 1.00}</p>
-                <p className="text-sm text-muted-foreground">Per participant</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Recurring Contracts</p>
+                  <p className="font-bold text-green-600">${FEE_CONFIG.RECURRING_FLAT_PER_MONTH.toFixed(2)}/mo flat</p>
+                  <p className="text-xs text-green-600">No percentage fee</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">One-Time Events</p>
+                  <p className="font-bold text-green-600">${FEE_CONFIG.ONE_TIME_FLAT.toFixed(2)} flat</p>
+                  <p className="text-xs text-green-600">No percentage fee</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
-              <div className="p-2 bg-primary/10 rounded-full">
-                <Activity className="h-5 w-5 text-primary" />
+
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border-2 border-blue-500/20">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-blue-500/10 rounded-full">
+                  <Landmark className="h-5 w-5 text-blue-600" />
+                </div>
+                <p className="font-semibold">ACH/Bank</p>
+                <Badge variant="outline" className="border-blue-500 text-blue-600 text-xs">Discount</Badge>
               </div>
-              <div>
-                <p className="font-medium">Drop-in Fee</p>
-                <p className="text-2xl font-bold text-primary">${metrics?.platform_fee_drop_in ?? 0.75}</p>
-                <p className="text-sm text-muted-foreground">Per session</p>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Recurring Contracts</p>
+                  <p className="font-bold text-blue-600">{((FEE_CONFIG.STANDARD_PERCENT - FEE_CONFIG.ACH_DISCOUNT_PERCENT) * 100).toFixed(2)}% + ${(FEE_CONFIG.RECURRING_FLAT_PER_MONTH - FEE_CONFIG.ACH_DISCOUNT_FLAT).toFixed(2)}/mo</p>
+                  <p className="text-xs text-muted-foreground">Min ${FEE_CONFIG.RECURRING_MIN_PER_MONTH.toFixed(2)}/mo</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">One-Time Events</p>
+                  <p className="font-bold text-blue-600">{((FEE_CONFIG.STANDARD_PERCENT - FEE_CONFIG.ACH_DISCOUNT_PERCENT) * 100).toFixed(2)}% + ${(FEE_CONFIG.ONE_TIME_FLAT - FEE_CONFIG.ACH_DISCOUNT_FLAT).toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">Min ${FEE_CONFIG.ONE_TIME_MIN.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <div className="flex items-start gap-3">
+              <Percent className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium">How Parent-Paid Fees Work</p>
+                <p className="text-muted-foreground">
+                  Parents see the Technology and Service Fee as a separate line item at checkout. 
+                  They select their payment method (credit, debit, or bank transfer) and the fee is calculated accordingly. 
+                  Clubs receive 100% of the program price with no platform deductions.
+                </p>
               </div>
             </div>
           </div>

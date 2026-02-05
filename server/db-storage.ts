@@ -1152,6 +1152,7 @@ export class DatabaseStorage implements IStorage {
       athlete_id: payment.athlete_id,
       amount: String(payment.amount),
       payment_type: payment.payment_type,
+      description: payment.description,
       helcim_transaction_id: payment.helcim_transaction_id,
       status: payment.status,
       base_amount: payment.base_amount !== undefined ? String(payment.base_amount) : undefined,

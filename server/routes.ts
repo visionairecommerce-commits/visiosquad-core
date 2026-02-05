@@ -2313,16 +2313,7 @@ export async function registerRoutes(
     try {
       const { clubId, role } = getAuthContext(req);
       
-      // Check if club has billing method
-      const club = await storage.getClub(clubId);
-      if (!club?.billing_card_token && !club?.billing_bank_token) {
-        return res.status(403).json({ 
-          error: 'Billing method required',
-          message: 'A billing method must be added before processing payments. Please add a credit card or bank account in Settings > Billing.' 
-        });
-      }
-      
-      // Check billing permission for coaches - use individual coach permission
+      // Check billing permission for coaches
       if (role === 'coach') {
         const userId = req.headers['x-user-id'] as string;
         const coach = await storage.getUser(userId);
@@ -2352,28 +2343,249 @@ export async function registerRoutes(
         return res.status(404).json({ error: 'Event not found' });
       }
       
-      // Calculate total with convenience fee (3% for credit card)
-      const totalAmount = calculateTotalWithFee(event.price, 'credit_card');
+      const eventPrice = parseFloat(event.price) || 0;
+      if (eventPrice === 0) {
+        return res.status(400).json({ error: 'Cannot bill for a free event' });
+      }
       
-      // Create payment record
+      // Get the athlete to find the parent
+      const athlete = await storage.getAthlete(clubId, roster.athlete_id);
+      if (!athlete || !athlete.parent_id) {
+        return res.status(400).json({ error: 'Athlete has no parent account linked' });
+      }
+      
+      // Get parent's default payment method
+      const paymentMethod = await storage.getDefaultParentPaymentMethod(athlete.parent_id, clubId);
+      if (!paymentMethod) {
+        return res.status(400).json({ 
+          error: 'No payment method',
+          message: `${athlete.first_name} ${athlete.last_name}'s parent has no payment method on file.`
+        });
+      }
+      
+      // Determine payment rail from stored payment method type
+      const paymentRail: PaymentRail = paymentMethod.payment_type === 'ach' ? 'ach' : 'card_credit';
+      
+      // Calculate Technology and Service Fee using v2 pricing
+      const feeCalc = calculateTechnologyAndServiceFees({
+        baseAmount: eventPrice,
+        paymentRail,
+        paymentKind: 'one_time_event',
+        monthsCount: 1,
+      });
+      
+      // Process payment with Helcim using parent's stored token
+      const cardToken = paymentMethod.card_token || paymentMethod.bank_token;
+      const paymentResult = await processPayment({
+        amount: feeCalc.totalAmount,
+        cardToken: cardToken || undefined,
+        invoiceNumber: `EVT-${roster.event_id.slice(0, 8)}-${roster.athlete_id.slice(0, 8)}`,
+        comments: `Event: ${event.title} - ${athlete.first_name} ${athlete.last_name}`,
+      });
+      
+      if (!paymentResult.success) {
+        return res.status(400).json({ 
+          error: 'Payment failed',
+          message: paymentResult.error || 'Failed to process payment with parent\'s payment method.'
+        });
+      }
+      
+      // Create payment record with v2 fee tracking fields
       const payment = await storage.createPayment(clubId, {
         athlete_id: roster.athlete_id,
-        amount: totalAmount,
+        amount: feeCalc.totalAmount,
         payment_type: 'event',
-        payment_method: 'credit_card', // Default, actual processing would use stored card
-        status: 'completed', // For now, mark as completed (actual implementation would process payment)
+        status: 'completed',
+        description: `Event: ${event.title}`,
+        helcim_transaction_id: paymentResult.transactionId,
+        base_amount: eventPrice,
+        tech_fee_amount: feeCalc.techFee,
+        payment_rail: paymentRail,
+        payment_kind: 'one_time_event',
+        months_count: 1,
+        fee_version: FEE_VERSION,
       });
       
       // Update roster with payment_id
       await storage.updateEventRosterPayment(clubId, rosterId, payment.id);
       
-      // Create platform ledger entry ($1 per player per event)
+      // Create platform ledger entry
       await storage.createPlatformLedgerEntry(clubId, roster.athlete_id, PLATFORM_FEES.event, 'event');
       
-      res.json({ success: true, payment });
+      res.json({ 
+        success: true, 
+        payment,
+        fee_breakdown: {
+          base_amount: eventPrice,
+          tech_fee: feeCalc.techFee,
+          total: feeCalc.totalAmount,
+          fee_version: FEE_VERSION,
+        },
+      });
     } catch (error) {
       console.error('Error billing for event:', error);
       res.status(500).json({ error: 'Failed to bill for event' });
+    }
+  });
+
+  // Bill all unbilled athletes on an event roster
+  app.post('/api/events/:id/bill-all', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId, role } = getAuthContext(req);
+      const eventId = req.params.id as string;
+      
+      // Check billing permission for coaches
+      if (role === 'coach') {
+        const userId = req.headers['x-user-id'] as string;
+        const coach = await storage.getUser(userId);
+        if (!coach?.can_bill) {
+          return res.status(403).json({ 
+            error: 'Billing not authorized',
+            message: 'You do not have permission to bill athletes.' 
+          });
+        }
+      }
+      
+      // Get the event
+      const event = await storage.getEvent(clubId, eventId);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      
+      const eventPrice = parseFloat(event.price) || 0;
+      if (eventPrice === 0) {
+        return res.status(400).json({ error: 'Cannot bill for a free event' });
+      }
+      
+      // Get all roster entries
+      const rosters = await storage.getEventRosters(clubId, eventId);
+      const unbilledRosters = rosters.filter(r => !r.payment_id);
+      
+      if (unbilledRosters.length === 0) {
+        return res.status(400).json({ error: 'All athletes have already been billed' });
+      }
+      
+      const results: Array<{
+        athlete_id: string;
+        athlete_name: string;
+        success: boolean;
+        error?: string;
+        payment_id?: string;
+        amount?: number;
+      }> = [];
+      
+      for (const roster of unbilledRosters) {
+        const athlete = roster.athlete;
+        const athleteName = athlete ? `${athlete.first_name} ${athlete.last_name}` : 'Unknown';
+        
+        // Idempotency guard: re-check payment_id to prevent double-charging from concurrent requests
+        const freshRoster = await storage.getEventRosterById(clubId, roster.id);
+        if (freshRoster?.payment_id) {
+          results.push({
+            athlete_id: roster.athlete_id,
+            athlete_name: athleteName,
+            success: true,
+            error: 'Already billed (concurrent request)',
+          });
+          continue;
+        }
+        
+        if (!athlete?.parent_id) {
+          results.push({
+            athlete_id: roster.athlete_id,
+            athlete_name: athleteName,
+            success: false,
+            error: 'No parent account linked',
+          });
+          continue;
+        }
+        
+        // Get parent's default payment method
+        const paymentMethod = await storage.getDefaultParentPaymentMethod(athlete.parent_id, clubId);
+        if (!paymentMethod) {
+          results.push({
+            athlete_id: roster.athlete_id,
+            athlete_name: athleteName,
+            success: false,
+            error: 'No payment method on file',
+          });
+          continue;
+        }
+        
+        // Determine payment rail from stored payment method type
+        const paymentRail: PaymentRail = paymentMethod.payment_type === 'ach' ? 'ach' : 'card_credit';
+        
+        // Calculate fee
+        const feeCalc = calculateTechnologyAndServiceFees({
+          baseAmount: eventPrice,
+          paymentRail,
+          paymentKind: 'one_time_event',
+          monthsCount: 1,
+        });
+        
+        // Process payment
+        const cardToken = paymentMethod.card_token || paymentMethod.bank_token;
+        const paymentResult = await processPayment({
+          amount: feeCalc.totalAmount,
+          cardToken: cardToken || undefined,
+          invoiceNumber: `EVT-${eventId.slice(0, 8)}-${roster.athlete_id.slice(0, 8)}`,
+          comments: `Event: ${event.title} - ${athlete.first_name} ${athlete.last_name}`,
+        });
+        
+        if (!paymentResult.success) {
+          results.push({
+            athlete_id: roster.athlete_id,
+            athlete_name: athleteName,
+            success: false,
+            error: paymentResult.error || 'Payment failed',
+          });
+          continue;
+        }
+        
+        // Create payment record with v2 fee tracking fields
+        const payment = await storage.createPayment(clubId, {
+          athlete_id: roster.athlete_id,
+          amount: feeCalc.totalAmount,
+          payment_type: 'event',
+          status: 'completed',
+          description: `Event: ${event.title}`,
+          helcim_transaction_id: paymentResult.transactionId,
+          base_amount: eventPrice,
+          tech_fee_amount: feeCalc.techFee,
+          payment_rail: paymentRail,
+          payment_kind: 'one_time_event',
+          months_count: 1,
+          fee_version: FEE_VERSION,
+        });
+        
+        // Update roster with payment_id
+        await storage.updateEventRosterPayment(clubId, roster.id, payment.id);
+        
+        // Create platform ledger entry
+        await storage.createPlatformLedgerEntry(clubId, roster.athlete_id, PLATFORM_FEES.event, 'event');
+        
+        results.push({
+          athlete_id: roster.athlete_id,
+          athlete_name: athleteName,
+          success: true,
+          payment_id: payment.id,
+          amount: feeCalc.totalAmount,
+        });
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+      
+      res.json({
+        success: failCount === 0,
+        total: unbilledRosters.length,
+        billed: successCount,
+        failed: failCount,
+        results,
+      });
+    } catch (error) {
+      console.error('Error billing all athletes for event:', error);
+      res.status(500).json({ error: 'Failed to bill athletes' });
     }
   });
 

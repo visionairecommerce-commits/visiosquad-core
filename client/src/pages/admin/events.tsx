@@ -289,7 +289,7 @@ export default function EventsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/events', rosterEventId, 'rosters'] });
       toast({
-        title: 'Payment Recorded',
+        title: 'Payment Processed',
         description: 'The athlete has been billed for this event.',
       });
     },
@@ -297,6 +297,39 @@ export default function EventsPage() {
       toast({
         title: 'Billing Failed',
         description: error.message || 'Failed to bill athlete for event.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const billAllMutation = useMutation({
+    mutationFn: async ({ eventId }: { eventId: string }) => {
+      const res = await apiRequest('POST', `/api/events/${eventId}/bill-all`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/events', rosterEventId, 'rosters'] });
+      if (data.failed > 0) {
+        const failedNames = data.results
+          .filter((r: { success: boolean }) => !r.success)
+          .map((r: { athlete_name: string; error: string }) => `${r.athlete_name}: ${r.error}`)
+          .join('\n');
+        toast({
+          title: `Billed ${data.billed} of ${data.total} athletes`,
+          description: `${data.failed} failed:\n${failedNames}`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'All Athletes Billed',
+          description: `Successfully billed ${data.billed} athlete(s).`,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Billing Failed',
+        description: error.message || 'Failed to bill athletes.',
         variant: 'destructive',
       });
     },
@@ -314,6 +347,11 @@ export default function EventsPage() {
 
   const handleBillAthlete = (rosterId: string) => {
     billAthleteMutation.mutate({ rosterId });
+  };
+
+  const handleBillAll = () => {
+    if (!rosterEventId) return;
+    billAllMutation.mutate({ eventId: rosterEventId });
   };
 
   const getInitials = (firstName: string, lastName: string) =>
@@ -1044,9 +1082,23 @@ export default function EventsPage() {
             </div>
 
             <div className="border-t pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium">Current Roster</h4>
-                <Badge variant="outline">{eventRosters.length} athlete(s)</Badge>
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-medium">Current Roster</h4>
+                  <Badge variant="outline">{eventRosters.length} athlete(s)</Badge>
+                </div>
+                {rosterEvent && parseFloat(rosterEvent.price) > 0 && eventRosters.some(r => !r.payment_id) && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleBillAll}
+                    disabled={billAllMutation.isPending || billAthleteMutation.isPending}
+                    data-testid="button-bill-all-athletes"
+                  >
+                    <DollarSign className="h-3.5 w-3.5 mr-1" />
+                    {billAllMutation.isPending ? 'Billing...' : `Bill All Unbilled`}
+                  </Button>
+                )}
               </div>
 
               {eventRosters.length === 0 ? (
@@ -1089,11 +1141,11 @@ export default function EventsPage() {
                             variant="default"
                             size="sm"
                             onClick={() => handleBillAthlete(roster.id)}
-                            disabled={billAthleteMutation.isPending}
+                            disabled={billAthleteMutation.isPending || billAllMutation.isPending}
                             data-testid={`button-bill-athlete-${roster.id}`}
                           >
                             <DollarSign className="h-3.5 w-3.5 mr-1" />
-                            Bill ${rosterEvent.price}
+                            {billAthleteMutation.isPending ? 'Billing...' : `Bill Now $${rosterEvent.price}`}
                           </Button>
                         )}
                         <Button

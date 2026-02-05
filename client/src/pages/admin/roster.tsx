@@ -65,6 +65,7 @@ export default function RosterPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>('');
+  const [assignProgramId, setAssignProgramId] = useState<string>('');
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [athleteSearchOpen, setAthleteSearchOpen] = useState(false);
   const [endSeasonDialogOpen, setEndSeasonDialogOpen] = useState(false);
@@ -81,7 +82,7 @@ export default function RosterPage() {
   const { data: athleteContracts = [] } = useQuery<AthleteContract[]>({ queryKey: ['/api/athlete-contracts'] });
 
   const assignMutation = useMutation({
-    mutationFn: async (data: { athlete_id: string; team_id: string; program_id: string }) => {
+    mutationFn: async (data: { athlete_id: string; team_id?: string; program_id: string }) => {
       const response = await apiRequest('POST', '/api/roster/assign', data);
       return response.json();
     },
@@ -261,14 +262,26 @@ export default function RosterPage() {
   };
 
   const handleAssign = () => {
-    const team = teams.find(t => t.id === selectedTeamId);
-    if (!team) return;
-    assignMutation.mutate({
+    if (!assignProgramId) return;
+    
+    const payload: { athlete_id: string; team_id?: string; program_id: string } = {
       athlete_id: selectedAthleteId,
-      team_id: selectedTeamId,
-      program_id: team.program_id,
-    });
+      program_id: assignProgramId,
+    };
+    
+    // Only include team_id if a real team is selected (not "__none__")
+    if (selectedTeamId && selectedTeamId !== '__none__') {
+      payload.team_id = selectedTeamId;
+    }
+    
+    assignMutation.mutate(payload);
   };
+  
+  // Get teams filtered by the selected program in assign dialog
+  const teamsForSelectedProgram = useMemo(() => {
+    if (!assignProgramId) return [];
+    return teams.filter(t => t.program_id === assignProgramId);
+  }, [teams, assignProgramId]);
 
   const selectedAthlete = athletes.find(a => a.id === selectedAthleteId);
 
@@ -471,30 +484,46 @@ export default function RosterPage() {
                 </Popover>
               </div>
               <div className="space-y-2">
-                <Label>Team</Label>
-                <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                  <SelectTrigger data-testid="select-team">
-                    <SelectValue placeholder="Select a team" />
+                <Label>Program</Label>
+                <Select value={assignProgramId} onValueChange={(value) => {
+                  setAssignProgramId(value);
+                  setSelectedTeamId(''); // Reset team when program changes
+                }}>
+                  <SelectTrigger data-testid="select-program">
+                    <SelectValue placeholder="Select a program" />
                   </SelectTrigger>
                   <SelectContent>
-                    {teams.map((team) => {
-                      const program = programs.find(p => p.id === team.program_id);
-                      return (
-                        <SelectItem key={team.id} value={team.id}>
-                          {team.name} ({program?.name || 'Unknown Program'})
-                        </SelectItem>
-                      );
-                    })}
+                    {programs.map((program) => (
+                      <SelectItem key={program.id} value={program.id}>
+                        {program.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Team <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Select value={selectedTeamId} onValueChange={setSelectedTeamId} disabled={!assignProgramId}>
+                  <SelectTrigger data-testid="select-team">
+                    <SelectValue placeholder={assignProgramId ? "Select a team (optional)" : "Select a program first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No team (program only)</SelectItem>
+                    {teamsForSelectedProgram.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <Button
                 className="w-full"
                 onClick={handleAssign}
-                disabled={!selectedAthleteId || !selectedTeamId || assignMutation.isPending}
+                disabled={!selectedAthleteId || !assignProgramId || assignMutation.isPending}
                 data-testid="button-confirm-assign"
               >
-                {assignMutation.isPending ? 'Assigning...' : 'Assign to Team'}
+                {assignMutation.isPending ? 'Assigning...' : (selectedTeamId && selectedTeamId !== '__none__' ? 'Assign to Team' : 'Assign to Program')}
               </Button>
             </div>
           </DialogContent>
@@ -577,7 +606,7 @@ export default function RosterPage() {
                   <div>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Users className="h-5 w-5" />
-                      {team?.name || 'Unknown Team'}
+                      {team?.name || 'Program Only'}
                     </CardTitle>
                     <CardDescription>{program?.name || 'Unknown Program'}</CardDescription>
                   </div>

@@ -170,7 +170,7 @@ const cancelSessionSchema = z.object({
 
 const assignRosterSchema = z.object({
   athlete_id: z.string().min(1),
-  team_id: z.string().min(1),
+  team_id: z.string().optional(),
   program_id: z.string().min(1),
 });
 
@@ -2782,22 +2782,34 @@ export async function registerRoutes(
       const { clubId } = getAuthContext(req);
       const data = assignRosterSchema.parse(req.body);
       
-      // Add athlete to roster
-      const roster = await storage.assignAthleteToTeam(
-        clubId,
-        data.athlete_id,
-        data.team_id,
-        data.program_id
-      );
+      // Add athlete to roster - use team or program-only assignment
+      let roster;
+      if (data.team_id) {
+        roster = await storage.assignAthleteToTeam(
+          clubId,
+          data.athlete_id,
+          data.team_id,
+          data.program_id
+        );
+      } else {
+        roster = await storage.assignAthleteToProgram(
+          clubId,
+          data.athlete_id,
+          data.program_id,
+          false
+        );
+      }
       
       // Auto-assign contract: Find the best matching contract for this team/program
       // Priority: team-specific contract > program-level contract
       const programContracts = await storage.getProgramContracts(clubId);
       
-      // First try to find a team-specific contract
-      let matchingContract = programContracts.find(
-        c => c.program_id === data.program_id && c.team_id === data.team_id && c.is_active
-      );
+      // First try to find a team-specific contract (only if team was specified)
+      let matchingContract = data.team_id
+        ? programContracts.find(
+            c => c.program_id === data.program_id && c.team_id === data.team_id && c.is_active
+          )
+        : undefined;
       
       // Fall back to program-level contract (no team_id)
       if (!matchingContract) {

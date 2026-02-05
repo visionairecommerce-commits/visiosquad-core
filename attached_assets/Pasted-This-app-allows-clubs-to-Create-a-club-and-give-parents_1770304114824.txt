@@ -1,0 +1,19 @@
+This app allows clubs to:
+
+·       Create a club and give parents and players your club code to join (simple onboarding for you)
+
+·       Parents create and account with their athlete’s account under them so that they don’t end up with separate accounts. Once the athlete and parent have created their account, any time you select a player to message them, the app automatically adds the parent to the message too. This feature helps keep all clubs SafeSport compliant with ease.
+
+·       Once the director has created the club, the next step is to create programs inside the club (national/regional/etc) and then create teams under those programs if they would like (some clubs do, others don’t, this covers both)
+
+·       The next step would be for the director to upload their contract for the program. We know that often times there are multiple different contracts for the same program along with players paying different amounts depending on the number of times per week that the athlete trains. This app offers the ability to upload as many different contracts as you would like, through Docuseal, and then have them attached to payment and training session registration inside the app.
+
+·       Once those programs or teams are created, Club directors can immediately add players, who have joined the club (using their club code), to the roster for that program or team. This allows for clean billing, and direct communication for that specific team or program.
+
+·       Directors can create training schedules for multiple teams and programs that their athletes can register for, and the parent and athlete will only see the training sessions that their program allows so that there is never someone registering for a program session that they are not a part of. Coaches can manually add an athlete to a training session if they would like to.
+
+·       Have a Club v Club event coming up? Create an event and put the players who are attending that event on the roster for that event. Clubs can then communicate specifically with the players for that event and bill them for entry fees right there.
+
+·       Want to have parents bring snacks for the event? Just select the “Snack Hub” when creating the event and the first parent who enters into the snack hub will control what is being brought for that event and people can sign up to bring those things right through the app.
+
+·       Have news that needs to go out to the club, but don’t want to use the app for conversations? The built-in bulletin board will allow you to post messages and remove them at any time. It will also allow you to see who has viewed those messages so that you can hold them accountable for knowing the information you have given them.

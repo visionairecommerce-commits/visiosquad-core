@@ -1,4 +1,4 @@
-import { eq, and, isNull, isNotNull, lt } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, lt, lte } from 'drizzle-orm';
 import { db } from './lib/db';
 import { supabaseAdmin as supabase } from './lib/supabase';
 import {
@@ -1877,16 +1877,57 @@ export class DatabaseStorage implements IStorage {
       signed_at: contract.signed_name ? new Date() : null,
       initiation_fee_paid: false,
       status: 'active',
+      payment_method_id: contract.payment_method_id || null,
+      billing_day_of_month: contract.billing_day_of_month || null,
+      billing_status: contract.payment_method_id ? 'active' : null,
+      next_billing_date: contract.next_billing_date || null,
+      billing_failure_count: 0,
     }).returning();
     return this.mapAthleteContract(c);
   }
 
   async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
+    const updates: any = { status };
+    if (status === 'cancelled' || status === 'expired') {
+      updates.billing_status = 'cancelled';
+    }
     const [c] = await db.update(athleteContractsTable)
-      .set({ status })
+      .set(updates)
       .where(and(eq(athleteContractsTable.club_id, clubId), eq(athleteContractsTable.id, contractId)))
       .returning();
     return this.mapAthleteContract(c);
+  }
+
+  async updateContractBillingState(contractId: string, updates: {
+    billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
+    next_billing_date?: string;
+    last_billed_at?: Date;
+    billing_failure_count?: number;
+  }): Promise<AthleteContract> {
+    const setValues: any = {};
+    if (updates.billing_status !== undefined) setValues.billing_status = updates.billing_status;
+    if (updates.next_billing_date !== undefined) setValues.next_billing_date = updates.next_billing_date;
+    if (updates.last_billed_at !== undefined) setValues.last_billed_at = updates.last_billed_at;
+    if (updates.billing_failure_count !== undefined) setValues.billing_failure_count = updates.billing_failure_count;
+
+    const [c] = await db.update(athleteContractsTable)
+      .set(setValues)
+      .where(eq(athleteContractsTable.id, contractId))
+      .returning();
+    return this.mapAthleteContract(c);
+  }
+
+  async getContractsDueForBilling(today: string): Promise<AthleteContract[]> {
+    const contracts = await db.select().from(athleteContractsTable)
+      .where(and(
+        eq(athleteContractsTable.status, 'active'),
+        eq(athleteContractsTable.billing_status, 'active'),
+        eq(athleteContractsTable.payment_plan, 'monthly'),
+        isNotNull(athleteContractsTable.payment_method_id),
+        isNotNull(athleteContractsTable.next_billing_date),
+        lte(athleteContractsTable.next_billing_date, today)
+      ));
+    return contracts.map(c => this.mapAthleteContract(c));
   }
 
   private mapProgramContract(c: any): ProgramContract {
@@ -1921,6 +1962,12 @@ export class DatabaseStorage implements IStorage {
       signed_at: c.signed_at?.toISOString?.() ?? c.signed_at ?? undefined,
       initiation_fee_paid: c.initiation_fee_paid ?? false,
       status: c.status,
+      payment_method_id: c.payment_method_id ?? undefined,
+      billing_day_of_month: c.billing_day_of_month ?? undefined,
+      billing_status: c.billing_status ?? undefined,
+      next_billing_date: c.next_billing_date ?? undefined,
+      last_billed_at: c.last_billed_at?.toISOString?.() ?? c.last_billed_at ?? undefined,
+      billing_failure_count: c.billing_failure_count ?? 0,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }

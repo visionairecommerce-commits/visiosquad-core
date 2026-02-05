@@ -664,6 +664,13 @@ export interface IStorage {
   getAthleteContract(clubId: string, contractId: string): Promise<AthleteContract | undefined>;
   createAthleteContract(clubId: string, contract: Omit<AthleteContract, 'id' | 'club_id' | 'status' | 'created_at' | 'initiation_fee_paid'>): Promise<AthleteContract>;
   updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract>;
+  updateContractBillingState(contractId: string, updates: {
+    billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
+    next_billing_date?: string;
+    last_billed_at?: Date;
+    billing_failure_count?: number;
+  }): Promise<AthleteContract>;
+  getContractsDueForBilling(today: string): Promise<AthleteContract[]>;
 
   // Contract Submissions (DocuSeal)
   createContractSubmission(data: {
@@ -2049,6 +2056,19 @@ export class MemStorage implements IStorage {
 
   async updateAthleteContractStatus(clubId: string, contractId: string, status: 'active' | 'cancelled' | 'expired'): Promise<AthleteContract> {
     throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateContractBillingState(contractId: string, updates: {
+    billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
+    next_billing_date?: string;
+    last_billed_at?: Date;
+    billing_failure_count?: number;
+  }): Promise<AthleteContract> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async getContractsDueForBilling(today: string): Promise<AthleteContract[]> {
+    return [];
   }
 
   // Contract Submissions (DocuSeal) - using database storage

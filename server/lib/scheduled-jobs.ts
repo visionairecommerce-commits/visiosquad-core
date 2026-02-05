@@ -23,9 +23,13 @@ import {
   isInNoTouchWindow,
   updateSubscriptionAmount,
   getTransactionsInRange,
-  getTransactionDetails
+  getTransactionDetails,
+  processPayment
 } from './helcim';
 import { storage } from '../storage';
+import { calculateTechnologyAndServiceFees, FEE_VERSION } from '@shared/pricing';
+import type { PaymentRail } from '@shared/pricing';
+import { parentPaymentMethodsTable, programContractsTable } from '@shared/schema';
 
 // Advisory lock IDs for preventing concurrent cron job execution
 const AUTO_RELEASE_LOCK_ID = 1234567890;
@@ -34,6 +38,7 @@ const SEASON_CHAT_CLEANUP_LOCK_ID = 1234567892;
 const MONTHLY_BILLING_LOCK_ID = 1234567893;
 const AUTOPAY_PREP_LOCK_ID = 1234567894;
 const BILLING_RECONCILIATION_LOCK_ID = 1234567895;
+const CONTRACT_AUTO_BILLING_LOCK_ID = 1234567896;
 
 export function initializeScheduledJobs() {
   console.log('[Scheduled Jobs] Initializing scheduled jobs...');
@@ -113,6 +118,17 @@ export function initializeScheduledJobs() {
     }
     console.log('[Billing Reconciliation] Running reconciliation job...');
     await runWithLock(BILLING_RECONCILIATION_LOCK_ID, processBillingReconciliation);
+  });
+
+  // Run daily at 7 AM - Automated contract billing (parent-paid model)
+  // Charges parents whose contracts are due today based on their chosen billing day
+  cron.schedule('0 7 * * *', async () => {
+    if (!PARENT_PAID_FEES_ENABLED) {
+      console.log('[Contract Auto-Billing] SKIPPED - PARENT_PAID_FEES_ENABLED=false');
+      return;
+    }
+    console.log('[Contract Auto-Billing] Running daily contract auto-billing...');
+    await runWithLock(CONTRACT_AUTO_BILLING_LOCK_ID, processContractAutoBilling);
   });
 
   // Also run immediately on startup for testing/catchup (with slight delay)
@@ -813,5 +829,151 @@ async function processBillingReconciliation() {
     console.log(`[Billing Reconciliation] Complete: ${reconciledCount} reconciled, ${alreadyMatchedCount} already matched, ${unresolvedCount} unresolved`);
   } catch (error) {
     console.error('[Billing Reconciliation] Error:', error);
+  }
+}
+
+async function processContractAutoBilling() {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    console.log(`[Contract Auto-Billing] Checking for contracts due on ${today}...`);
+
+    const dueContracts = await storage.getContractsDueForBilling(today);
+    console.log(`[Contract Auto-Billing] Found ${dueContracts.length} contracts due for billing`);
+
+    let successCount = 0;
+    let failCount = 0;
+    let skippedCount = 0;
+
+    for (const contract of dueContracts) {
+      try {
+        if (contract.end_date && contract.end_date <= today) {
+          await storage.updateAthleteContractStatus(contract.club_id, contract.id, 'expired');
+          console.log(`[Contract Auto-Billing] Contract ${contract.id} expired (end_date: ${contract.end_date})`);
+          skippedCount++;
+          continue;
+        }
+
+        if (!contract.payment_method_id) {
+          console.warn(`[Contract Auto-Billing] Contract ${contract.id} has no payment method, skipping`);
+          skippedCount++;
+          continue;
+        }
+
+        const paymentMethod = await storage.getParentPaymentMethod(contract.payment_method_id);
+        if (!paymentMethod) {
+          console.warn(`[Contract Auto-Billing] Payment method ${contract.payment_method_id} not found for contract ${contract.id}`);
+          await storage.updateContractBillingState(contract.id, {
+            billing_status: 'failed',
+            billing_failure_count: (contract.billing_failure_count || 0) + 1,
+          });
+          failCount++;
+          continue;
+        }
+
+        const [programContract] = await db.select().from(programContractsTable)
+          .where(eq(programContractsTable.id, contract.program_contract_id));
+        if (!programContract) {
+          console.warn(`[Contract Auto-Billing] Program contract ${contract.program_contract_id} not found`);
+          skippedCount++;
+          continue;
+        }
+
+        const baseAmount = contract.custom_price || parseFloat(programContract.monthly_price as string);
+        if (baseAmount <= 0) {
+          console.log(`[Contract Auto-Billing] Contract ${contract.id} has $0 amount, skipping`);
+          skippedCount++;
+          continue;
+        }
+
+        const athlete = await storage.getAthlete(contract.club_id, contract.athlete_id);
+        if (!athlete) {
+          console.warn(`[Contract Auto-Billing] Athlete ${contract.athlete_id} not found`);
+          skippedCount++;
+          continue;
+        }
+
+        const paymentRail: PaymentRail = paymentMethod.payment_type === 'ach' ? 'ach' : 'card_credit';
+
+        const feeCalc = calculateTechnologyAndServiceFees({
+          baseAmount,
+          paymentRail,
+          paymentKind: 'recurring_contract',
+          monthsCount: 1,
+        });
+
+        const cardToken = paymentMethod.card_token || paymentMethod.bank_token;
+        if (!cardToken) {
+          console.warn(`[Contract Auto-Billing] No token found on payment method ${paymentMethod.id}`);
+          await storage.updateContractBillingState(contract.id, {
+            billing_status: 'failed',
+            billing_failure_count: (contract.billing_failure_count || 0) + 1,
+          });
+          failCount++;
+          continue;
+        }
+
+        const paymentResult = await processPayment({
+          amount: feeCalc.totalAmount,
+          cardToken,
+          invoiceNumber: `CONTRACT-${contract.id.slice(0, 8)}-${today.replace(/-/g, '')}`,
+          comments: `Monthly contract billing: ${programContract.name} - ${athlete.first_name} ${athlete.last_name}`,
+        });
+
+        if (!paymentResult.success) {
+          console.error(`[Contract Auto-Billing] Payment failed for contract ${contract.id}: ${paymentResult.error}`);
+          const newFailCount = (contract.billing_failure_count || 0) + 1;
+          await storage.updateContractBillingState(contract.id, {
+            billing_status: newFailCount >= 3 ? 'paused' : 'failed',
+            billing_failure_count: newFailCount,
+          });
+          failCount++;
+          continue;
+        }
+
+        await storage.createPayment(contract.club_id, {
+          athlete_id: contract.athlete_id,
+          amount: feeCalc.totalAmount,
+          payment_type: 'monthly',
+          status: 'completed',
+          description: `Monthly: ${programContract.name}`,
+          helcim_transaction_id: paymentResult.transactionId,
+          base_amount: baseAmount,
+          tech_fee_amount: feeCalc.techFee,
+          payment_rail: paymentRail,
+          payment_kind: 'recurring_contract',
+          months_count: 1,
+          fee_version: FEE_VERSION,
+        });
+
+        await storage.createPlatformLedgerEntry(contract.club_id, contract.athlete_id, PLATFORM_FEES.monthly, 'monthly');
+
+        const billingDay = contract.billing_day_of_month || parseInt(today.split('-')[2]);
+        const currentDate = new Date(today + 'T00:00:00Z');
+        const nextMonth = new Date(Date.UTC(
+          currentDate.getUTCFullYear(),
+          currentDate.getUTCMonth() + 1,
+          billingDay
+        ));
+        const nextBillingDate = nextMonth.toISOString().split('T')[0];
+
+        await storage.updateContractBillingState(contract.id, {
+          billing_status: 'active',
+          next_billing_date: nextBillingDate,
+          last_billed_at: new Date(),
+          billing_failure_count: 0,
+        });
+
+        console.log(`[Contract Auto-Billing] Successfully billed contract ${contract.id}: $${feeCalc.totalAmount} (base: $${baseAmount}, fee: $${feeCalc.techFee}). Next billing: ${nextBillingDate}`);
+        successCount++;
+
+      } catch (contractError) {
+        console.error(`[Contract Auto-Billing] Error processing contract ${contract.id}:`, contractError);
+        failCount++;
+      }
+    }
+
+    console.log(`[Contract Auto-Billing] Complete: ${successCount} successful, ${failCount} failed, ${skippedCount} skipped`);
+  } catch (error) {
+    console.error('[Contract Auto-Billing] Error:', error);
   }
 }

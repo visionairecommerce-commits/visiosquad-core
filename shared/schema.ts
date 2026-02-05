@@ -298,6 +298,7 @@ export const athleteContractsTable = pgTable("athlete_contracts", {
   initiation_fee_paid: boolean("initiation_fee_paid").default(false).notNull(),
   status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
   payment_method_id: uuid("payment_method_id"), // Reference to parent_payment_methods for recurring billing
+  billing_day_of_month: integer("billing_day_of_month"), // Day of month (1-28) parent wants to be billed
   billing_status: text("billing_status", { enum: ["active", "paused", "failed", "cancelled"] }).default("active"),
   next_billing_date: text("next_billing_date"), // ISO date string for next charge
   last_billed_at: timestamp("last_billed_at"), // When last successfully billed
@@ -783,6 +784,12 @@ export interface AthleteContract {
   signed_at?: string;
   initiation_fee_paid: boolean;
   status: 'active' | 'cancelled' | 'expired';
+  payment_method_id?: string;
+  billing_day_of_month?: number;
+  billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
+  next_billing_date?: string;
+  last_billed_at?: string;
+  billing_failure_count?: number;
   created_at: string;
 }
 

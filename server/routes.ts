@@ -1938,34 +1938,47 @@ export async function registerRoutes(
     signed_name: z.string().min(1, "Signature is required"),
     start_date: z.string().optional(),
     end_date: z.string().optional(),
+    billing_day_of_month: z.number().int().min(1).max(28).optional(),
+    payment_method_id: z.string().optional(),
   });
+
+  function computeNextBillingDate(billingDay: number, startDate: string): string {
+    const start = new Date(startDate + 'T00:00:00Z');
+    const year = start.getUTCFullYear();
+    const month = start.getUTCMonth();
+    const day = start.getUTCDate();
+
+    if (day <= billingDay) {
+      const nextDate = new Date(Date.UTC(year, month, billingDay));
+      return nextDate.toISOString().split('T')[0];
+    } else {
+      const nextDate = new Date(Date.UTC(year, month + 1, billingDay));
+      return nextDate.toISOString().split('T')[0];
+    }
+  }
 
   app.post('/api/athletes/:athleteId/enroll-contract', requireRole('parent'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const athleteId = req.params.athleteId as string;
       
-      // Validate request body
       const validationResult = enrollContractSchema.safeParse(req.body);
       if (!validationResult.success) {
         return res.status(400).json({ error: 'Invalid request', details: validationResult.error.errors });
       }
-      const { program_contract_id, payment_plan, signed_name, start_date, end_date } = validationResult.data;
+      const { program_contract_id, payment_plan, signed_name, start_date, end_date, billing_day_of_month, payment_method_id } = validationResult.data;
       
-      // Verify parent owns this athlete
       const athletes = await storage.getAthletesByParent(clubId, userId);
       const athleteIdList = athletes.map(a => a.id);
       if (!athleteIdList.includes(athleteId)) {
         return res.status(403).json({ error: 'Access denied' });
       }
       
-      // Verify the contract exists and is active
       const programContract = await storage.getProgramContract(clubId, program_contract_id);
       if (!programContract || !programContract.is_active) {
         return res.status(400).json({ error: 'Contract not available' });
       }
       
-      // If contract is team-specific, check if athlete is on that team
       if (programContract.team_id) {
         const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
         const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
@@ -1974,25 +1987,39 @@ export async function registerRoutes(
         }
       }
       
-      // Auto-enroll athlete in program roster with contract_signed = true
+      if (payment_method_id) {
+        const pm = await storage.getParentPaymentMethod(payment_method_id);
+        if (!pm || pm.parent_id !== userId || pm.club_id !== clubId) {
+          return res.status(400).json({ error: 'Invalid payment method' });
+        }
+      }
+      
       await storage.assignAthleteToProgram(clubId, athleteId, programContract.program_id, true);
       
-      // Cancel any existing active contracts
       const existingContracts = await storage.getAthleteContracts(clubId, athleteId);
       const activeContracts = existingContracts.filter(c => c.status === 'active');
       for (const activeContract of activeContracts) {
         await storage.updateAthleteContractStatus(clubId, activeContract.id, 'cancelled');
       }
       
-      // Create the new contract with signature
+      const contractStartDate = start_date || new Date().toISOString().split('T')[0];
+      
+      let nextBillingDate: string | undefined;
+      if (payment_plan === 'monthly' && billing_day_of_month && payment_method_id) {
+        nextBillingDate = computeNextBillingDate(billing_day_of_month, contractStartDate);
+      }
+      
       const contract = await storage.createAthleteContract(clubId, {
         athlete_id: athleteId,
         program_contract_id,
         payment_plan,
         signed_name,
-        start_date: start_date || new Date().toISOString().split('T')[0],
+        start_date: contractStartDate,
         end_date: end_date || undefined,
         custom_price: undefined,
+        payment_method_id: payment_method_id || undefined,
+        billing_day_of_month: billing_day_of_month || undefined,
+        next_billing_date: nextBillingDate,
       });
       
       res.status(201).json(contract);

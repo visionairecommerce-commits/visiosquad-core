@@ -20,7 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useAthlete } from '@/contexts/AthleteContext';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
-import { FileText, DollarSign, Calendar, Check, AlertCircle, ArrowLeft, UserX } from 'lucide-react';
+import { FileText, DollarSign, Calendar, Check, AlertCircle, ArrowLeft, UserX, CreditCard } from 'lucide-react';
 
 interface ProgramContract {
   id: string;
@@ -52,6 +52,19 @@ interface AthleteContract {
   signed_name?: string;
   signed_at?: string;
   status: 'active' | 'cancelled' | 'expired';
+  billing_day_of_month?: number;
+  billing_status?: string;
+  next_billing_date?: string;
+}
+
+interface ParentPaymentMethod {
+  id: string;
+  payment_type: 'card' | 'ach';
+  card_last_four?: string;
+  card_brand?: string;
+  bank_last_four?: string;
+  bank_name?: string;
+  is_default: boolean;
 }
 
 interface Program {
@@ -68,6 +81,8 @@ export default function ParentContractsPage() {
   const [signedName, setSignedName] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [billingDay, setBillingDay] = useState<number>(1);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('');
 
   const { data: contractsResponse, isLoading: loadingContracts } = useQuery<AvailableContractsResponse>({
     queryKey: ['/api/athletes', activeAthlete?.id, 'available-contracts'],
@@ -111,8 +126,29 @@ export default function ParentContractsPage() {
     queryKey: ['/api/programs'],
   });
 
+  const { data: paymentMethods = [] } = useQuery<ParentPaymentMethod[]>({
+    queryKey: ['/api/parents/payment-methods'],
+    queryFn: async () => {
+      const res = await fetch('/api/parents/payment-methods', {
+        headers: {
+          'X-User-Role': 'parent',
+          'X-User-Id': localStorage.getItem('userId') || '',
+          'X-Club-Id': localStorage.getItem('clubId') || '',
+        },
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const enrollMutation = useMutation({
-    mutationFn: async (data: { program_contract_id: string; payment_plan: string; signed_name: string }) => {
+    mutationFn: async (data: {
+      program_contract_id: string;
+      payment_plan: string;
+      signed_name: string;
+      billing_day_of_month?: number;
+      payment_method_id?: string;
+    }) => {
       return apiRequest('POST', `/api/athletes/${activeAthlete?.id}/enroll-contract`, data);
     },
     onSuccess: () => {
@@ -123,6 +159,8 @@ export default function ParentContractsPage() {
       setPaymentPlan('monthly');
       setSignedName('');
       setAgreedToTerms(false);
+      setBillingDay(1);
+      setSelectedPaymentMethodId('');
       toast({
         title: 'Contract Signed',
         description: 'Your athlete has been enrolled in the selected contract.',
@@ -140,6 +178,8 @@ export default function ParentContractsPage() {
   const handleSelectContract = (contract: ProgramContract) => {
     setSelectedContract(contract);
     setPaymentPlan(contract.paid_in_full_price ? 'monthly' : 'monthly');
+    const defaultMethod = paymentMethods.find(m => m.is_default);
+    setSelectedPaymentMethodId(defaultMethod?.id || '');
     setEnrollDialogOpen(true);
   };
 
@@ -152,11 +192,31 @@ export default function ParentContractsPage() {
       });
       return;
     }
-    enrollMutation.mutate({
+    if (paymentPlan === 'monthly' && !selectedPaymentMethodId) {
+      toast({
+        title: 'Payment Method Required',
+        description: 'Please select a payment method for automatic monthly billing.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const enrollData: any = {
       program_contract_id: selectedContract.id,
       payment_plan: paymentPlan,
       signed_name: signedName.trim(),
-    });
+    };
+    if (paymentPlan === 'monthly' && selectedPaymentMethodId) {
+      enrollData.billing_day_of_month = billingDay;
+      enrollData.payment_method_id = selectedPaymentMethodId;
+    }
+    enrollMutation.mutate(enrollData);
+  };
+
+  const formatPaymentMethod = (pm: ParentPaymentMethod) => {
+    if (pm.payment_type === 'ach') {
+      return `${pm.bank_name || 'Bank'} ending in ${pm.bank_last_four || '****'}`;
+    }
+    return `${pm.card_brand || 'Card'} ending in ${pm.card_last_four || '****'}`;
   };
 
   const getProgramName = (programId: string) => {
@@ -233,10 +293,20 @@ export default function ParentContractsPage() {
                 {currentContract.payment_plan === 'paid_in_full' ? 'Paid in Full' : 'Monthly'}
               </Badge>
             </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground">
               <span>Started: {new Date(currentContract.start_date).toLocaleDateString()}</span>
               {currentContract.signed_name && (
                 <span>Signed by: {currentContract.signed_name}</span>
+              )}
+              {currentContract.billing_day_of_month && currentContract.billing_status === 'active' && (
+                <span data-testid="text-billing-schedule">
+                  Auto-billed on the {currentContract.billing_day_of_month === 1 ? '1st' : currentContract.billing_day_of_month === 2 ? '2nd' : currentContract.billing_day_of_month === 3 ? '3rd' : `${currentContract.billing_day_of_month}th`} of each month
+                </span>
+              )}
+              {currentContract.next_billing_date && (
+                <span data-testid="text-next-billing">
+                  Next bill: {new Date(currentContract.next_billing_date).toLocaleDateString()}
+                </span>
               )}
             </div>
           </CardContent>
@@ -382,14 +452,72 @@ export default function ParentContractsPage() {
                 </div>
               )}
 
+              {paymentPlan === 'monthly' && (
+                <div className="space-y-4 p-4 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CreditCard className="h-4 w-4 text-primary" />
+                    <h4 className="font-medium">Automatic Monthly Billing</h4>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="billing_day">What day of the month should we bill you?</Label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        id="billing_day"
+                        value={billingDay}
+                        onChange={(e) => setBillingDay(parseInt(e.target.value))}
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        data-testid="select-billing-day"
+                      >
+                        {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                          <option key={day} value={day}>
+                            {day === 1 ? '1st' : day === 2 ? '2nd' : day === 3 ? '3rd' : `${day}th`}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">of each month</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Payment Method</Label>
+                    {paymentMethods.length === 0 ? (
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          No payment methods on file. Please add one from the Payments page first.
+                        </AlertDescription>
+                      </Alert>
+                    ) : (
+                      <RadioGroup
+                        value={selectedPaymentMethodId}
+                        onValueChange={setSelectedPaymentMethodId}
+                      >
+                        {paymentMethods.map((pm) => (
+                          <div key={pm.id} className="flex items-center space-x-2 p-3 border rounded-md hover-elevate">
+                            <RadioGroupItem value={pm.id} id={`pm-${pm.id}`} data-testid={`radio-pm-${pm.id}`} />
+                            <Label htmlFor={`pm-${pm.id}`} className="flex-1 cursor-pointer">
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{formatPaymentMethod(pm)}</span>
+                                {pm.is_default && <Badge variant="secondary">Default</Badge>}
+                              </div>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2 p-4 bg-muted rounded-lg">
-                <h4 className="font-medium">Amount Due Today</h4>
+                <h4 className="font-medium">{paymentPlan === 'monthly' ? 'Monthly Amount' : 'Amount Due Today'}</h4>
                 {(() => {
                   const { basePrice, initiation, total } = calculateTotalDue(selectedContract, paymentPlan);
                   return (
                     <div className="space-y-1 text-sm">
                       <div className="flex justify-between">
-                        <span>{paymentPlan === 'paid_in_full' ? 'Full Payment' : 'First Month'}</span>
+                        <span>{paymentPlan === 'paid_in_full' ? 'Full Payment' : 'Monthly Payment'}</span>
                         <span>${basePrice}</span>
                       </div>
                       {initiation > 0 && (
@@ -400,8 +528,14 @@ export default function ParentContractsPage() {
                       )}
                       <div className="flex justify-between font-semibold pt-1 border-t">
                         <span>Total</span>
-                        <span>${total}</span>
+                        <span>${total}{paymentPlan === 'monthly' ? '/mo' : ''}</span>
                       </div>
+                      {paymentPlan === 'monthly' && (
+                        <p className="text-xs text-muted-foreground pt-2">
+                          Your card will be automatically charged on the {billingDay === 1 ? '1st' : billingDay === 2 ? '2nd' : billingDay === 3 ? '3rd' : `${billingDay}th`} of each month.
+                          Technology and service fees will be included at checkout.
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
@@ -426,7 +560,7 @@ export default function ParentContractsPage() {
                   data-testid="checkbox-agree"
                 />
                 <Label htmlFor="terms" className="text-sm cursor-pointer leading-relaxed">
-                  I agree to the contract terms and authorize payment according to the selected plan.
+                  I agree to the contract terms and authorize automatic billing according to the selected plan.
                 </Label>
               </div>
             </div>

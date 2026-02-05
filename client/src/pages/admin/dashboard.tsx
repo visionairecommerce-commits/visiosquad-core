@@ -58,21 +58,9 @@ interface RecentActivity {
   time: string;
 }
 
-interface BillingStatus {
-  has_billing_method: boolean;
-  billing_method: 'card' | 'bank' | null;
-  card_last_four: string | null;
-  bank_last_four: string | null;
-}
-
 export default function AdminDashboard() {
   const { club } = useAuth();
   const { toast } = useToast();
-
-  const { data: billingStatus } = useQuery<BillingStatus>({
-    queryKey: ['/api/clubs', club?.id, 'billing'],
-    enabled: !!club?.id,
-  });
 
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ['/api/dashboard/stats'],
@@ -156,35 +144,6 @@ export default function AdminDashboard() {
           </Link>
         </div>
       </div>
-
-      {billingStatus && !billingStatus.has_billing_method && (
-        <Card className="border-2 border-destructive bg-destructive/5" data-testid="card-billing-required">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-full bg-destructive/10">
-                <CreditCard className="h-6 w-6 text-destructive" />
-              </div>
-              <div>
-                <CardTitle className="text-destructive">Add Payment Method to Start Billing</CardTitle>
-                <CardDescription className="text-destructive/80">
-                  Required before you can charge clients for programs and sessions
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Add a credit card or bank account to cover platform fees ($2.00/month per athlete, $1.00 per player per event, $0.75 per drop-in). This is required before you can process any client payments.
-            </p>
-            <Link href="/settings">
-              <Button size="lg" data-testid="button-add-billing-method">
-                <CreditCard className="h-5 w-5 mr-2" />
-                Add Payment Method Now
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="bg-primary/5 border-primary/20">
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

@@ -1082,7 +1082,7 @@ export const insertSessionSchema = z.object({
 export const insertProgramContractSchema = z.object({
   program_id: z.string().min(1, "Program is required"),
   team_id: z.string().optional(),
-  season_id: z.string().min(1, "Season is required"),
+  season_id: z.string().uuid("Season must be a valid ID"),
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.number().min(0, "Price must be positive"),

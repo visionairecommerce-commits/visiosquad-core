@@ -1694,7 +1694,10 @@ export async function registerRoutes(
       
       const contract = await storage.createProgramContract(clubId, data);
       res.status(201).json(contract);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid request data', details: error.errors });
+      }
       console.error('Error creating program contract:', error);
       res.status(500).json({ error: 'Failed to create program contract' });
     }

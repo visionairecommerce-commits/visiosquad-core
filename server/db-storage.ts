@@ -8,14 +8,16 @@ import {
   programContractsTable, athleteContractsTable, eventsTable, eventRostersTable, eventCoachesTable,
   clubFormsTable, clubFormViewsTable,
   chatChannelsTable, channelParticipantsTable, messagesTable,
-  bulletinPostsTable, bulletinReadsTable, pushSubscriptionsTable, snackItemsTable
+  bulletinPostsTable, bulletinReadsTable, pushSubscriptionsTable, snackItemsTable,
+  parentPaymentMethodsTable
 } from '../shared/schema';
 import type {
   Club, User, ClubSignature, Program, Team, Athlete, AthleteTeamRoster,
   Facility, Court, Session, Registration, Payment, PlatformLedger, PlatformInvoice,
   ProgramContract, AthleteContract, Event, EventRoster, EventCoach, ClubForm, ClubFormView,
   ChatChannel, ChannelParticipant, Message, BulletinPost, BulletinRead,
-  PushSubscription as PushSub, Season, DocuSealSetupRequest, PlatformAutopayCharge, SnackItem
+  PushSubscription as PushSub, Season, DocuSealSetupRequest, PlatformAutopayCharge, SnackItem,
+  ParentPaymentMethod
 } from './storage';
 import { calculateBillingPeriod } from './lib/helcim';
 import type { IStorage } from './storage';
@@ -1919,6 +1921,108 @@ export class DatabaseStorage implements IStorage {
       initiation_fee_paid: c.initiation_fee_paid ?? false,
       status: c.status,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
+    };
+  }
+
+  // Parent Payment Methods
+  async getParentPaymentMethods(parentId: string, clubId: string): Promise<ParentPaymentMethod[]> {
+    const methods = await db.select().from(parentPaymentMethodsTable)
+      .where(and(
+        eq(parentPaymentMethodsTable.parent_id, parentId),
+        eq(parentPaymentMethodsTable.club_id, clubId)
+      ));
+    return methods.map(m => this.mapParentPaymentMethod(m));
+  }
+
+  async getParentPaymentMethod(id: string): Promise<ParentPaymentMethod | undefined> {
+    const [method] = await db.select().from(parentPaymentMethodsTable)
+      .where(eq(parentPaymentMethodsTable.id, id));
+    if (!method) return undefined;
+    return this.mapParentPaymentMethod(method);
+  }
+
+  async getDefaultParentPaymentMethod(parentId: string, clubId: string): Promise<ParentPaymentMethod | undefined> {
+    const [method] = await db.select().from(parentPaymentMethodsTable)
+      .where(and(
+        eq(parentPaymentMethodsTable.parent_id, parentId),
+        eq(parentPaymentMethodsTable.club_id, clubId),
+        eq(parentPaymentMethodsTable.is_default, true)
+      ));
+    if (!method) return undefined;
+    return this.mapParentPaymentMethod(method);
+  }
+
+  async createParentPaymentMethod(data: Omit<ParentPaymentMethod, 'id' | 'created_at' | 'updated_at'>): Promise<ParentPaymentMethod> {
+    // If this is the first method or is_default is true, unset other defaults
+    if (data.is_default) {
+      await db.update(parentPaymentMethodsTable)
+        .set({ is_default: false })
+        .where(and(
+          eq(parentPaymentMethodsTable.parent_id, data.parent_id),
+          eq(parentPaymentMethodsTable.club_id, data.club_id)
+        ));
+    }
+    const [created] = await db.insert(parentPaymentMethodsTable).values({
+      parent_id: data.parent_id,
+      club_id: data.club_id,
+      helcim_customer_code: data.helcim_customer_code,
+      payment_type: data.payment_type,
+      card_token: data.card_token,
+      bank_token: data.bank_token,
+      card_last_four: data.card_last_four,
+      card_brand: data.card_brand,
+      bank_last_four: data.bank_last_four,
+      bank_name: data.bank_name,
+      is_default: data.is_default ?? true,
+    }).returning();
+    return this.mapParentPaymentMethod(created);
+  }
+
+  async updateParentPaymentMethod(id: string, data: Partial<ParentPaymentMethod>): Promise<ParentPaymentMethod> {
+    const [updated] = await db.update(parentPaymentMethodsTable)
+      .set({
+        ...data,
+        updated_at: new Date(),
+      })
+      .where(eq(parentPaymentMethodsTable.id, id))
+      .returning();
+    return this.mapParentPaymentMethod(updated);
+  }
+
+  async deleteParentPaymentMethod(id: string): Promise<void> {
+    await db.delete(parentPaymentMethodsTable).where(eq(parentPaymentMethodsTable.id, id));
+  }
+
+  async setDefaultPaymentMethod(parentId: string, clubId: string, paymentMethodId: string): Promise<void> {
+    // Unset all defaults first
+    await db.update(parentPaymentMethodsTable)
+      .set({ is_default: false })
+      .where(and(
+        eq(parentPaymentMethodsTable.parent_id, parentId),
+        eq(parentPaymentMethodsTable.club_id, clubId)
+      ));
+    // Set the new default
+    await db.update(parentPaymentMethodsTable)
+      .set({ is_default: true })
+      .where(eq(parentPaymentMethodsTable.id, paymentMethodId));
+  }
+
+  private mapParentPaymentMethod(m: any): ParentPaymentMethod {
+    return {
+      id: m.id,
+      parent_id: m.parent_id,
+      club_id: m.club_id,
+      helcim_customer_code: m.helcim_customer_code ?? undefined,
+      payment_type: m.payment_type,
+      card_token: m.card_token ?? undefined,
+      bank_token: m.bank_token ?? undefined,
+      card_last_four: m.card_last_four ?? undefined,
+      card_brand: m.card_brand ?? undefined,
+      bank_last_four: m.bank_last_four ?? undefined,
+      bank_name: m.bank_name ?? undefined,
+      is_default: m.is_default ?? true,
+      created_at: m.created_at?.toISOString?.() ?? m.created_at,
+      updated_at: m.updated_at?.toISOString?.() ?? m.updated_at,
     };
   }
 

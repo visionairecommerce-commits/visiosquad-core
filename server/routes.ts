@@ -2156,6 +2156,131 @@ export async function registerRoutes(
     }
   });
 
+  // Parent event registration with payment
+  app.post('/api/events/:id/register-and-pay', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const eventId = req.params.id as string;
+      const { athlete_id, payment_method_id, card_number, card_expiry, card_cvv } = req.body;
+      
+      if (!athlete_id) {
+        return res.status(400).json({ error: 'Athlete ID required' });
+      }
+      
+      // Verify athlete belongs to this parent
+      const athlete = await storage.getAthlete(clubId, athlete_id);
+      if (!athlete || athlete.parent_id !== userId) {
+        return res.status(403).json({ error: 'Cannot register this athlete' });
+      }
+      
+      // Check if athlete is already registered for this event
+      const existingRosters = await storage.getEventRosters(clubId, eventId);
+      const alreadyRegistered = existingRosters.some(r => r.athlete_id === athlete_id);
+      if (alreadyRegistered) {
+        return res.status(400).json({ error: 'Athlete is already registered for this event' });
+      }
+      
+      // Get event details
+      const event = await storage.getEvent(clubId, eventId);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      
+      const eventPrice = parseFloat(event.price) || 0;
+      
+      // If event is free, just register without payment
+      if (eventPrice === 0) {
+        const roster = await storage.addEventRoster(clubId, eventId, athlete_id);
+        return res.status(201).json({ success: true, roster, payment: null });
+      }
+      
+      // Determine payment rail (default to credit card)
+      let paymentRail: 'card_credit' | 'card_debit' | 'ach' = 'card_credit';
+      let paymentMethodType = 'credit_card';
+      
+      // Get or create payment token
+      let cardToken: string | undefined;
+      
+      if (payment_method_id) {
+        // Use saved payment method
+        const paymentMethod = await storage.getParentPaymentMethod(payment_method_id);
+        if (!paymentMethod || paymentMethod.parent_id !== userId) {
+          return res.status(400).json({ error: 'Invalid payment method' });
+        }
+        // Validate payment method belongs to the same club (multi-tenant safety)
+        if (paymentMethod.club_id !== clubId) {
+          return res.status(400).json({ error: 'Invalid payment method for this club' });
+        }
+        cardToken = paymentMethod.card_token || paymentMethod.bank_token;
+        // Set payment rail based on payment method type
+        if (paymentMethod.payment_type === 'ach') {
+          paymentRail = 'ach';
+          paymentMethodType = 'ach';
+        }
+      } else if (card_number && card_expiry && card_cvv) {
+        // Tokenize new card
+        const { createCardToken } = await import('./lib/helcim');
+        const tokenResult = await createCardToken(card_number, card_expiry, card_cvv);
+        if (tokenResult.error || !tokenResult.token) {
+          return res.status(400).json({ error: tokenResult.error || 'Failed to tokenize card' });
+        }
+        cardToken = tokenResult.token;
+      } else {
+        return res.status(400).json({ error: 'Payment method or card details required' });
+      }
+      
+      // Calculate Technology and Service Fee with correct payment rail
+      const feeCalc = calculateTechnologyAndServiceFees({
+        baseAmount: eventPrice,
+        paymentRail: paymentRail,
+        paymentKind: 'one_time_event',
+        monthsCount: 1,
+      });
+      const totalAmount = feeCalc.totalAmount;
+      
+      // Process payment with Helcim
+      const { processPayment } = await import('./lib/helcim');
+      const paymentResult = await processPayment({
+        amount: totalAmount,
+        cardToken,
+        invoiceNumber: `EVT-${eventId.slice(0, 8)}-${athlete_id.slice(0, 8)}`,
+      });
+      
+      if (!paymentResult.success) {
+        return res.status(400).json({ error: paymentResult.error || 'Payment failed' });
+      }
+      
+      // Create payment record
+      const payment = await storage.createPayment(clubId, {
+        athlete_id,
+        amount: totalAmount,
+        payment_type: 'event',
+        payment_method: paymentMethodType,
+        status: 'completed',
+        description: `Event: ${event.title}`,
+        helcim_transaction_id: paymentResult.transactionId,
+      });
+      
+      // Add athlete to event roster with payment link
+      const roster = await storage.addEventRoster(clubId, eventId, athlete_id, payment.id);
+      
+      res.status(201).json({
+        success: true,
+        roster,
+        payment: {
+          id: payment.id,
+          amount: totalAmount,
+          base_amount: eventPrice,
+          tech_fee: feeCalc.techFee,
+          fee_version: FEE_VERSION,
+        },
+      });
+    } catch (error) {
+      console.error('Error processing event registration:', error);
+      res.status(500).json({ error: 'Failed to process registration' });
+    }
+  });
+
   // Event coaches
   app.get('/api/events/:id/coaches', requireAuth, async (req, res) => {
     try {
@@ -2427,6 +2552,145 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching parents:', error);
       res.status(500).json({ error: 'Failed to fetch parents' });
+    }
+  });
+
+  // ============ PARENT PAYMENT METHODS ============
+  
+  // Get parent's payment methods
+  app.get('/api/parents/payment-methods', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const methods = await storage.getParentPaymentMethods(userId, clubId);
+      res.json(methods);
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      res.status(500).json({ error: 'Failed to fetch payment methods' });
+    }
+  });
+
+  // Get default payment method
+  app.get('/api/parents/payment-methods/default', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const method = await storage.getDefaultParentPaymentMethod(userId, clubId);
+      res.json(method || null);
+    } catch (error) {
+      console.error('Error fetching default payment method:', error);
+      res.status(500).json({ error: 'Failed to fetch default payment method' });
+    }
+  });
+
+  // Create payment method (with Helcim tokenization)
+  app.post('/api/parents/payment-methods', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const { payment_type, card_number, card_expiry, card_cvv, bank_account, bank_routing, bank_account_type, is_default } = req.body;
+      
+      if (!payment_type || (payment_type !== 'card' && payment_type !== 'ach')) {
+        return res.status(400).json({ error: 'Invalid payment type. Must be "card" or "ach"' });
+      }
+      
+      let cardToken: string | undefined;
+      let bankToken: string | undefined;
+      let cardLastFour: string | undefined;
+      let cardBrand: string | undefined;
+      let bankLastFour: string | undefined;
+      let bankName: string | undefined;
+      let helcimCustomerCode: string | undefined;
+      
+      if (payment_type === 'card') {
+        if (!card_number || !card_expiry || !card_cvv) {
+          return res.status(400).json({ error: 'Card details required for card payment method' });
+        }
+        
+        // Tokenize card with Helcim
+        const { createCardToken } = await import('./lib/helcim');
+        const tokenResult = await createCardToken(card_number, card_expiry, card_cvv);
+        
+        if (tokenResult.error || !tokenResult.token) {
+          return res.status(400).json({ error: tokenResult.error || 'Failed to tokenize card' });
+        }
+        
+        cardToken = tokenResult.token;
+        cardLastFour = card_number.slice(-4);
+        cardBrand = 'Card'; // Helcim doesn't return card type from tokenization
+      } else {
+        if (!bank_account || !bank_routing) {
+          return res.status(400).json({ error: 'Bank details required for ACH payment method' });
+        }
+        
+        // Tokenize bank account with Helcim
+        const { createBankToken } = await import('./lib/helcim');
+        const tokenResult = await createBankToken(bank_routing, bank_account, bank_account_type || 'checking');
+        
+        if (tokenResult.error || !tokenResult.token) {
+          return res.status(400).json({ error: tokenResult.error || 'Failed to tokenize bank account' });
+        }
+        
+        bankToken = tokenResult.token;
+        bankLastFour = bank_account.slice(-4);
+        bankName = 'Bank Account';
+      }
+      
+      const method = await storage.createParentPaymentMethod({
+        parent_id: userId,
+        club_id: clubId,
+        helcim_customer_code: helcimCustomerCode,
+        payment_type,
+        card_token: cardToken,
+        bank_token: bankToken,
+        card_last_four: cardLastFour,
+        card_brand: cardBrand,
+        bank_last_four: bankLastFour,
+        bank_name: bankName,
+        is_default: is_default !== false,
+      });
+      
+      res.status(201).json(method);
+    } catch (error) {
+      console.error('Error creating payment method:', error);
+      res.status(500).json({ error: 'Failed to create payment method' });
+    }
+  });
+
+  // Set default payment method
+  app.patch('/api/parents/payment-methods/:id/default', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const methodId = req.params.id;
+      
+      // Verify this method belongs to the parent
+      const method = await storage.getParentPaymentMethod(methodId);
+      if (!method || method.parent_id !== userId || method.club_id !== clubId) {
+        return res.status(404).json({ error: 'Payment method not found' });
+      }
+      
+      await storage.setDefaultPaymentMethod(userId, clubId, methodId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error setting default payment method:', error);
+      res.status(500).json({ error: 'Failed to set default payment method' });
+    }
+  });
+
+  // Delete payment method
+  app.delete('/api/parents/payment-methods/:id', requireRole('parent'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const methodId = req.params.id;
+      
+      // Verify this method belongs to the parent
+      const method = await storage.getParentPaymentMethod(methodId);
+      if (!method || method.parent_id !== userId || method.club_id !== clubId) {
+        return res.status(404).json({ error: 'Payment method not found' });
+      }
+      
+      await storage.deleteParentPaymentMethod(methodId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting payment method:', error);
+      res.status(500).json({ error: 'Failed to delete payment method' });
     }
   });
 

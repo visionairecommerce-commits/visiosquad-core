@@ -35,6 +35,7 @@ import ParentPaymentsPage from "@/pages/parent/payments";
 import ParentDocumentsPage from "@/pages/parent/documents";
 import ParentContractsPage from "@/pages/parent/contracts";
 import ParentFormsPage from "@/pages/parent/forms";
+import ParentEventsPage from "@/pages/parent/events";
 import SettingsPage from "@/pages/admin/settings";
 import EventsPage from "@/pages/admin/events";
 import MessagesPage from "@/pages/messages";
@@ -120,6 +121,7 @@ function ParentRoutes() {
       <Route path="/athletes" component={AthletesPage} />
       <Route path="/contracts" component={ParentContractsPage} />
       <Route path="/schedule" component={ParentSchedulePage} />
+      <Route path="/events" component={ParentEventsPage} />
       <Route path="/payments" component={ParentPaymentsPage} />
       <Route path="/documents" component={ParentDocumentsPage} />
       <Route path="/forms" component={ParentFormsPage} />

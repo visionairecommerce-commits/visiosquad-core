@@ -274,7 +274,29 @@ export interface AthleteContract {
   signed_at?: string;
   initiation_fee_paid: boolean;
   status: 'active' | 'cancelled' | 'expired';
+  payment_method_id?: string;
+  billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
+  next_billing_date?: string;
+  last_billed_at?: string;
+  billing_failure_count?: number;
   created_at: string;
+}
+
+export interface ParentPaymentMethod {
+  id: string;
+  parent_id: string;
+  club_id: string;
+  helcim_customer_code?: string;
+  payment_type: 'card' | 'ach';
+  card_token?: string;
+  bank_token?: string;
+  card_last_four?: string;
+  card_brand?: string;
+  bank_last_four?: string;
+  bank_name?: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Registration {
@@ -660,6 +682,15 @@ export interface IStorage {
   getContractSubmissionByDocuSealId(docusealSubmissionId: string): Promise<ContractSubmission | undefined>;
   getContractSubmissionsForAthlete(athleteId: string): Promise<ContractSubmission[]>;
   updateContractSubmissionStatus(id: string, status: 'sent' | 'viewed' | 'signed', signedAt?: Date): Promise<ContractSubmission>;
+
+  // Parent Payment Methods
+  getParentPaymentMethods(parentId: string, clubId: string): Promise<ParentPaymentMethod[]>;
+  getParentPaymentMethod(id: string): Promise<ParentPaymentMethod | undefined>;
+  getDefaultParentPaymentMethod(parentId: string, clubId: string): Promise<ParentPaymentMethod | undefined>;
+  createParentPaymentMethod(data: Omit<ParentPaymentMethod, 'id' | 'created_at' | 'updated_at'>): Promise<ParentPaymentMethod>;
+  updateParentPaymentMethod(id: string, data: Partial<ParentPaymentMethod>): Promise<ParentPaymentMethod>;
+  deleteParentPaymentMethod(id: string): Promise<void>;
+  setDefaultPaymentMethod(parentId: string, clubId: string, paymentMethodId: string): Promise<void>;
 
   // Events
   getEvents(clubId: string, filters?: { programId?: string; teamId?: string }): Promise<Event[]>;
@@ -2112,6 +2143,35 @@ export class MemStorage implements IStorage {
 
     if (error) throw error;
     return data as ContractSubmission;
+  }
+
+  // Parent Payment Methods (stub implementations - using database storage)
+  async getParentPaymentMethods(parentId: string, clubId: string): Promise<ParentPaymentMethod[]> {
+    return [];
+  }
+
+  async getParentPaymentMethod(id: string): Promise<ParentPaymentMethod | undefined> {
+    return undefined;
+  }
+
+  async getDefaultParentPaymentMethod(parentId: string, clubId: string): Promise<ParentPaymentMethod | undefined> {
+    return undefined;
+  }
+
+  async createParentPaymentMethod(data: Omit<ParentPaymentMethod, 'id' | 'created_at' | 'updated_at'>): Promise<ParentPaymentMethod> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateParentPaymentMethod(id: string, data: Partial<ParentPaymentMethod>): Promise<ParentPaymentMethod> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async deleteParentPaymentMethod(id: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async setDefaultPaymentMethod(parentId: string, clubId: string, paymentMethodId: string): Promise<void> {
+    throw new Error('Not implemented in MemStorage');
   }
 
   // Events (stub implementations - using database storage)

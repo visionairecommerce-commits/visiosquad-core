@@ -42,6 +42,8 @@ Preferred communication style: Simple, everyday language.
 - **Technology and Service Fees**: Implements a parent-paid fee model (`v2_2026_02_zero_loss_discounts`) with dynamic fee calculation based on payment rail (credit, ACH, debit) and discounts.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and events, including recurring sessions and facility conflict detection.
 - **Event Management**: Dedicated system for standalone events with separate rosters and pricing.
+  - **Parent Event Checkout**: Parents can browse, register, and pay for events directly via `/events` page.
+  - **Event Payment API**: `POST /api/events/:id/register-and-pay` handles athlete registration with payment processing.
 - **Snack Hub**: An optional, per-event feature for coordinating snacks, including category organization, quick-add suggestions, claim/unclaim functionality, and allergy alerts.
 - **Attendance Tracking**: Check-in/check-out for sessions/events, with flags for overdue payments.
 - **SafeSport Communication Hub**: Real-time messaging and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats). Supports various audience types (individual, roster, team, program, event, club).

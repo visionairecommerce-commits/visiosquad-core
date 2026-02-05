@@ -66,6 +66,7 @@ const parentMenuItems = [
   { title: 'My Athletes', url: '/athletes', icon: Users },
   { title: 'Contracts', url: '/contracts', icon: FileText },
   { title: 'Schedule', url: '/schedule', icon: Calendar },
+  { title: 'Events', url: '/events', icon: CalendarDays },
   { title: 'Payments', url: '/payments', icon: CreditCard },
   { title: 'Forms & Links', url: '/forms', icon: Link2 },
 ];

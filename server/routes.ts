@@ -810,6 +810,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'This athlete already has login credentials' });
       }
       
+      // Check if email is already used by another profile
+      const existingProfile = await storage.getProfileByEmail(email.toLowerCase());
+      if (existingProfile) {
+        return res.status(400).json({ error: 'This email address is already in use' });
+      }
+      
       // Create Supabase Auth user for the athlete
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
@@ -822,15 +828,22 @@ export async function registerRoutes(
         return res.status(400).json({ error: authError?.message || 'Failed to create login' });
       }
       
-      // Create profile for the athlete
-      await storage.createProfile({
-        id: authData.user.id,
-        email,
-        full_name: `${athlete.first_name} ${athlete.last_name}`,
-        role: 'athlete',
-        club_id: clubId,
-        athlete_id: athleteId,
-      });
+      // Create profile for the athlete - if this fails, clean up the auth user
+      try {
+        await storage.createProfile({
+          id: authData.user.id,
+          email,
+          full_name: `${athlete.first_name} ${athlete.last_name}`,
+          role: 'athlete',
+          club_id: clubId,
+          athlete_id: athleteId,
+        });
+      } catch (profileError) {
+        console.error('Error creating athlete profile, cleaning up auth user:', profileError);
+        // Clean up the Supabase Auth user since profile creation failed
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return res.status(400).json({ error: 'This email address is already in use' });
+      }
       
       // Update athlete with login info and link to user account
       await storage.updateAthlete(athleteId, {

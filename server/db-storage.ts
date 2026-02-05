@@ -309,6 +309,13 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async getProfileByEmail(email: string): Promise<User | null> {
+    const [profile] = await db.select().from(profilesTable)
+      .where(eq(profilesTable.email, email.toLowerCase()));
+    if (!profile) return null;
+    return this.mapUser(profile);
+  }
+
   async updateUserSignedDocuments(userId: string): Promise<void> {
     await db.update(profilesTable)
       .set({ has_signed_documents: true })

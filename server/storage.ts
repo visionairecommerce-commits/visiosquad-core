@@ -472,6 +472,7 @@ export interface IStorage {
   getUser(userId: string): Promise<User | null>;
   createUser(clubId: string, email: string, fullName: string, password: string, role: 'coach' | 'parent'): Promise<User>;
   createProfile(profile: { id: string; email: string; full_name: string; role: 'athlete'; club_id: string; athlete_id: string }): Promise<void>;
+  getProfileByEmail(email: string): Promise<User | null>;
   updateUserSignedDocuments(userId: string): Promise<void>;
   updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null>;
   updateUserContractStatus(userId: string, status: 'unsigned' | 'pending' | 'verified', method?: 'digital' | 'paper'): Promise<User | null>;
@@ -1291,6 +1292,17 @@ export class MemStorage implements IStorage {
       created_at: new Date().toISOString(),
     };
     this.users.set(user.id, user);
+  }
+
+  async getProfileByEmail(email: string): Promise<User | null> {
+    const normalizedEmail = email.toLowerCase();
+    for (const user of this.users.values()) {
+      if (user.email.toLowerCase() === normalizedEmail) {
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
+      }
+    }
+    return null;
   }
 
   async updateUserSignedDocuments(userId: string): Promise<void> {

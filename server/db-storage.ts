@@ -70,11 +70,13 @@ export class DatabaseStorage implements IStorage {
     return { club: this.mapClub(club), user: this.mapUser(user) };
   }
 
-  async updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string }): Promise<Club> {
+  async updateClubSettings(clubId: string, settings: { name?: string; address?: string; logo_url?: string; contact_phone?: string; contact_email?: string }): Promise<Club> {
     const updateData: any = {};
     if (settings.name !== undefined) updateData.name = settings.name;
     if (settings.logo_url !== undefined) updateData.logo_url = settings.logo_url;
     if (settings.address !== undefined) updateData.address = settings.address;
+    if (settings.contact_phone !== undefined) updateData.contact_phone = settings.contact_phone;
+    if (settings.contact_email !== undefined) updateData.contact_email = settings.contact_email;
 
     const [club] = await db.update(clubsTable)
       .set(updateData)
@@ -1562,6 +1564,8 @@ export class DatabaseStorage implements IStorage {
       name: c.name,
       logo_url: c.logo_url ?? undefined,
       address: c.address ?? undefined,
+      contact_phone: c.contact_phone ?? undefined,
+      contact_email: c.contact_email ?? undefined,
       join_code: c.join_code,
       contract_pdf_url: c.contract_pdf_url ?? undefined,
       waiver_content: c.waiver_content ?? undefined,

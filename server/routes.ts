@@ -218,6 +218,8 @@ const updateClubSettingsSchema = z.object({
   name: z.string().min(2).optional(),
   address: z.string().optional(),
   logo_url: z.string().optional(),
+  contact_phone: z.string().optional(),
+  contact_email: z.string().email().optional().or(z.literal('')),
 });
 
 const updateFacilitySchema = z.object({
@@ -957,6 +959,158 @@ export async function registerRoutes(
         console.error('Error updating club settings:', error);
         res.status(500).json({ error: 'Failed to update settings' });
       }
+    }
+  });
+
+  // Upload club logo (Director only)
+  app.post('/api/clubs/logo', requireRole('admin'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      
+      // Security: Verify clubId exists
+      if (!clubId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      
+      // Handle multipart form data with size limit (5MB max)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      
+      for await (const chunk of req) {
+        totalSize += chunk.length;
+        if (totalSize > MAX_FILE_SIZE) {
+          return res.status(413).json({ error: 'File too large. Maximum size is 5MB.' });
+        }
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks);
+      
+      // Parse multipart boundary
+      const contentType = req.headers['content-type'] || '';
+      const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+      if (!boundaryMatch) {
+        return res.status(400).json({ error: 'Invalid multipart request' });
+      }
+      const boundary = boundaryMatch[1] || boundaryMatch[2];
+      
+      // Simple multipart parsing for file
+      const boundaryBuffer = Buffer.from(`--${boundary}`);
+      const parts = [];
+      let start = 0;
+      let idx = buffer.indexOf(boundaryBuffer, start);
+      
+      while (idx !== -1) {
+        if (start !== 0) {
+          parts.push(buffer.slice(start, idx - 2)); // -2 for \r\n before boundary
+        }
+        start = idx + boundaryBuffer.length + 2; // +2 for \r\n after boundary
+        idx = buffer.indexOf(boundaryBuffer, start);
+      }
+      
+      if (parts.length === 0) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      // Get the first part (the file)
+      const part = parts[0];
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) {
+        return res.status(400).json({ error: 'Invalid file format' });
+      }
+      
+      const headers = part.slice(0, headerEnd).toString();
+      const fileData = part.slice(headerEnd + 4);
+      
+      // Security: Validate file size again
+      if (fileData.length > MAX_FILE_SIZE) {
+        return res.status(413).json({ error: 'File too large. Maximum size is 5MB.' });
+      }
+      
+      // Extract filename from headers
+      const filenameMatch = headers.match(/filename="([^"]+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : 'logo.png';
+      
+      // Security: Validate file extension
+      const ext = filename.split('.').pop()?.toLowerCase() || '';
+      const allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+      if (!allowedExtensions.includes(ext)) {
+        return res.status(400).json({ error: 'Invalid file type. Only PNG, JPG, GIF, and WEBP are allowed.' });
+      }
+      
+      // Security: Validate magic bytes for image files
+      const magicBytes: Record<string, number[]> = {
+        png: [0x89, 0x50, 0x4E, 0x47], // PNG signature
+        jpg: [0xFF, 0xD8, 0xFF], // JPEG signature
+        jpeg: [0xFF, 0xD8, 0xFF],
+        gif: [0x47, 0x49, 0x46, 0x38], // GIF signature
+        webp: [0x52, 0x49, 0x46, 0x46], // RIFF (WebP container)
+      };
+      
+      const expectedMagic = magicBytes[ext];
+      if (expectedMagic) {
+        const fileMagic = Array.from(fileData.slice(0, expectedMagic.length));
+        const isValidMagic = expectedMagic.every((byte, i) => fileMagic[i] === byte);
+        if (!isValidMagic) {
+          return res.status(400).json({ error: 'Invalid file content. File does not match expected format.' });
+        }
+      }
+      
+      const mimeTypes: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        webp: 'image/webp',
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+      
+      // Upload to Supabase Storage
+      const storagePath = `club-logos/${clubId}/${Date.now()}-${filename}`;
+      const { data, error } = await supabase.storage
+        .from('club-assets')
+        .upload(storagePath, fileData, {
+          contentType: mimeType,
+          upsert: true,
+        });
+      
+      if (error) {
+        // If bucket doesn't exist, create it
+        if (error.message?.includes('Bucket not found')) {
+          await supabase.storage.createBucket('club-assets', {
+            public: true,
+          });
+          // Retry upload
+          const retryResult = await supabase.storage
+            .from('club-assets')
+            .upload(storagePath, fileData, {
+              contentType: mimeType,
+              upsert: true,
+            });
+          if (retryResult.error) {
+            console.error('Logo upload retry error:', retryResult.error);
+            return res.status(500).json({ error: 'Failed to upload logo' });
+          }
+        } else {
+          console.error('Logo upload error:', error);
+          return res.status(500).json({ error: 'Failed to upload logo' });
+        }
+      }
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('club-assets')
+        .getPublicUrl(storagePath);
+      
+      const logo_url = urlData.publicUrl;
+      
+      // Update club with new logo URL
+      await storage.updateClubSettings(clubId, { logo_url });
+      
+      res.json({ logo_url });
+    } catch (error) {
+      console.error('Error uploading club logo:', error);
+      res.status(500).json({ error: 'Failed to upload logo' });
     }
   });
 

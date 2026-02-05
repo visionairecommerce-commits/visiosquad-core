@@ -619,6 +619,8 @@ export interface Club {
   sport?: SportType;
   logo_url?: string;
   address?: string;
+  contact_phone?: string;
+  contact_email?: string;
   join_code: string;
   contract_pdf_url?: string;
   waiver_content?: string;

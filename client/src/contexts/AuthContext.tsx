@@ -20,6 +20,8 @@ interface Club {
   name: string;
   logo_url?: string;
   address?: string;
+  contact_phone?: string;
+  contact_email?: string;
   join_code: string;
   contract_pdf_url?: string;
   waiver_content?: string;
@@ -28,6 +30,7 @@ interface Club {
   contract_url?: string;
   contract_instructions?: string;
   onboarding_complete: boolean;
+  coaches_can_bill?: boolean;
   created_at: string;
 }
 

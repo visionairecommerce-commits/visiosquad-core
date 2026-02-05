@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { ClubProfileCard } from '@/components/club-profile-card';
 import {
   Users,
   Calendar,
@@ -205,6 +206,8 @@ export default function AdminDashboard() {
           </p>
         </CardContent>
       </Card>
+
+      {club && <ClubProfileCard club={club} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

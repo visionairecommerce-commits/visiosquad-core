@@ -516,6 +516,7 @@ export async function registerRoutes(
         club: {
           id: club.id,
           name: club.name,
+          sport: club.sport,
           waiver_content: club.waiver_content,
           contract_pdf_url: club.contract_pdf_url
         }
@@ -562,6 +563,7 @@ export async function registerRoutes(
         club: club ? {
           id: club.id,
           name: club.name,
+          sport: club.sport,
           join_code: club.join_code,
           onboarding_complete: club.onboarding_complete,
           waiver_content: club.waiver_content,

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Link } from 'wouter';
 import { useAthlete } from '@/contexts/AthleteContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { AthleteSwitcher } from '@/components/AthleteSwitcher';
 import { isAthleteAccessLocked } from '@shared/schema';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -59,6 +60,7 @@ import { ContractGate } from '@/components/ContractGate';
 
 export default function ParentDashboard() {
   const { activeAthlete, setActiveAthlete, setAthletes } = useAthlete();
+  const { club } = useAuth();
   const { toast } = useToast();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [registeringSessionId, setRegisteringSessionId] = useState<string | null>(null);
@@ -67,6 +69,11 @@ export default function ParentDashboard() {
     last_name: '',
     date_of_birth: '',
     graduation_year: new Date().getFullYear() + 10,
+    avp_number: '',
+    bvca_number: '',
+    aau_number: '',
+    bvne_number: '',
+    p1440_number: '',
   });
 
   const { data: athletes = [], isLoading: athletesLoading } = useQuery<Athlete[]>({
@@ -107,6 +114,11 @@ export default function ParentDashboard() {
         last_name: '',
         date_of_birth: '',
         graduation_year: new Date().getFullYear() + 10,
+        avp_number: '',
+        bvca_number: '',
+        aau_number: '',
+        bvne_number: '',
+        p1440_number: '',
       });
       toast({
         title: 'Athlete Added',
@@ -347,6 +359,65 @@ export default function ParentDashboard() {
                     />
                   </div>
                 </div>
+                
+                {club?.sport === 'beach_volleyball' && (
+                  <div className="border-t pt-4">
+                    <p className="text-sm font-medium text-muted-foreground mb-3">Organization Membership Numbers (Optional)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="avp">AVP</Label>
+                        <Input
+                          id="avp"
+                          placeholder="Membership #"
+                          value={formData.avp_number}
+                          onChange={(e) => setFormData({ ...formData, avp_number: e.target.value })}
+                          data-testid="input-athlete-avp"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="aau">AAU</Label>
+                        <Input
+                          id="aau"
+                          placeholder="Membership #"
+                          value={formData.aau_number}
+                          onChange={(e) => setFormData({ ...formData, aau_number: e.target.value })}
+                          data-testid="input-athlete-aau"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bvca">BVCA</Label>
+                        <Input
+                          id="bvca"
+                          placeholder="Membership #"
+                          value={formData.bvca_number}
+                          onChange={(e) => setFormData({ ...formData, bvca_number: e.target.value })}
+                          data-testid="input-athlete-bvca"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bvne">BVNE</Label>
+                        <Input
+                          id="bvne"
+                          placeholder="Membership #"
+                          value={formData.bvne_number}
+                          onChange={(e) => setFormData({ ...formData, bvne_number: e.target.value })}
+                          data-testid="input-athlete-bvne"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="p1440">p1440</Label>
+                        <Input
+                          id="p1440"
+                          placeholder="Membership #"
+                          value={formData.p1440_number}
+                          onChange={(e) => setFormData({ ...formData, p1440_number: e.target.value })}
+                          data-testid="input-athlete-p1440"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <Button type="submit" className="w-full" disabled={createAthleteMutation.isPending} data-testid="button-submit-athlete">
                   {createAthleteMutation.isPending ? 'Adding...' : 'Add Athlete'}
                 </Button>

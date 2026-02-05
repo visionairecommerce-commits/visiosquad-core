@@ -18,6 +18,7 @@ interface User {
 interface Club {
   id: string;
   name: string;
+  sport?: string;
   logo_url?: string;
   address?: string;
   contact_phone?: string;

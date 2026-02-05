@@ -1562,6 +1562,7 @@ export class DatabaseStorage implements IStorage {
     return {
       id: c.id,
       name: c.name,
+      sport: c.sport ?? undefined,
       logo_url: c.logo_url ?? undefined,
       address: c.address ?? undefined,
       contact_phone: c.contact_phone ?? undefined,

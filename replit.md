@@ -46,6 +46,13 @@ Preferred communication style: Simple, everyday language.
 - **Attendance Tracking**: Check-in/check-out for sessions/events, with flags for overdue payments.
 - **SafeSport Communication Hub**: Real-time messaging and bulletin board with SafeSport compliance logic (e.g., parent inclusion in coach-athlete chats). Supports various audience types (individual, roster, team, program, event, club).
 - **Push Notifications**: Utilizes Firebase Cloud Messaging (FCM) for new messages and bulletin posts.
+  - **Backend**: Firebase Admin SDK sends notifications when messages/bulletin posts are created
+  - **Frontend**: Firebase SDK initialized on login, requests permission and registers FCM token
+  - **Service Worker**: `client/public/firebase-messaging-sw.js` handles background notifications
+  - **Foreground**: In-app toast notifications via `onMessage` handler
+  - **Token Storage**: `push_subscriptions` table stores FCM tokens per user/device
+  - **Endpoints**: `POST /api/push-subscriptions` registers tokens, `GET /api/firebase-config` provides config to service worker
+  - **Environment Variables**: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_PUBLIC_VAPID_KEY`, `FIREBASE_SERVICE_ACCOUNT`
 - **Seasons & Data Retention**: Directors define club seasons, with automated chat data cleanup at event and season ends.
 - **Daily Club Billing System (Legacy)**: Calculates and bills platform fees based on active player count (deprecated when parent-paid fees are enabled). Includes Helcim subscription billing for automated recurring charges.
 

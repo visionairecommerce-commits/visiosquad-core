@@ -174,6 +174,8 @@ function AuthenticatedApp() {
   useEffect(() => {
     if (!user || notificationInitialized.current) return;
     
+    let unsubscribe: (() => void) | null = null;
+    
     const initNotifications = async () => {
       if (!isPushNotificationSupported()) {
         console.log('Push notifications not supported');
@@ -185,22 +187,22 @@ function AuthenticatedApp() {
       try {
         await requestNotificationPermission();
         
-        const unsubscribe = setupForegroundMessageHandler((notification) => {
+        unsubscribe = setupForegroundMessageHandler((notification) => {
           toast({
             title: notification.title,
             description: notification.body,
           });
         });
-
-        return () => {
-          if (unsubscribe) unsubscribe();
-        };
       } catch (error) {
         console.error('Failed to initialize notifications:', error);
       }
     };
 
     initNotifications();
+    
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, toast]);
 
   return (

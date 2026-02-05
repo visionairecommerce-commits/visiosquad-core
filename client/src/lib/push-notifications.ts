@@ -101,8 +101,8 @@ export async function requestNotificationPermission(): Promise<string | null> {
     if (token) {
       console.log('FCM token obtained');
       
-      // Send token to backend
-      await apiRequest('POST', '/api/push/register', {
+      // Send token to backend (using the existing push registration endpoint)
+      await apiRequest('POST', '/api/push-subscriptions', {
         fcm_token: token,
         device_type: 'web',
       });

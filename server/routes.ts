@@ -4362,7 +4362,25 @@ export async function registerRoutes(
     res.json(config);
   });
 
-  // Register push token
+  // Register push token (supports both /api/push-subscriptions and /api/push/register)
+  app.post('/api/push-subscriptions', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
+    try {
+      const { userId } = getAuthContext(req);
+      const { fcm_token, device_type } = req.body;
+      
+      if (!fcm_token) {
+        return res.status(400).json({ error: 'FCM token is required' });
+      }
+      
+      const subscription = await storage.registerPushToken(userId, fcm_token, device_type || 'web');
+      res.json(subscription);
+    } catch (error) {
+      console.error('Error registering push token:', error);
+      res.status(500).json({ error: 'Failed to register push token' });
+    }
+  });
+
+  // Legacy endpoint alias
   app.post('/api/push/register', requireRole('admin', 'coach', 'parent'), async (req, res) => {
     try {
       const { userId } = getAuthContext(req);

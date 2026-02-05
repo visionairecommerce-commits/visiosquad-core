@@ -72,6 +72,7 @@ export const profilesTable = pgTable("profiles", {
   id: uuid("id").primaryKey(), // Links to Supabase auth.users.id
   email: text("email").notNull().unique(),
   full_name: text("full_name").notNull(),
+  phone_number: text("phone_number"), // Contact phone number
   role: text("role", { enum: ["admin", "coach", "parent", "athlete", "owner"] }).notNull(),
   club_id: uuid("club_id").references(() => clubsTable.id),
   has_signed_documents: boolean("has_signed_documents").default(false).notNull(),
@@ -1196,6 +1197,7 @@ export const registerUserSchema = z.object({
   join_code: z.string().length(6, "Club code must be 6 characters"),
   full_name: z.string().min(2, "Name is required"),
   email: z.string().email("Valid email is required"),
+  phone_number: z.string().optional(), // Required for parents, validated on frontend
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.enum(['coach', 'parent']),
 });

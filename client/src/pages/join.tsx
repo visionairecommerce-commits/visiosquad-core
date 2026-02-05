@@ -30,6 +30,7 @@ export default function JoinPage() {
   const [clubInfo, setClubInfo] = useState<ClubInfo | null>(null);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [role, setRole] = useState<'coach' | 'parent'>('parent');
@@ -86,6 +87,12 @@ export default function JoinPage() {
       return;
     }
     
+    // Phone number required for parents
+    if (role === 'parent' && !phoneNumber) {
+      toast({ title: 'Phone number is required for parents', variant: 'destructive' });
+      return;
+    }
+    
     if (password !== confirmPassword) {
       toast({ title: 'Passwords do not match', variant: 'destructive' });
       return;
@@ -97,7 +104,7 @@ export default function JoinPage() {
     }
     
     setIsLoading(true);
-    const result = await registerUser(joinCode, fullName, email, password, role);
+    const result = await registerUser(joinCode, fullName, email, password, role, role === 'parent' ? phoneNumber : undefined);
     setIsLoading(false);
     
     if (result.success) {
@@ -252,6 +259,20 @@ export default function JoinPage() {
                   data-testid="input-email"
                 />
               </div>
+              
+              {role === 'parent' && (
+                <div className="space-y-2">
+                  <Label htmlFor="phoneNumber">Phone Number</Label>
+                  <Input
+                    id="phoneNumber"
+                    type="tel"
+                    placeholder="(555) 123-4567"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    data-testid="input-phone-number"
+                  />
+                </div>
+              )}
               
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>

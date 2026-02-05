@@ -532,6 +532,13 @@ export interface IStorage {
   getAthletesByParent(clubId: string, parentId: string): Promise<Athlete[]>;
   getAthletesByParentAcrossClubs(parentId: string): Promise<Athlete[]>;
   getUnassignedAthletes(clubId: string, programId: string): Promise<Athlete[]>;
+  getAthleteAssignmentOverview(clubId: string): Promise<{
+    totalAthletes: number;
+    assignedCount: number;
+    unassignedCount: number;
+    unassignedAthletes: Array<{ id: string; first_name: string; last_name: string; parent_name: string }>;
+    assignmentsByProgram: Array<{ program_id: string; program_name: string; athlete_count: number }>;
+  }>;
   createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete>;
   updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login' | 'user_id'>>): Promise<void>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
@@ -1591,6 +1598,49 @@ export class MemStorage implements IStorage {
     return Array.from(this.athletes.values()).filter(
       a => a.club_id === clubId && !assignedAthleteIds.has(a.id)
     );
+  }
+
+  async getAthleteAssignmentOverview(clubId: string): Promise<{
+    totalAthletes: number;
+    assignedCount: number;
+    unassignedCount: number;
+    unassignedAthletes: Array<{ id: string; first_name: string; last_name: string; parent_name: string }>;
+    assignmentsByProgram: Array<{ program_id: string; program_name: string; athlete_count: number }>;
+  }> {
+    const allAthletes = await this.getAthletes(clubId);
+    const roster = await this.getRoster(clubId);
+    const programs = await this.getPrograms(clubId);
+    const profiles = Array.from(this.users.values());
+    
+    const assignedAthleteIds = new Set(roster.map(r => r.athlete_id));
+    const unassignedAthletes = allAthletes
+      .filter(a => !assignedAthleteIds.has(a.id))
+      .map(a => {
+        const parent = profiles.find(p => p.id === a.parent_id);
+        return {
+          id: a.id,
+          first_name: a.first_name,
+          last_name: a.last_name,
+          parent_name: parent?.full_name || 'Unknown',
+        };
+      });
+    
+    const assignmentsByProgram = programs.map(p => {
+      const athleteCount = roster.filter(r => r.program_id === p.id).length;
+      return {
+        program_id: p.id,
+        program_name: p.name,
+        athlete_count: athleteCount,
+      };
+    }).filter(p => p.athlete_count > 0);
+    
+    return {
+      totalAthletes: allAthletes.length,
+      assignedCount: assignedAthleteIds.size,
+      unassignedCount: unassignedAthletes.length,
+      unassignedAthletes,
+      assignmentsByProgram,
+    };
   }
 
   async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete> {

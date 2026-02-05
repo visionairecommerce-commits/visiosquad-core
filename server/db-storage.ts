@@ -315,6 +315,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(profilesTable.id, userId));
   }
 
+  async updateUserPhoneNumber(userId: string, phoneNumber: string): Promise<void> {
+    await db.update(profilesTable)
+      .set({ phone_number: phoneNumber })
+      .where(eq(profilesTable.id, userId));
+  }
+
   async updateUserBillingPermission(userId: string, canBill: boolean): Promise<User | null> {
     const [updated] = await db.update(profilesTable)
       .set({ can_bill: canBill })
@@ -701,6 +707,26 @@ export class DatabaseStorage implements IStorage {
     return athletes.map(a => this.mapAthlete(a));
   }
 
+  async getAthletesWithParentInfo(clubId: string): Promise<(Athlete & { parent_name: string; parent_email: string; parent_phone: string | null })[]> {
+    const results = await db
+      .select({
+        athlete: athletesTable,
+        parent_name: profilesTable.full_name,
+        parent_email: profilesTable.email,
+        parent_phone: profilesTable.phone_number,
+      })
+      .from(athletesTable)
+      .leftJoin(profilesTable, eq(athletesTable.parent_id, profilesTable.id))
+      .where(eq(athletesTable.club_id, clubId));
+    
+    return results.map(r => ({
+      ...this.mapAthlete(r.athlete),
+      parent_name: r.parent_name || 'Unknown',
+      parent_email: r.parent_email || '',
+      parent_phone: r.parent_phone || null,
+    }));
+  }
+
   async getAthlete(clubId: string, athleteId: string): Promise<Athlete | undefined> {
     const [athlete] = await db.select().from(athletesTable)
       .where(and(eq(athletesTable.club_id, clubId), eq(athletesTable.id, athleteId)));
@@ -719,6 +745,46 @@ export class DatabaseStorage implements IStorage {
     const roster = await this.getRoster(clubId);
     const assignedIds = new Set(roster.filter(r => r.program_id === programId).map(r => r.athlete_id));
     return allAthletes.filter(a => !assignedIds.has(a.id));
+  }
+
+  async getAthleteAssignmentOverview(clubId: string): Promise<{
+    totalAthletes: number;
+    assignedCount: number;
+    unassignedCount: number;
+    unassignedAthletes: Array<{ id: string; first_name: string; last_name: string; parent_name: string }>;
+    assignmentsByProgram: Array<{ program_id: string; program_name: string; athlete_count: number }>;
+  }> {
+    const allAthletes = await this.getAthletes(clubId);
+    const roster = await this.getRoster(clubId);
+    const programs = await this.getPrograms(clubId);
+    const athletesWithParent = await this.getAthletesWithParentInfo(clubId);
+    
+    const assignedAthleteIds = new Set(roster.map(r => r.athlete_id));
+    const unassignedAthletes = athletesWithParent
+      .filter(a => !assignedAthleteIds.has(a.id))
+      .map(a => ({
+        id: a.id,
+        first_name: a.first_name,
+        last_name: a.last_name,
+        parent_name: a.parent_name,
+      }));
+    
+    const assignmentsByProgram = programs.map(p => {
+      const athleteCount = roster.filter(r => r.program_id === p.id).length;
+      return {
+        program_id: p.id,
+        program_name: p.name,
+        athlete_count: athleteCount,
+      };
+    }).filter(p => p.athlete_count > 0);
+    
+    return {
+      totalAthletes: allAthletes.length,
+      assignedCount: assignedAthleteIds.size,
+      unassignedCount: unassignedAthletes.length,
+      unassignedAthletes,
+      assignmentsByProgram,
+    };
   }
 
   async createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete> {

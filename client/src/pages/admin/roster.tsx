@@ -35,7 +35,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users, Unlock, Archive, AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertCircle, UserPlus, Check, ChevronsUpDown, FileCheck, FileX, GraduationCap, Users, Unlock, Archive, AlertTriangle, Trash2, Phone, Mail, User } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isAthleteAccessLocked } from '@shared/schema';
@@ -52,6 +52,12 @@ interface EnrichedRosterEntry extends AthleteTeamRoster {
   team_name: string;
 }
 
+interface AthleteWithParent extends Athlete {
+  parent_name: string;
+  parent_email: string;
+  parent_phone: string | null;
+}
+
 export default function RosterPage() {
   const [selectedProgram, setSelectedProgram] = useState<string>('all');
   const [selectedGradYear, setSelectedGradYear] = useState<string>('all');
@@ -63,9 +69,11 @@ export default function RosterPage() {
   const [athleteSearchOpen, setAthleteSearchOpen] = useState(false);
   const [endSeasonDialogOpen, setEndSeasonDialogOpen] = useState(false);
   const [selectedForArchive, setSelectedForArchive] = useState<Set<string>>(new Set());
+  const [parentInfoDialogOpen, setParentInfoDialogOpen] = useState(false);
+  const [selectedAthleteForParentInfo, setSelectedAthleteForParentInfo] = useState<AthleteWithParent | null>(null);
   const { toast } = useToast();
 
-  const { data: athletes = [] } = useQuery<Athlete[]>({ queryKey: ['/api/athletes'] });
+  const { data: athletes = [] } = useQuery<AthleteWithParent[]>({ queryKey: ['/api/athletes', { include_parent_info: 'true' }] });
   const { data: teams = [] } = useQuery<Team[]>({ queryKey: ['/api/teams'] });
   const { data: programs = [] } = useQuery<Program[]>({ queryKey: ['/api/programs'] });
   const { data: roster = [] } = useQuery<EnrichedRosterEntry[]>({ queryKey: ['/api/roster'] });
@@ -600,6 +608,19 @@ export default function RosterPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedAthleteForParentInfo(athlete || null);
+                              setParentInfoDialogOpen(true);
+                            }}
+                            className="gap-1 text-xs"
+                            data-testid={`button-parent-info-${entry.id}`}
+                          >
+                            <User className="h-3 w-3" />
+                            Parent Info
+                          </Button>
                           {isLocked && (
                             <Button
                               variant="outline"
@@ -702,6 +723,56 @@ export default function RosterPage() {
           </Card>
         )}
       </div>
+
+      <Dialog open={parentInfoDialogOpen} onOpenChange={setParentInfoDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Parent Contact Information</DialogTitle>
+            <DialogDescription>
+              Contact details for {selectedAthleteForParentInfo?.first_name} {selectedAthleteForParentInfo?.last_name}'s parent
+            </DialogDescription>
+          </DialogHeader>
+          {selectedAthleteForParentInfo && (
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
+                <User className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm text-muted-foreground">Parent Name</div>
+                  <div className="font-medium">{selectedAthleteForParentInfo.parent_name}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
+                <Mail className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm text-muted-foreground">Email</div>
+                  <a 
+                    href={`mailto:${selectedAthleteForParentInfo.parent_email}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {selectedAthleteForParentInfo.parent_email}
+                  </a>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
+                <Phone className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm text-muted-foreground">Phone</div>
+                  {selectedAthleteForParentInfo.parent_phone ? (
+                    <a 
+                      href={`tel:${selectedAthleteForParentInfo.parent_phone}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {selectedAthleteForParentInfo.parent_phone}
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">Not provided</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -38,7 +38,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; needsOnboarding?: boolean }>;
   logout: () => void;
   createClub: (name: string, sport: string, directorName: string, directorEmail: string, directorPassword: string) => Promise<{ success: boolean; error?: string }>;
-  registerUser: (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent') => Promise<{ success: boolean; error?: string; needsSignature?: boolean }>;
+  registerUser: (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent', phoneNumber?: string) => Promise<{ success: boolean; error?: string; needsSignature?: boolean }>;
   signDocument: (documentType: 'contract' | 'waiver', signedName: string) => Promise<{ success: boolean; allSigned?: boolean }>;
   updateClubDocuments: (waiverContent: string, contractPdfUrl?: string) => Promise<{ success: boolean; error?: string }>;
   completeOnboarding: () => Promise<{ success: boolean; error?: string }>;
@@ -125,12 +125,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const registerUser = async (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent'): Promise<{ success: boolean; error?: string; needsSignature?: boolean }> => {
+  const registerUser = async (joinCode: string, fullName: string, email: string, password: string, role: 'coach' | 'parent', phoneNumber?: string): Promise<{ success: boolean; error?: string; needsSignature?: boolean }> => {
     try {
       const response = await apiRequest('POST', '/api/auth/register', {
         join_code: joinCode,
         full_name: fullName,
         email,
+        phone_number: phoneNumber,
         password,
         role,
       });

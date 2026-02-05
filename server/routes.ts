@@ -503,6 +503,12 @@ export async function registerRoutes(
         return res.status(500).json({ error: 'Failed to create user profile' });
       }
       
+      // Update phone number if provided (for parents)
+      if (data.phone_number && data.role === 'parent') {
+        await storage.updateUserPhoneNumber(authData.user.id, data.phone_number);
+        user = { ...user, phone_number: data.phone_number };
+      }
+      
       res.status(201).json({ 
         user,
         club: {
@@ -2251,12 +2257,22 @@ export async function registerRoutes(
     try {
       const { clubId, role, userId } = getAuthContext(req);
       const parentId = req.query.parent_id as string | undefined;
+      const includeParentInfo = req.query.include_parent_info === 'true';
+      
       // Parents can only see their own athletes
       const effectiveParentId = role === 'parent' ? userId : parentId;
-      const athletes = effectiveParentId
-        ? await storage.getAthletesByParent(clubId, effectiveParentId)
-        : await storage.getAthletes(clubId);
-      res.json(athletes);
+      
+      if (effectiveParentId) {
+        const athletes = await storage.getAthletesByParent(clubId, effectiveParentId);
+        res.json(athletes);
+      } else if (includeParentInfo && (role === 'admin' || role === 'coach')) {
+        // Directors and coaches can see parent contact info
+        const athletes = await storage.getAthletesWithParentInfo(clubId);
+        res.json(athletes);
+      } else {
+        const athletes = await storage.getAthletes(clubId);
+        res.json(athletes);
+      }
     } catch (error) {
       console.error('Error fetching athletes:', error);
       res.status(500).json({ error: 'Failed to fetch athletes' });
@@ -2275,6 +2291,17 @@ export async function registerRoutes(
     } catch (error) {
       console.error('Error fetching unassigned athletes:', error);
       res.status(500).json({ error: 'Failed to fetch unassigned athletes' });
+    }
+  });
+
+  app.get('/api/athletes/assignment-overview', requireRole('admin', 'coach'), async (req, res) => {
+    try {
+      const { clubId } = getAuthContext(req);
+      const overview = await storage.getAthleteAssignmentOverview(clubId);
+      res.json(overview);
+    } catch (error) {
+      console.error('Error fetching athlete assignment overview:', error);
+      res.status(500).json({ error: 'Failed to fetch athlete assignment overview' });
     }
   });
 

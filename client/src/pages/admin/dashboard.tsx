@@ -23,6 +23,8 @@ import {
   AlertCircle,
   TrendingUp,
   TrendingDown,
+  UserX,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface DashboardStats {
@@ -58,6 +60,14 @@ interface RecentActivity {
   time: string;
 }
 
+interface AthleteAssignmentOverview {
+  totalAthletes: number;
+  assignedCount: number;
+  unassignedCount: number;
+  unassignedAthletes: Array<{ id: string; first_name: string; last_name: string; parent_name: string }>;
+  assignmentsByProgram: Array<{ program_id: string; program_name: string; athlete_count: number }>;
+}
+
 export default function AdminDashboard() {
   const { club } = useAuth();
   const { toast } = useToast();
@@ -84,6 +94,11 @@ export default function AdminDashboard() {
 
   const { data: recentActivity = [], isLoading: activityLoading } = useQuery<RecentActivity[]>({
     queryKey: ['/api/dashboard/recent-activity'],
+    enabled: !!club?.id,
+  });
+
+  const { data: assignmentOverview, isLoading: assignmentLoading } = useQuery<AthleteAssignmentOverview>({
+    queryKey: ['/api/athletes/assignment-overview'],
     enabled: !!club?.id,
   });
 
@@ -276,6 +291,81 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {!assignmentLoading && assignmentOverview && assignmentOverview.unassignedCount > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20" data-testid="card-assignment-overview">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <UserX className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <div>
+                <CardTitle className="text-lg">Athletes Need Assignment</CardTitle>
+                <CardDescription>
+                  {assignmentOverview.unassignedCount} athlete{assignmentOverview.unassignedCount !== 1 ? 's' : ''} not assigned to any program
+                </CardDescription>
+              </div>
+            </div>
+            <Link href="/roster">
+              <Button variant="outline" size="sm" data-testid="button-assign-athletes">
+                Assign Now
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {assignmentOverview.unassignedAthletes.slice(0, 5).map((athlete) => (
+                <div 
+                  key={athlete.id} 
+                  className="flex items-center justify-between py-2 px-3 rounded-md bg-background border"
+                  data-testid={`unassigned-athlete-${athlete.id}`}
+                >
+                  <div>
+                    <span className="font-medium">{athlete.first_name} {athlete.last_name}</span>
+                    <span className="text-sm text-muted-foreground ml-2">
+                      (Parent: {athlete.parent_name})
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {assignmentOverview.unassignedCount > 5 && (
+                <p className="text-sm text-muted-foreground text-center pt-2">
+                  +{assignmentOverview.unassignedCount - 5} more unassigned athlete{assignmentOverview.unassignedCount - 5 !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!assignmentLoading && assignmentOverview && assignmentOverview.assignmentsByProgram.length > 0 && (
+        <Card data-testid="card-program-assignments">
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <div>
+                <CardTitle className="text-lg">Program Assignments</CardTitle>
+                <CardDescription>
+                  {assignmentOverview.assignedCount} athlete{assignmentOverview.assignedCount !== 1 ? 's' : ''} assigned across {assignmentOverview.assignmentsByProgram.length} program{assignmentOverview.assignmentsByProgram.length !== 1 ? 's' : ''}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {assignmentOverview.assignmentsByProgram.map((program) => (
+                <div 
+                  key={program.program_id} 
+                  className="flex items-center justify-between py-2 px-3 rounded-md bg-muted/50 border"
+                  data-testid={`program-assignment-${program.program_id}`}
+                >
+                  <span className="font-medium">{program.program_name}</span>
+                  <Badge variant="secondary">{program.athlete_count} athlete{program.athlete_count !== 1 ? 's' : ''}</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

@@ -32,7 +32,27 @@ import {
   GraduationCap,
   Users,
   FileText,
+  FileSignature,
+  UserX,
 } from 'lucide-react';
+
+interface AvailableContractsResponse {
+  not_assigned: boolean;
+  message?: string;
+  contracts: Array<{
+    id: string;
+    name: string;
+    monthly_price: number;
+  }>;
+}
+
+interface AthleteContract {
+  id: string;
+  athlete_id: string;
+  program_contract_id: string;
+  signed_at?: string;
+  status: 'active' | 'cancelled' | 'expired';
+}
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { ContractGate } from '@/components/ContractGate';
@@ -60,6 +80,20 @@ export default function ParentDashboard() {
   const { data: unviewedFormsCount } = useQuery<{ count: number }>({
     queryKey: ['/api/my-unviewed-forms-count'],
   });
+
+  const { data: contractsResponse } = useQuery<AvailableContractsResponse>({
+    queryKey: ['/api/athletes', activeAthlete?.id, 'available-contracts'],
+    enabled: !!activeAthlete?.id,
+  });
+
+  const { data: currentContract } = useQuery<AthleteContract | null>({
+    queryKey: ['/api/athletes', activeAthlete?.id, 'contract'],
+    enabled: !!activeAthlete?.id,
+  });
+
+  const isNotAssigned = contractsResponse?.not_assigned || false;
+  const hasActiveContract = currentContract && currentContract.status === 'active';
+  const needsContractSignature = !isNotAssigned && !hasActiveContract && (contractsResponse?.contracts?.length ?? 0) > 0;
 
   const createAthleteMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -184,14 +218,49 @@ export default function ParentDashboard() {
         {athletes.length > 0 && <AthleteSwitcher />}
       </div>
 
-      {isLocked && activeAthlete && (
-        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-4">
+      {activeAthlete && isNotAssigned && (
+        <div className="rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-4" data-testid="alert-not-assigned">
+          <div className="flex items-start gap-3">
+            <UserX className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-amber-800 dark:text-amber-300">Not Yet Assigned to a Program</h3>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                {activeAthlete.first_name} has not been assigned to a team or program yet. 
+                Your director will assign them to a program before you can enroll in a contract.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeAthlete && needsContractSignature && (
+        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4" data-testid="alert-contract-needed">
+          <div className="flex items-start gap-3">
+            <FileSignature className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-blue-800 dark:text-blue-300">Contract Enrollment Available</h3>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                {activeAthlete.first_name} has been assigned to a program. Please review and sign a contract to complete enrollment.
+              </p>
+              <Link href="/contracts">
+                <Button size="sm" variant="outline" className="mt-3" data-testid="button-view-contracts">
+                  <FileSignature className="h-4 w-4 mr-2" />
+                  View Contracts
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLocked && activeAthlete && !isNotAssigned && hasActiveContract && (
+        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-4" data-testid="alert-payment-required">
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
             <div>
               <h3 className="font-medium text-destructive">Payment Required</h3>
               <p className="text-sm text-destructive/80 mt-1">
-                {activeAthlete.first_name}'s account is past due. Please update your payment to continue registering for sessions.
+                {activeAthlete.first_name}'s account is past due. Please make a payment to continue registering for sessions.
               </p>
               <Link href="/payments">
                 <Button size="sm" variant="destructive" className="mt-3" data-testid="button-make-payment">

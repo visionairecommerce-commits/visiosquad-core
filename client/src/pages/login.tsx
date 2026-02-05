@@ -122,13 +122,22 @@ export default function LoginPage() {
                 Sign In
               </Button>
 
-              <div className="text-center">
+              <div className="flex justify-between items-center">
+                <Link href="/forgot-password">
+                  <Button
+                    variant="link"
+                    className="px-0 text-muted-foreground"
+                    data-testid="link-forgot-password"
+                  >
+                    Forgot password?
+                  </Button>
+                </Link>
                 <Button
                   variant="ghost"
                   onClick={() => setMode('create-account')}
                   data-testid="link-create-account"
                 >
-                  Don't have an account? Create one
+                  Create account
                 </Button>
               </div>
             </CardContent>

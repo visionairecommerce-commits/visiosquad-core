@@ -577,6 +577,40 @@ export async function registerRoutes(
     }
   });
 
+  // Forgot password - send reset email
+  app.post('/api/auth/forgot-password', async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+      }
+      
+      if (!isSupabaseAdminConfigured()) {
+        return res.status(500).json({ error: 'Authentication service not configured' });
+      }
+      
+      // Use Supabase to send password reset email
+      // Use server-configured APP_URL for security (no host header injection)
+      const appUrl = process.env.APP_URL || 'https://visiosquad.com';
+      const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, {
+        redirectTo: `${appUrl}/reset-password`,
+      });
+      
+      if (error) {
+        console.error('Error sending reset email:', error);
+        // Don't reveal if email exists or not for security
+        return res.json({ success: true, message: 'If an account exists with this email, a reset link has been sent.' });
+      }
+      
+      res.json({ success: true, message: 'Password reset email sent' });
+    } catch (error) {
+      console.error('Error in forgot password:', error);
+      // Don't reveal errors for security
+      res.json({ success: true, message: 'If an account exists with this email, a reset link has been sent.' });
+    }
+  });
+
   // Sign documents (e-signature)
   app.post('/api/auth/sign-documents', requireAuth, async (req, res) => {
     try {

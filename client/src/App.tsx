@@ -43,6 +43,8 @@ import BulletinPage from "@/pages/bulletin";
 import AthleteDashboard from "@/pages/athlete/dashboard";
 import AthleteSchedulePage from "@/pages/athlete/schedule";
 import TermsOfServicePage from "@/pages/terms-of-service";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import OwnerDashboard from "@/pages/owner/dashboard";
 import DocuSealOnboarding from "@/pages/owner/docuseal-onboarding";
 import PlatformBilling from "@/pages/owner/platform-billing";
@@ -247,6 +249,8 @@ function AppContent() {
         <Route path="/login" component={LoginPage} />
         <Route path="/create-club" component={CreateClubPage} />
         <Route path="/join" component={JoinPage} />
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/terms-of-service" component={TermsOfServicePage} />
         <Route component={RedirectToLogin} />
       </Switch>

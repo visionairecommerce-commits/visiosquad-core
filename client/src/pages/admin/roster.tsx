@@ -200,8 +200,19 @@ export default function RosterPage() {
     });
   }, [athletes, athleteActiveContracts]);
 
-  const getContractsForProgram = (programId: string) => {
-    return programContracts.filter(c => c.program_id === programId);
+  const getContractsForRosterEntry = (programId: string, teamId: string | null | undefined) => {
+    // Filter contracts based on program and team assignment
+    return programContracts.filter(c => {
+      if (c.program_id !== programId) return false;
+      
+      if (teamId) {
+        // Athlete is on a team: show team-specific contracts for that team OR program-level contracts (no team)
+        return c.team_id === teamId || !c.team_id;
+      } else {
+        // Athlete is program-only: show only program-level contracts (no team)
+        return !c.team_id;
+      }
+    });
   };
 
   const athleteRosterMap = useMemo(() => {
@@ -692,14 +703,14 @@ export default function RosterPage() {
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
-                                {getContractsForProgram(entry.program_id).map(pc => (
+                                {getContractsForRosterEntry(entry.program_id, entry.team_id).map(pc => (
                                   <SelectItem key={pc.id} value={pc.id}>
                                     {pc.name} - ${pc.monthly_price}/mo
                                   </SelectItem>
                                 ))}
-                                {getContractsForProgram(entry.program_id).length === 0 && (
+                                {getContractsForRosterEntry(entry.program_id, entry.team_id).length === 0 && (
                                   <div className="text-xs text-muted-foreground p-2">
-                                    No contracts for this program
+                                    No contracts available
                                   </div>
                                 )}
                               </SelectContent>

@@ -282,14 +282,17 @@ export default function ContractsPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Team (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <Select 
+                          onValueChange={(val) => field.onChange(val === "__all__" ? "" : val)} 
+                          value={field.value || "__all__"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-contract-team">
                               <SelectValue placeholder="All teams in program" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">All teams in program</SelectItem>
+                            <SelectItem value="__all__">All teams in program</SelectItem>
                             {teamsForProgram.map((team) => (
                               <SelectItem key={team.id} value={team.id}>
                                 {team.name}

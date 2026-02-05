@@ -1812,13 +1812,13 @@ export class DatabaseStorage implements IStorage {
       paid_in_full_price: contract.paid_in_full_price ? String(contract.paid_in_full_price) : null,
       initiation_fee: contract.initiation_fee ? String(contract.initiation_fee) : null,
       sessions_per_week: contract.sessions_per_week,
-      contract_document_url: contract.contract_document_url || null,
+      contract_document_id: contract.contract_document_id || null,
       is_active: true,
     }).returning();
     return this.mapProgramContract(c);
   }
 
-  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_url?: string | null; is_active?: boolean }): Promise<ProgramContract> {
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
@@ -1827,7 +1827,7 @@ export class DatabaseStorage implements IStorage {
     if (data.initiation_fee !== undefined) updateData.initiation_fee = data.initiation_fee ? String(data.initiation_fee) : null;
     if (data.sessions_per_week !== undefined) updateData.sessions_per_week = data.sessions_per_week;
     if (data.team_id !== undefined) updateData.team_id = data.team_id;
-    if (data.contract_document_url !== undefined) updateData.contract_document_url = data.contract_document_url;
+    if (data.contract_document_id !== undefined) updateData.contract_document_id = data.contract_document_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
 
     const [c] = await db.update(programContractsTable)
@@ -1898,7 +1898,7 @@ export class DatabaseStorage implements IStorage {
       paid_in_full_price: c.paid_in_full_price ? parseFloat(c.paid_in_full_price) : undefined,
       initiation_fee: c.initiation_fee ? parseFloat(c.initiation_fee) : undefined,
       sessions_per_week: c.sessions_per_week,
-      contract_document_url: c.contract_document_url ?? undefined,
+      contract_document_id: c.contract_document_id ?? undefined,
       is_active: c.is_active,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };

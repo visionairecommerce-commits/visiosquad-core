@@ -2539,6 +2539,50 @@ export async function registerRoutes(
     }
   });
 
+  // Update athlete profile (parent can edit their own athletes)
+  app.patch('/api/athletes/:athleteId', requireRole('parent', 'athlete'), async (req, res) => {
+    try {
+      const { userId, role } = getAuthContext(req);
+      const athleteId = req.params.athleteId as string;
+      
+      // For athlete role, they can only edit their own profile
+      let parentId = userId;
+      if (role === 'athlete') {
+        const profile = await storage.getProfile(userId);
+        if (!profile?.athlete_id || profile.athlete_id !== athleteId) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        // Get the athlete to find the parent_id
+        const athletes = await storage.getAthletes(profile.club_id);
+        const athlete = athletes.find(a => a.id === athleteId);
+        if (!athlete) {
+          return res.status(404).json({ error: 'Athlete not found' });
+        }
+        parentId = athlete.parent_id;
+      }
+      
+      const allowedFields = ['first_name', 'last_name', 'date_of_birth', 'graduation_year', 
+        'avp_number', 'bvca_number', 'aau_number', 'bvne_number', 'p1440_number', 'food_allergies'];
+      const updates: Record<string, unknown> = {};
+      
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      }
+      
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No valid fields to update' });
+      }
+      
+      const updated = await storage.updateAthleteProfile(athleteId, parentId, updates);
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating athlete:', error);
+      res.status(500).json({ error: 'Failed to update athlete' });
+    }
+  });
+
   // Grant test access (extend paid_through_date for testing)
   app.post('/api/athletes/:athleteId/grant-access', requireRole('admin'), async (req, res) => {
     try {

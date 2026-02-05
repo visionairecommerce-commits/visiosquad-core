@@ -542,6 +542,7 @@ export interface IStorage {
   }>;
   createAthlete(clubId: string, athlete: Omit<Athlete, 'id' | 'club_id' | 'is_locked' | 'is_released' | 'has_login' | 'created_at'>): Promise<Athlete>;
   updateAthlete(athleteId: string, updates: Partial<Pick<Athlete, 'email' | 'has_login' | 'user_id'>>): Promise<void>;
+  updateAthleteProfile(athleteId: string, parentId: string, updates: Partial<Pick<Athlete, 'first_name' | 'last_name' | 'date_of_birth' | 'graduation_year' | 'avp_number' | 'bvca_number' | 'aau_number' | 'bvne_number' | 'p1440_number' | 'food_allergies'>>): Promise<Athlete>;
   updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void>;
   releaseAthlete(clubId: string, athleteId: string, releasedBy: string | null, releaseType?: 'manual' | 'automated'): Promise<{ contractIds: string[] }>;
   revokeAthleteRelease(clubId: string, athleteId: string): Promise<void>;
@@ -1677,6 +1678,16 @@ export class MemStorage implements IStorage {
       if (updates.user_id !== undefined) athlete.user_id = updates.user_id;
       this.athletes.set(athleteId, athlete);
     }
+  }
+
+  async updateAthleteProfile(athleteId: string, parentId: string, updates: Partial<Pick<Athlete, 'first_name' | 'last_name' | 'date_of_birth' | 'graduation_year' | 'avp_number' | 'bvca_number' | 'aau_number' | 'bvne_number' | 'p1440_number' | 'food_allergies'>>): Promise<Athlete> {
+    const athlete = this.athletes.get(athleteId);
+    if (!athlete || athlete.parent_id !== parentId) {
+      throw new Error('Athlete not found or access denied');
+    }
+    const updatedAthlete = { ...athlete, ...updates };
+    this.athletes.set(athleteId, updatedAthlete);
+    return updatedAthlete;
   }
 
   async updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void> {

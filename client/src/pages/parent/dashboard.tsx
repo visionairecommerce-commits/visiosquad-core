@@ -35,6 +35,7 @@ import {
   FileText,
   FileSignature,
   UserX,
+  Pencil,
 } from 'lucide-react';
 
 interface AvailableContractsResponse {
@@ -63,12 +64,25 @@ export default function ParentDashboard() {
   const { club } = useAuth();
   const { toast } = useToast();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingAthlete, setEditingAthlete] = useState<Athlete | null>(null);
   const [registeringSessionId, setRegisteringSessionId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     date_of_birth: '',
     graduation_year: new Date().getFullYear() + 10,
+    avp_number: '',
+    bvca_number: '',
+    aau_number: '',
+    bvne_number: '',
+    p1440_number: '',
+  });
+  const [editFormData, setEditFormData] = useState({
+    first_name: '',
+    last_name: '',
+    date_of_birth: '',
+    graduation_year: new Date().getFullYear(),
     avp_number: '',
     bvca_number: '',
     aau_number: '',
@@ -134,6 +148,28 @@ export default function ParentDashboard() {
     },
   });
 
+  const updateAthleteMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: Partial<typeof editFormData> }) => {
+      return apiRequest('PATCH', `/api/athletes/${data.id}`, data.updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/athletes'] });
+      setEditDialogOpen(false);
+      setEditingAthlete(null);
+      toast({
+        title: 'Profile Updated',
+        description: 'Athlete profile has been updated successfully.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to update athlete. Please try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: async (sessionId: string) => {
       if (!activeAthlete) throw new Error('No athlete selected');
@@ -186,6 +222,31 @@ export default function ParentDashboard() {
       return;
     }
     registerMutation.mutate(sessionId);
+  };
+
+  const handleEditAthlete = (athlete: Athlete) => {
+    setEditingAthlete(athlete);
+    setEditFormData({
+      first_name: athlete.first_name,
+      last_name: athlete.last_name,
+      date_of_birth: athlete.date_of_birth || '',
+      graduation_year: athlete.graduation_year || new Date().getFullYear(),
+      avp_number: athlete.avp_number || '',
+      bvca_number: athlete.bvca_number || '',
+      aau_number: athlete.aau_number || '',
+      bvne_number: athlete.bvne_number || '',
+      p1440_number: athlete.p1440_number || '',
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleUpdateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAthlete) return;
+    updateAthleteMutation.mutate({
+      id: editingAthlete.id,
+      updates: editFormData,
+    });
   };
 
   if (athletesLoading) {
@@ -440,16 +501,16 @@ export default function ParentDashboard() {
                 return (
                   <div
                     key={athlete.id}
-                    className={`p-4 rounded-md border cursor-pointer transition-colors ${
+                    className={`p-4 rounded-md border transition-colors ${
                       isActive ? 'border-primary bg-primary/5' : 'hover-elevate'
                     }`}
-                    onClick={() => {
-                      setActiveAthlete(athlete);
-                    }}
                     data-testid={`card-athlete-${athlete.id}`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div>
+                      <div
+                        className="flex-1 cursor-pointer"
+                        onClick={() => setActiveAthlete(athlete)}
+                      >
                         <div className="font-medium">
                           {athlete.first_name} {athlete.last_name}
                         </div>
@@ -463,17 +524,30 @@ export default function ParentDashboard() {
                           </div>
                         )}
                       </div>
-                      {athleteLocked ? (
-                        <Badge variant="destructive" className="gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          Past Due
-                        </Badge>
-                      ) : athlete.paid_through_date ? (
-                        <Badge variant="secondary" className="gap-1">
-                          <CheckCircle className="h-3 w-3" />
-                          Active
-                        </Badge>
-                      ) : null}
+                      <div className="flex flex-col items-end gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditAthlete(athlete);
+                          }}
+                          data-testid={`button-edit-athlete-${athlete.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {athleteLocked ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            Past Due
+                          </Badge>
+                        ) : athlete.paid_through_date ? (
+                          <Badge variant="secondary" className="gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Active
+                          </Badge>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 );
@@ -585,6 +659,129 @@ export default function ParentDashboard() {
           </Card>
         </div>
       )}
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Athlete Profile</DialogTitle>
+            <DialogDescription>
+              Update {editingAthlete?.first_name}'s profile information.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpdateSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_first_name">First Name</Label>
+                <Input
+                  id="edit_first_name"
+                  value={editFormData.first_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, first_name: e.target.value })}
+                  required
+                  data-testid="input-edit-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_last_name">Last Name</Label>
+                <Input
+                  id="edit_last_name"
+                  value={editFormData.last_name}
+                  onChange={(e) => setEditFormData({ ...editFormData, last_name: e.target.value })}
+                  required
+                  data-testid="input-edit-last-name"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_date_of_birth">Date of Birth</Label>
+                <Input
+                  id="edit_date_of_birth"
+                  type="date"
+                  value={editFormData.date_of_birth}
+                  onChange={(e) => setEditFormData({ ...editFormData, date_of_birth: e.target.value })}
+                  required
+                  data-testid="input-edit-dob"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_graduation_year">Graduation Year</Label>
+                <Input
+                  id="edit_graduation_year"
+                  type="number"
+                  min={2020}
+                  max={2040}
+                  value={editFormData.graduation_year}
+                  onChange={(e) => setEditFormData({ ...editFormData, graduation_year: parseInt(e.target.value) })}
+                  required
+                  data-testid="input-edit-graduation-year"
+                />
+              </div>
+            </div>
+            
+            {club?.sport === 'beach_volleyball' && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium text-muted-foreground mb-3">Organization Membership Numbers (Optional)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_avp">AVP</Label>
+                    <Input
+                      id="edit_avp"
+                      placeholder="Membership #"
+                      value={editFormData.avp_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, avp_number: e.target.value })}
+                      data-testid="input-edit-avp"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_aau">AAU</Label>
+                    <Input
+                      id="edit_aau"
+                      placeholder="Membership #"
+                      value={editFormData.aau_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, aau_number: e.target.value })}
+                      data-testid="input-edit-aau"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_bvca">BVCA</Label>
+                    <Input
+                      id="edit_bvca"
+                      placeholder="Membership #"
+                      value={editFormData.bvca_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, bvca_number: e.target.value })}
+                      data-testid="input-edit-bvca"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_bvne">BVNE</Label>
+                    <Input
+                      id="edit_bvne"
+                      placeholder="Membership #"
+                      value={editFormData.bvne_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, bvne_number: e.target.value })}
+                      data-testid="input-edit-bvne"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit_p1440">p1440</Label>
+                    <Input
+                      id="edit_p1440"
+                      placeholder="Membership #"
+                      value={editFormData.p1440_number}
+                      onChange={(e) => setEditFormData({ ...editFormData, p1440_number: e.target.value })}
+                      data-testid="input-edit-p1440"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <Button type="submit" className="w-full" disabled={updateAthleteMutation.isPending} data-testid="button-update-athlete">
+              {updateAthleteMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

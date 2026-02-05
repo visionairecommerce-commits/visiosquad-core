@@ -826,6 +826,17 @@ export class DatabaseStorage implements IStorage {
       .where(eq(athletesTable.id, athleteId));
   }
 
+  async updateAthleteProfile(athleteId: string, parentId: string, updates: Partial<Pick<Athlete, 'first_name' | 'last_name' | 'date_of_birth' | 'graduation_year' | 'avp_number' | 'bvca_number' | 'aau_number' | 'bvne_number' | 'p1440_number' | 'food_allergies'>>): Promise<Athlete> {
+    const [updated] = await db.update(athletesTable)
+      .set(updates)
+      .where(and(eq(athletesTable.id, athleteId), eq(athletesTable.parent_id, parentId)))
+      .returning();
+    if (!updated) {
+      throw new Error('Athlete not found or access denied');
+    }
+    return this.mapAthlete(updated);
+  }
+
   async updateAthletePaidThrough(clubId: string, athleteId: string, paidThroughDate: string): Promise<void> {
     await db.update(athletesTable)
       .set({ paid_through_date: paidThroughDate, is_locked: false })

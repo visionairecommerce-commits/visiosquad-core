@@ -305,7 +305,7 @@ export default function PlatformRevenuePage() {
                     ${(metrics?.by_payment_kind?.recurring?.total ?? 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    $3.50/player/month + 3.75% standard
+                    3.75% + $3.50/mo (credit) · Flat $3.50/mo (debit) · 1.75% + $3.00/mo (ACH)
                   </div>
                 </div>
                 
@@ -320,7 +320,7 @@ export default function PlatformRevenuePage() {
                     ${(metrics?.by_payment_kind?.one_time?.total ?? 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    $1.50/event + 3.75% standard
+                    3.75% + $1.50 (credit) · Flat $1.50 (debit) · 1.75% + $1.00 (ACH)
                   </div>
                 </div>
               </div>

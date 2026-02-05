@@ -392,7 +392,7 @@ function BillingDayCard() {
           Platform Billing Schedule
         </CardTitle>
         <CardDescription>
-          Choose when your club gets billed for platform fees ($3/player/month). Bills are generated on this day each month.
+          Configure your club's billing schedule. Note: Parents now pay Technology and Service Fees at checkout — clubs pay $0.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1036,7 +1036,7 @@ export default function SettingsPage() {
               Billing
             </CardTitle>
             <CardDescription>
-              Payment method for platform fees ($2.00/month per athlete, $1.00 per player per event, $0.75 per drop-in)
+              Payment method on file (Note: Parents now pay Technology and Service Fees at checkout)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1201,7 +1201,7 @@ export default function SettingsPage() {
                       <DialogTitle>Add Payment Method</DialogTitle>
                     </DialogHeader>
                     <p className="text-sm text-muted-foreground">
-                      This will be used to pay for platform fees: $2.00/month per athlete, $1.00 per player per event, $0.75 per drop-in.
+                      Keep a payment method on file for any club charges. Note: Technology and Service Fees are now paid by parents at checkout.
                     </p>
                     <Tabs value={billingType} onValueChange={(v) => setBillingType(v as 'card' | 'bank')}>
                       <TabsList className="grid w-full grid-cols-2">

@@ -85,6 +85,26 @@ export const profilesTable = pgTable("profiles", {
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Parent payment methods table - stores tokenized payment methods for recurring billing
+export const parentPaymentMethodsTable = pgTable("parent_payment_methods", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  parent_id: uuid("parent_id").references(() => profilesTable.id).notNull(),
+  club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
+  helcim_customer_code: text("helcim_customer_code"),
+  payment_type: text("payment_type", { enum: ["card", "ach"] }).notNull(),
+  card_token: text("card_token"),
+  bank_token: text("bank_token"),
+  card_last_four: text("card_last_four"),
+  card_brand: text("card_brand"),
+  bank_last_four: text("bank_last_four"),
+  bank_name: text("bank_name"),
+  is_default: boolean("is_default").default(true).notNull(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  parentClubIdx: index("parent_payment_methods_parent_club_idx").on(table.parent_id, table.club_id),
+}));
+
 // Club documents table
 export const clubDocumentsTable = pgTable("club_documents", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -277,6 +297,11 @@ export const athleteContractsTable = pgTable("athlete_contracts", {
   signed_at: timestamp("signed_at"), // When contract was signed
   initiation_fee_paid: boolean("initiation_fee_paid").default(false).notNull(),
   status: text("status", { enum: ["active", "cancelled", "expired"] }).default("active").notNull(),
+  payment_method_id: uuid("payment_method_id"), // Reference to parent_payment_methods for recurring billing
+  billing_status: text("billing_status", { enum: ["active", "paused", "failed", "cancelled"] }).default("active"),
+  next_billing_date: text("next_billing_date"), // ISO date string for next charge
+  last_billed_at: timestamp("last_billed_at"), // When last successfully billed
+  billing_failure_count: integer("billing_failure_count").default(0),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1310,6 +1335,11 @@ export type InsertHelcimPlan = z.infer<typeof insertHelcimPlanSchema>;
 export type PlatformAutopayChargeRecord = typeof platformAutopayChargesTable.$inferSelect;
 export const insertPlatformAutopayChargeSchema = createInsertSchema(platformAutopayChargesTable).omit({ id: true, prepared_at: true, updated_at: true });
 export type InsertPlatformAutopayCharge = z.infer<typeof insertPlatformAutopayChargeSchema>;
+
+// Parent payment methods types
+export type ParentPaymentMethod = typeof parentPaymentMethodsTable.$inferSelect;
+export const insertParentPaymentMethodSchema = createInsertSchema(parentPaymentMethodsTable).omit({ id: true, created_at: true, updated_at: true });
+export type InsertParentPaymentMethod = z.infer<typeof insertParentPaymentMethodSchema>;
 
 // Generate unique 6-character club code
 export const generateClubCode = (): string => {

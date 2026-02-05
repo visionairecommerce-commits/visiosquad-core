@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText, HelpCircle, Mail } from "lucide-react";
+import { Plus, Edit2, Trash2, DollarSign, Calendar, FileText, HelpCircle, Mail, AlertCircle, Settings } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Program {
@@ -27,11 +29,20 @@ interface Team {
   program_id: string;
 }
 
+interface Season {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+}
+
 interface ProgramContract {
   id: string;
   club_id: string;
   program_id: string;
   team_id?: string;
+  season_id?: string;
   name: string;
   description?: string;
   monthly_price: number;
@@ -46,6 +57,7 @@ interface ProgramContract {
 const contractSchema = z.object({
   program_id: z.string().min(1, "Program is required"),
   team_id: z.string().optional(),
+  season_id: z.string().min(1, "Season is required"),
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.coerce.number().min(0, "Price must be positive"),
@@ -67,6 +79,7 @@ export default function ContractsPage() {
   const [editingContract, setEditingContract] = useState<ProgramContract | null>(null);
   const [selectedProgramFilter, setSelectedProgramFilter] = useState<string>("all");
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: programs = [] } = useQuery<Program[]>({
     queryKey: ["/api/programs"],
@@ -74,6 +87,10 @@ export default function ContractsPage() {
 
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
+  });
+
+  const { data: seasons = [], isLoading: loadingSeasons } = useQuery<Season[]>({
+    queryKey: ["/api/seasons"],
   });
 
   const { data: contracts = [], isLoading } = useQuery<ProgramContract[]>({
@@ -85,6 +102,7 @@ export default function ContractsPage() {
     defaultValues: {
       program_id: "",
       team_id: "",
+      season_id: "",
       name: "",
       description: "",
       monthly_price: 0,
@@ -98,7 +116,6 @@ export default function ContractsPage() {
   const selectedProgramId = form.watch("program_id");
   const teamsForProgram = teams.filter(t => t.program_id === selectedProgramId);
 
-  // Clear team_id when program changes to avoid invalid team/program combinations
   const prevProgramIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (prevProgramIdRef.current !== null && prevProgramIdRef.current !== selectedProgramId) {
@@ -154,6 +171,7 @@ export default function ContractsPage() {
       form.reset({
         program_id: contract.program_id,
         team_id: contract.team_id || "",
+        season_id: contract.season_id || "",
         name: contract.name,
         description: contract.description || "",
         monthly_price: contract.monthly_price,
@@ -164,9 +182,11 @@ export default function ContractsPage() {
       });
     } else {
       setEditingContract(null);
+      const activeSeason = seasons.find(s => s.is_active);
       form.reset({
         program_id: "",
         team_id: "",
+        season_id: activeSeason?.id || (seasons.length === 1 ? seasons[0].id : ""),
         name: "",
         description: "",
         monthly_price: 0,
@@ -180,7 +200,6 @@ export default function ContractsPage() {
   };
 
   const handleSubmit = (data: ContractFormData) => {
-    // Normalize empty values to undefined for backend
     const normalizedData = {
       ...data,
       team_id: data.team_id || undefined,
@@ -213,6 +232,20 @@ export default function ContractsPage() {
     return teams.find(t => t.id === teamId)?.name;
   };
 
+  const getSeasonName = (seasonId?: string) => {
+    if (!seasonId) return null;
+    return seasons.find(s => s.id === seasonId)?.name;
+  };
+
+  const formatSeasonDates = (seasonId?: string) => {
+    if (!seasonId) return null;
+    const season = seasons.find(s => s.id === seasonId);
+    if (!season) return null;
+    const start = new Date(season.start_date).toLocaleDateString();
+    const end = new Date(season.end_date).toLocaleDateString();
+    return `${start} - ${end}`;
+  };
+
   const groupedContracts = filteredContracts.reduce((acc, contract) => {
     const programId = contract.program_id;
     if (!acc[programId]) {
@@ -221,6 +254,42 @@ export default function ContractsPage() {
     acc[programId].push(contract);
     return acc;
   }, {} as Record<string, ProgramContract[]>);
+
+  const activeSeasons = seasons.filter(s => s.is_active);
+  const hasNoActiveSeasons = !loadingSeasons && activeSeasons.length === 0;
+
+  if (hasNoActiveSeasons) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-contracts-title">Program Contracts</h1>
+          <p className="text-muted-foreground mt-1">
+            Define pricing tiers and session limits for each program
+          </p>
+        </div>
+
+        <Alert data-testid="alert-no-season">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Active Season Required</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>
+              {seasons.length === 0
+                ? "You need to create a season with start and end dates before you can set up contracts."
+                : "You have seasons defined but none are currently active. Please activate a season before creating contracts."}
+              {" "}Contracts are tied to a season so the billing period automatically matches the season dates.
+            </p>
+            <Button
+              onClick={() => setLocation("/settings")}
+              data-testid="button-go-to-settings"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Go to Settings to {seasons.length === 0 ? "Create" : "Activate"} a Season
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -250,6 +319,35 @@ export default function ContractsPage() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 overflow-hidden">
                 <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                <FormField
+                  control={form.control}
+                  name="season_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Season</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-contract-season">
+                            <SelectValue placeholder="Select a season" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(editingContract ? seasons : activeSeasons).map((season) => (
+                            <SelectItem key={season.id} value={season.id}>
+                              {season.name} ({new Date(season.start_date).toLocaleDateString()} - {new Date(season.end_date).toLocaleDateString()})
+                              {season.is_active ? " (Active)" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormDescription>
+                        The contract billing period will match this season's start and end dates
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="program_id"
@@ -475,7 +573,7 @@ Thank you!`
                             <TooltipContent className="max-w-xs">
                               <p className="text-sm">
                                 <strong>Where to find this:</strong><br />
-                                DocuSeal → Templates → open your template → copy Template ID → paste here.
+                                DocuSeal &rarr; Templates &rarr; open your template &rarr; copy Template ID &rarr; paste here.
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -577,27 +675,22 @@ Thank you!`
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-4">
                   {programContracts.map((contract) => (
-                    <Card
-                      key={contract.id}
-                      className={`relative ${!contract.is_active ? "opacity-60" : ""}`}
-                      data-testid={`card-contract-${contract.id}`}
-                    >
+                    <Card key={contract.id} data-testid={`card-contract-${contract.id}`}>
                       <CardHeader className="pb-2">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-lg">{contract.name}</CardTitle>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              {contract.team_id && getTeamName(contract.team_id) && (
-                                <Badge variant="outline" data-testid={`badge-team-${contract.id}`}>
-                                  {getTeamName(contract.team_id)}
-                                </Badge>
-                              )}
-                              {!contract.is_active && (
-                                <Badge variant="secondary">Inactive</Badge>
-                              )}
-                            </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <CardTitle className="text-base">{contract.name}</CardTitle>
+                            {getTeamName(contract.team_id) && (
+                              <Badge variant="secondary">{getTeamName(contract.team_id)}</Badge>
+                            )}
+                            {getSeasonName(contract.season_id) && (
+                              <Badge variant="outline" data-testid={`badge-season-${contract.id}`}>
+                                <Calendar className="h-3 w-3 mr-1" />
+                                {getSeasonName(contract.season_id)}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex gap-1">
                             <Button
@@ -636,20 +729,23 @@ Thank you!`
                               <span className="text-muted-foreground text-sm">days/week</span>
                             </div>
                           </div>
-                          {(contract.paid_in_full_price || contract.initiation_fee) && (
-                            <div className="flex items-center gap-3 text-sm flex-wrap">
-                              {contract.paid_in_full_price && (
-                                <span className="text-muted-foreground">
-                                  Paid-in-full: <span className="font-medium text-foreground">${contract.paid_in_full_price}</span>
-                                </span>
-                              )}
-                              {contract.initiation_fee && (
-                                <span className="text-muted-foreground">
-                                  Initiation: <span className="font-medium text-foreground">${contract.initiation_fee}</span>
-                                </span>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center gap-3 text-sm flex-wrap">
+                            {contract.paid_in_full_price && (
+                              <span className="text-muted-foreground">
+                                Paid-in-full: <span className="font-medium text-foreground">${contract.paid_in_full_price}</span>
+                              </span>
+                            )}
+                            {contract.initiation_fee && (
+                              <span className="text-muted-foreground">
+                                Initiation: <span className="font-medium text-foreground">${contract.initiation_fee}</span>
+                              </span>
+                            )}
+                            {formatSeasonDates(contract.season_id) && (
+                              <span className="text-muted-foreground">
+                                Season: <span className="font-medium text-foreground">{formatSeasonDates(contract.season_id)}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>

@@ -275,6 +275,7 @@ export interface AthleteContract {
   initiation_fee_paid: boolean;
   status: 'active' | 'cancelled' | 'expired';
   payment_method_id?: string;
+  billing_day_of_month?: number;
   billing_status?: 'active' | 'paused' | 'failed' | 'cancelled';
   next_billing_date?: string;
   last_billed_at?: string;
@@ -315,10 +316,17 @@ export interface Payment {
   athlete_id: string;
   amount: number;
   payment_type: 'monthly' | 'clinic' | 'drop_in' | 'cash' | 'event';
-  payment_method: 'credit_card' | 'ach' | 'cash';
+  payment_method?: 'credit_card' | 'ach' | 'cash';
   helcim_transaction_id?: string;
   months_paid?: number;
   status: 'pending' | 'completed' | 'failed';
+  description?: string;
+  base_amount?: number;
+  tech_fee_amount?: number;
+  payment_rail?: 'card_credit' | 'card_debit' | 'ach' | 'cash';
+  payment_kind?: 'recurring_contract' | 'one_time_event';
+  months_count?: number;
+  fee_version?: string;
   created_at: string;
 }
 
@@ -656,7 +664,7 @@ export interface IStorage {
   getProgramContracts(clubId: string, programId?: string): Promise<ProgramContract[]>;
   getProgramContract(clubId: string, contractId: string): Promise<ProgramContract | undefined>;
   createProgramContract(clubId: string, contract: Omit<ProgramContract, 'id' | 'club_id' | 'is_active' | 'created_at'>): Promise<ProgramContract>;
-  updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract>;
+  updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; season_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract>;
   deleteProgramContract(clubId: string, contractId: string): Promise<void>;
 
   // Athlete Contracts
@@ -2033,7 +2041,7 @@ export class MemStorage implements IStorage {
     throw new Error('Not implemented in MemStorage');
   }
 
-  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; season_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
     throw new Error('Not implemented in MemStorage');
   }
 

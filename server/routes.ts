@@ -1630,6 +1630,14 @@ export async function registerRoutes(
       const { clubId, userId } = getAuthContext(req);
       const data = insertProgramContractSchema.parse(req.body);
       
+      const season = await storage.getSeason(clubId, data.season_id);
+      if (!season) {
+        return res.status(400).json({ error: 'Season not found. Please create a season before creating contracts.' });
+      }
+      if (!season.is_active) {
+        return res.status(400).json({ error: 'The selected season is not active. Please choose an active season for the contract.' });
+      }
+      
       // Check if club is DocuSeal onboarded when a template ID is being set
       if (data.docuseal_template_id) {
         const isOnboarded = await storage.isClubDocuSealOnboarded(clubId);
@@ -1979,6 +1987,16 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'Contract not available' });
       }
       
+      let seasonStartDate: string | undefined;
+      let seasonEndDate: string | undefined;
+      if (programContract.season_id) {
+        const season = await storage.getSeason(clubId, programContract.season_id);
+        if (season) {
+          seasonStartDate = new Date(season.start_date).toISOString().split('T')[0];
+          seasonEndDate = new Date(season.end_date).toISOString().split('T')[0];
+        }
+      }
+      
       if (programContract.team_id) {
         const rosters = await storage.getAthleteRosterEntries(clubId, athleteId);
         const teamIds = rosters.filter(r => r.team_id).map(r => r.team_id);
@@ -2002,7 +2020,8 @@ export async function registerRoutes(
         await storage.updateAthleteContractStatus(clubId, activeContract.id, 'cancelled');
       }
       
-      const contractStartDate = start_date || new Date().toISOString().split('T')[0];
+      const contractStartDate = seasonStartDate || start_date || new Date().toISOString().split('T')[0];
+      const contractEndDate = seasonEndDate || end_date || undefined;
       
       let nextBillingDate: string | undefined;
       if (payment_plan === 'monthly' && billing_day_of_month && payment_method_id) {
@@ -2015,7 +2034,7 @@ export async function registerRoutes(
         payment_plan,
         signed_name,
         start_date: contractStartDate,
-        end_date: end_date || undefined,
+        end_date: contractEndDate,
         custom_price: undefined,
         payment_method_id: payment_method_id || undefined,
         billing_day_of_month: billing_day_of_month || undefined,

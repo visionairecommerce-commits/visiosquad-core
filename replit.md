@@ -36,7 +36,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Core Features
 
-- **Program Contracts & Pricing**: Directors define pricing tiers and athletes enroll in contracts for recurring billing.
+- **Program Contracts & Pricing**: Directors define pricing tiers and athletes enroll in contracts for recurring billing. Contracts require a linked season (`season_id`), and athlete contract start/end dates are auto-derived from the linked season at enrollment. Admin UI gates contract creation on active season existence.
 - **Athlete Management**: Roster management, payment status tracking, and custom pricing overrides. For beach volleyball clubs, athletes can have sport-specific membership IDs (AVP, BVCA, BVNE, AAU, p1440).
 - **Payment Processing**: Integration with Helcim for credit card and ACH transactions.
 - **Technology and Service Fees**: Implements a parent-paid fee model (`v2_2026_02_zero_loss_discounts`) with dynamic fee calculation based on payment rail (credit, ACH, debit) and discounts.

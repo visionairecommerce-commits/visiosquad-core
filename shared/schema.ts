@@ -271,6 +271,7 @@ export const programContractsTable = pgTable("program_contracts", {
   club_id: uuid("club_id").references(() => clubsTable.id).notNull(),
   program_id: uuid("program_id").references(() => programsTable.id).notNull(),
   team_id: uuid("team_id"), // Optional - for team-specific contracts
+  season_id: uuid("season_id").references(() => seasonsTable.id), // Ties contract to a season's date range
   name: text("name").notNull(),
   description: text("description"),
   monthly_price: decimal("monthly_price", { precision: 10, scale: 2 }).notNull(),
@@ -743,6 +744,7 @@ export interface ProgramContract {
   club_id: string;
   program_id: string;
   team_id?: string;
+  season_id?: string;
   name: string;
   description?: string;
   monthly_price: number;
@@ -1080,6 +1082,7 @@ export const insertSessionSchema = z.object({
 export const insertProgramContractSchema = z.object({
   program_id: z.string().min(1, "Program is required"),
   team_id: z.string().optional(),
+  season_id: z.string().min(1, "Season is required"),
   name: z.string().min(1, "Contract name is required"),
   description: z.string().optional(),
   monthly_price: z.number().min(0, "Price must be positive"),

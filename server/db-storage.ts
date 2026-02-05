@@ -1809,6 +1809,7 @@ export class DatabaseStorage implements IStorage {
       club_id: clubId,
       program_id: contract.program_id,
       team_id: contract.team_id || null,
+      season_id: contract.season_id || null,
       name: contract.name,
       description: contract.description,
       monthly_price: String(contract.monthly_price),
@@ -1821,7 +1822,7 @@ export class DatabaseStorage implements IStorage {
     return this.mapProgramContract(c);
   }
 
-  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
+  async updateProgramContract(clubId: string, contractId: string, data: { name?: string; description?: string; monthly_price?: number; paid_in_full_price?: number | null; initiation_fee?: number | null; sessions_per_week?: number; team_id?: string | null; season_id?: string | null; contract_document_id?: string | null; is_active?: boolean }): Promise<ProgramContract> {
     const updateData: any = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
@@ -1830,6 +1831,7 @@ export class DatabaseStorage implements IStorage {
     if (data.initiation_fee !== undefined) updateData.initiation_fee = data.initiation_fee ? String(data.initiation_fee) : null;
     if (data.sessions_per_week !== undefined) updateData.sessions_per_week = data.sessions_per_week;
     if (data.team_id !== undefined) updateData.team_id = data.team_id;
+    if (data.season_id !== undefined) updateData.season_id = data.season_id;
     if (data.contract_document_id !== undefined) updateData.contract_document_id = data.contract_document_id;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
 
@@ -1936,6 +1938,7 @@ export class DatabaseStorage implements IStorage {
       club_id: c.club_id,
       program_id: c.program_id,
       team_id: c.team_id ?? undefined,
+      season_id: c.season_id ?? undefined,
       name: c.name,
       description: c.description ?? undefined,
       monthly_price: parseFloat(c.monthly_price),

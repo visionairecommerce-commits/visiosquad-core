@@ -22,10 +22,19 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { FileText, DollarSign, Calendar, Check, AlertCircle, ArrowLeft, UserX, CreditCard } from 'lucide-react';
 
+interface Season {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+}
+
 interface ProgramContract {
   id: string;
   program_id: string;
   team_id?: string;
+  season_id?: string;
   name: string;
   description?: string;
   monthly_price: number;
@@ -126,6 +135,10 @@ export default function ParentContractsPage() {
     queryKey: ['/api/programs'],
   });
 
+  const { data: seasons = [] } = useQuery<Season[]>({
+    queryKey: ['/api/seasons'],
+  });
+
   const { data: paymentMethods = [] } = useQuery<ParentPaymentMethod[]>({
     queryKey: ['/api/parents/payment-methods'],
     queryFn: async () => {
@@ -221,6 +234,15 @@ export default function ParentContractsPage() {
 
   const getProgramName = (programId: string) => {
     return programs.find(p => p.id === programId)?.name || 'Unknown Program';
+  };
+
+  const getSeasonInfo = (seasonId?: string) => {
+    if (!seasonId) return null;
+    const season = seasons.find(s => s.id === seasonId);
+    if (!season) return null;
+    const start = new Date(season.start_date).toLocaleDateString();
+    const end = new Date(season.end_date).toLocaleDateString();
+    return { name: season.name, dates: `${start} - ${end}` };
   };
 
   const calculateTotalDue = (contract: ProgramContract, plan: 'monthly' | 'paid_in_full') => {
@@ -381,6 +403,12 @@ export default function ParentContractsPage() {
                       <Calendar className="h-4 w-4 text-blue-600" />
                       <span>{contract.sessions_per_week} sessions/week</span>
                     </div>
+                    {getSeasonInfo(contract.season_id) && (
+                      <div className="text-sm text-muted-foreground" data-testid={`text-season-${contract.id}`}>
+                        <span className="font-medium text-foreground">{getSeasonInfo(contract.season_id)!.name}</span>
+                        <span className="ml-1">({getSeasonInfo(contract.season_id)!.dates})</span>
+                      </div>
+                    )}
                   </CardContent>
                   <CardFooter>
                     {isCurrentContract ? (
@@ -420,6 +448,13 @@ export default function ParentContractsPage() {
                 <p className="text-sm text-muted-foreground">{getProgramName(selectedContract.program_id)}</p>
                 {selectedContract.description && (
                   <p className="text-sm">{selectedContract.description}</p>
+                )}
+                {getSeasonInfo(selectedContract.season_id) && (
+                  <div className="flex items-center gap-1.5 text-sm" data-testid="text-enrollment-season">
+                    <Calendar className="h-4 w-4 text-blue-600" />
+                    <span className="font-medium">{getSeasonInfo(selectedContract.season_id)!.name}</span>
+                    <span className="text-muted-foreground">({getSeasonInfo(selectedContract.season_id)!.dates})</span>
+                  </div>
                 )}
               </div>
 

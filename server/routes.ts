@@ -4343,6 +4343,25 @@ export async function registerRoutes(
 
   // ============ PUSH NOTIFICATIONS ============
 
+  // Firebase config endpoint for service worker
+  app.get('/api/firebase-config', (req, res) => {
+    const config = {
+      apiKey: process.env.VITE_FIREBASE_API_KEY,
+      authDomain: `${process.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: `${process.env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: process.env.VITE_FIREBASE_APP_ID,
+    };
+    
+    // Only return config if all required values are present
+    if (!config.apiKey || !config.projectId || !config.messagingSenderId || !config.appId) {
+      return res.status(503).json({ error: 'Firebase not configured' });
+    }
+    
+    res.json(config);
+  });
+
   // Register push token
   app.post('/api/push/register', requireRole('admin', 'coach', 'parent'), async (req, res) => {
     try {

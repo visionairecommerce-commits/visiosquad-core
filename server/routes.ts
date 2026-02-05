@@ -2781,13 +2781,61 @@ export async function registerRoutes(
     try {
       const { clubId } = getAuthContext(req);
       const data = assignRosterSchema.parse(req.body);
+      
+      // Add athlete to roster
       const roster = await storage.assignAthleteToTeam(
         clubId,
         data.athlete_id,
         data.team_id,
         data.program_id
       );
-      res.status(201).json(roster);
+      
+      // Auto-assign contract: Find the best matching contract for this team/program
+      // Priority: team-specific contract > program-level contract
+      const programContracts = await storage.getProgramContracts(clubId);
+      
+      // First try to find a team-specific contract
+      let matchingContract = programContracts.find(
+        c => c.program_id === data.program_id && c.team_id === data.team_id && c.is_active
+      );
+      
+      // Fall back to program-level contract (no team_id)
+      if (!matchingContract) {
+        matchingContract = programContracts.find(
+          c => c.program_id === data.program_id && !c.team_id && c.is_active
+        );
+      }
+      
+      // If we found a matching contract, create an athlete contract
+      let athleteContract = null;
+      if (matchingContract) {
+        // Check if athlete already has an active contract for this program contract
+        const existingContracts = await storage.getAthleteContracts(clubId, data.athlete_id);
+        const hasExisting = existingContracts.some(
+          c => c.program_contract_id === matchingContract!.id && c.status === 'active'
+        );
+        
+        if (!hasExisting) {
+          const today = new Date().toISOString().split('T')[0];
+          athleteContract = await storage.createAthleteContract(clubId, {
+            athlete_id: data.athlete_id,
+            program_contract_id: matchingContract.id,
+            start_date: today,
+            payment_plan: 'monthly',
+          });
+        }
+      }
+      
+      res.status(201).json({ 
+        roster, 
+        athleteContract,
+        contractAssigned: !!athleteContract,
+        message: athleteContract 
+          ? 'Athlete added to roster and contract assigned' 
+          : matchingContract 
+            ? 'Athlete already has an active contract for this program'
+            : 'Athlete added to roster (no contract defined for this program/team)'
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: error.errors });

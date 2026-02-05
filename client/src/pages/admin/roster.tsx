@@ -82,14 +82,19 @@ export default function RosterPage() {
 
   const assignMutation = useMutation({
     mutationFn: async (data: { athlete_id: string; team_id: string; program_id: string }) => {
-      return apiRequest('POST', '/api/roster/assign', data);
+      const response = await apiRequest('POST', '/api/roster/assign', data);
+      return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/roster'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/athlete-contracts'] });
       setAssignDialogOpen(false);
       setSelectedAthleteId('');
       setSelectedTeamId('');
-      toast({ title: 'Athlete Assigned', description: 'The athlete has been added to the roster.' });
+      toast({ 
+        title: data.contractAssigned ? 'Athlete Assigned with Contract' : 'Athlete Assigned', 
+        description: data.message || 'The athlete has been added to the roster.' 
+      });
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to assign athlete.', variant: 'destructive' });

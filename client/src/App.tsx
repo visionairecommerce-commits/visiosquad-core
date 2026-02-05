@@ -1,14 +1,16 @@
 import { Switch, Route, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AthleteProvider } from "@/contexts/AthleteContext";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { requestNotificationPermission, setupForegroundMessageHandler, isPushNotificationSupported } from "@/lib/push-notifications";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import CreateClubPage from "@/pages/create-club";
@@ -161,11 +163,45 @@ function OwnerRoutes() {
 
 function AuthenticatedApp() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const notificationInitialized = useRef(false);
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
+
+  useEffect(() => {
+    if (!user || notificationInitialized.current) return;
+    
+    const initNotifications = async () => {
+      if (!isPushNotificationSupported()) {
+        console.log('Push notifications not supported');
+        return;
+      }
+
+      notificationInitialized.current = true;
+
+      try {
+        await requestNotificationPermission();
+        
+        const unsubscribe = setupForegroundMessageHandler((notification) => {
+          toast({
+            title: notification.title,
+            description: notification.body,
+          });
+        });
+
+        return () => {
+          if (unsubscribe) unsubscribe();
+        };
+      } catch (error) {
+        console.error('Failed to initialize notifications:', error);
+      }
+    };
+
+    initNotifications();
+  }, [user, toast]);
 
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>

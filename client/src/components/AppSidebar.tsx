@@ -1,4 +1,6 @@
 import { useLocation, Link } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
 import {
   Sidebar,
   SidebarContent,
@@ -88,6 +90,14 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user, club, logout } = useAuth();
 
+  const showUnreadBadges = user?.role !== 'owner';
+
+  const { data: unreadCounts } = useQuery<{ unreadMessages: number; unreadBulletins: number }>({
+    queryKey: ['/api/notifications/unread-counts'],
+    enabled: showUnreadBadges,
+    refetchInterval: 30000,
+  });
+
   const menuItems = user?.role === 'owner'
     ? ownerMenuItems
     : user?.role === 'admin'
@@ -101,6 +111,33 @@ export function AppSidebar() {
   const getInitials = (name: string | undefined | null) => {
     if (!name) return 'U';
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
+
+  const getUnreadBadge = (title: string) => {
+    if (!unreadCounts) return null;
+    if (title === 'Messages' && unreadCounts.unreadMessages > 0) {
+      return (
+        <Badge
+          variant="destructive"
+          className="ml-auto text-[10px] px-1.5 py-0 leading-4 no-default-hover-elevate no-default-active-elevate"
+          data-testid="badge-unread-messages"
+        >
+          NEW
+        </Badge>
+      );
+    }
+    if (title === 'Bulletin' && unreadCounts.unreadBulletins > 0) {
+      return (
+        <Badge
+          variant="destructive"
+          className="ml-auto text-[10px] px-1.5 py-0 leading-4 no-default-hover-elevate no-default-active-elevate"
+          data-testid="badge-unread-bulletins"
+        >
+          NEW
+        </Badge>
+      );
+    }
+    return null;
   };
 
   return (
@@ -128,6 +165,7 @@ export function AppSidebar() {
                     <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(' ', '-')}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
+                      {getUnreadBadge(item.title)}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

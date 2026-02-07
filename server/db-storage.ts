@@ -2871,6 +2871,64 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getUnreadMessageCount(clubId: string, userId: string): Promise<number> {
+    const { data: participantChannels, error: pError } = await supabase
+      .from('channel_participants')
+      .select('channel_id, last_read_at, chat_channels!inner(club_id)')
+      .eq('user_id', userId)
+      .eq('chat_channels.club_id', clubId);
+    
+    if (pError || !participantChannels || participantChannels.length === 0) return 0;
+    
+    const channelIds = participantChannels.map((pc: any) => pc.channel_id);
+    
+    const { data: allMessages, error: mError } = await supabase
+      .from('messages')
+      .select('channel_id, created_at')
+      .in('channel_id', channelIds)
+      .neq('sender_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (mError || !allMessages) return 0;
+    
+    const lastReadMap = new Map<string, string>();
+    for (const pc of participantChannels) {
+      if (pc.last_read_at) {
+        lastReadMap.set(pc.channel_id, pc.last_read_at);
+      }
+    }
+    
+    const channelsWithUnread = new Set<string>();
+    for (const msg of allMessages) {
+      const lastRead = lastReadMap.get(msg.channel_id);
+      if (!lastRead || msg.created_at > lastRead) {
+        channelsWithUnread.add(msg.channel_id);
+      }
+    }
+    
+    return channelsWithUnread.size;
+  }
+
+  async getUnreadBulletinCount(clubId: string, userId: string): Promise<number> {
+    const { data: posts, error: pError } = await supabase
+      .from('bulletin_posts')
+      .select('id')
+      .eq('club_id', clubId);
+    
+    if (pError || !posts || posts.length === 0) return 0;
+    
+    const postIds = posts.map((p: any) => p.id);
+    
+    const { data: reads } = await supabase
+      .from('bulletin_reads')
+      .select('post_id')
+      .eq('user_id', userId)
+      .in('post_id', postIds);
+    
+    const readPostIds = new Set((reads || []).map((r: any) => r.post_id));
+    return postIds.filter((id: string) => !readPostIds.has(id)).length;
+  }
+
   // ============ PUSH NOTIFICATIONS ============
 
   async registerPushToken(userId: string, fcmToken: string, deviceType: 'web' | 'ios' | 'android' = 'web'): Promise<PushSub> {

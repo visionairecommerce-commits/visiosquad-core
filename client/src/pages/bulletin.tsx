@@ -167,6 +167,7 @@ export default function BulletinPage() {
     },
     onSuccess: (_, postId) => {
       queryClient.invalidateQueries({ queryKey: ['/api/bulletin'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-counts'] });
       const post = posts.find(p => p.id === postId);
       if (post && !post.isRead) {
         setHideConfirmPost(post);

@@ -4820,6 +4820,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/notifications/unread-counts', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
+    try {
+      const { clubId, userId } = getAuthContext(req);
+      const [unreadMessages, unreadBulletins] = await Promise.all([
+        storage.getUnreadMessageCount(clubId, userId),
+        storage.getUnreadBulletinCount(clubId, userId),
+      ]);
+      res.json({ unreadMessages, unreadBulletins });
+    } catch (error) {
+      console.error('Error getting unread counts:', error);
+      res.status(500).json({ error: 'Failed to get unread counts' });
+    }
+  });
+
   // Create a new chat channel with Telegram-style audience targeting
   app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {

@@ -774,6 +774,8 @@ export interface IStorage {
   updateBulletinHidden(clubId: string, postId: string, userId: string, isHidden: boolean): Promise<BulletinRead>;
   getBulletinReadReceipts(clubId: string, postId: string): Promise<{ user_id: string; full_name: string; read_at: string }[]>;
   getChannelReadReceipts(channelId: string): Promise<{ user_id: string; full_name: string; last_read_at: string | null }[]>;
+  getUnreadMessageCount(clubId: string, userId: string): Promise<number>;
+  getUnreadBulletinCount(clubId: string, userId: string): Promise<number>;
   
   // ============ PUSH NOTIFICATIONS ============
   

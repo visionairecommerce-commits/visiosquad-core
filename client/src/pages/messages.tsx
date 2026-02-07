@@ -640,7 +640,12 @@ export default function MessagesPage() {
                 {channels.map((channel) => (
                   <button
                     key={channel.id}
-                    onClick={() => setSelectedChannel(channel)}
+                    onClick={() => {
+                      setSelectedChannel(channel);
+                      setTimeout(() => {
+                        queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-counts'] });
+                      }, 1000);
+                    }}
                     className={`w-full p-3 rounded-md text-left transition-colors ${
                       selectedChannel?.id === channel.id
                         ? 'bg-accent'

@@ -848,38 +848,81 @@ export async function registerRoutes(
         return res.status(400).json({ error: 'This athlete already has login credentials' });
       }
       
-      // Check if email is already used by another profile
+      // Check if email is already used by another profile in our app
       const existingProfile = await storage.getProfileByEmail(email.toLowerCase());
       if (existingProfile) {
         return res.status(400).json({ error: 'This email address is already in use by another account' });
       }
       
-      // Check if there's an orphaned Supabase auth user (from a previous failed attempt)
-      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-      const orphanedAuthUser = existingUsers?.users?.find(
-        (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-      );
-      
       let authUserId: string;
       
-      if (orphanedAuthUser) {
-        // An auth user exists but no profile — clean up the orphan and recreate
-        await supabaseAdmin.auth.admin.deleteUser(orphanedAuthUser.id);
-      }
-      
-      // Create Supabase Auth user for the athlete
+      // Try to create Supabase Auth user for the athlete
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: email.toLowerCase(),
         password,
         email_confirm: true,
       });
       
-      if (authError || !authData.user) {
-        console.error('Error creating athlete auth:', authError);
-        return res.status(400).json({ error: authError?.message || 'Failed to create login' });
+      if (authError || !authData?.user) {
+        // If email already exists in Supabase Auth but NOT in our profiles table,
+        // it's an orphaned auth user from a previous failed attempt — clean it up and retry
+        const isAlreadyRegistered = authError?.message?.toLowerCase().includes('already') 
+          || authError?.status === 422;
+        
+        if (isAlreadyRegistered) {
+          console.log('Found orphaned Supabase auth user for email, cleaning up and retrying:', email);
+          
+          // Search through all auth users to find the orphan (paginate to avoid missing it)
+          let orphanId: string | null = null;
+          let page = 1;
+          const perPage = 100;
+          while (!orphanId) {
+            const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+            if (!listData?.users?.length) break;
+            const found = listData.users.find(
+              (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+            );
+            if (found) {
+              orphanId = found.id;
+            } else if (listData.users.length < perPage) {
+              break;
+            } else {
+              page++;
+            }
+          }
+          
+          if (!orphanId) {
+            console.error('Could not find orphaned auth user to clean up for email:', email);
+            return res.status(400).json({ error: 'This email address is already in use. Please try a different email.' });
+          }
+          
+          // Delete the orphaned auth user
+          const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(orphanId);
+          if (deleteError) {
+            console.error('Failed to delete orphaned auth user:', deleteError);
+            return res.status(400).json({ error: 'Failed to clean up previous attempt. Please try a different email or contact support.' });
+          }
+          
+          // Retry creation after cleanup
+          const { data: retryData, error: retryError } = await supabaseAdmin.auth.admin.createUser({
+            email: email.toLowerCase(),
+            password,
+            email_confirm: true,
+          });
+          
+          if (retryError || !retryData?.user) {
+            console.error('Error creating athlete auth on retry:', retryError);
+            return res.status(400).json({ error: retryError?.message || 'Failed to create login after cleanup. Please try again.' });
+          }
+          
+          authUserId = retryData.user.id;
+        } else {
+          console.error('Error creating athlete auth:', authError);
+          return res.status(400).json({ error: authError?.message || 'Failed to create login' });
+        }
+      } else {
+        authUserId = authData.user.id;
       }
-      
-      authUserId = authData.user.id;
       
       // Create profile for the athlete - if this fails, clean up the auth user
       try {

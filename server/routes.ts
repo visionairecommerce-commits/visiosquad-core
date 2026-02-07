@@ -6,8 +6,10 @@ import { processPayment, calculateTotalWithFee, getConvenienceFeeAmount, createC
 import { calculateTechnologyAndServiceFees, getDualPricing, deriveMonthsCount, FEE_VERSION, type PaymentRail, type PaymentKind } from "../shared/pricing";
 import { sendSessionCancellationEmail, sendContractSignedNotification, sendPaymentConfirmation, sendDocuSealOnboardingRequest, sendTestEmail, isResendConfigured, sendPlatformBillingSuccess, sendPlatformBillingFailure } from "./lib/resend";
 import { supabaseAdmin, isSupabaseAdminConfigured } from "./lib/supabase";
+import { db } from "./lib/db";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { insertProgramContractSchema, insertAthleteContractSchema } from "../shared/schema";
+import { insertProgramContractSchema, insertAthleteContractSchema, profilesTable } from "../shared/schema";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO, formatDistanceToNow } from "date-fns";
 
 // Helper to format time ago
@@ -856,91 +858,50 @@ export async function registerRoutes(
       
       let authUserId: string;
       
-      // Try to create Supabase Auth user for the athlete
+      // First, clean up any orphaned auth users / profiles from previous failed attempts
+      // (Supabase has a trigger that auto-creates a profile on auth user creation,
+      //  so failed attempts leave behind both an auth user AND a profile)
+      const { data: existingProfileOrphan } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+      const orphanedAuthUser = existingProfileOrphan?.users?.find(
+        (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+      );
+      if (orphanedAuthUser) {
+        console.log('Cleaning up orphaned auth user for email:', email);
+        // Delete the profile first (created by trigger), then the auth user
+        await db.delete(profilesTable).where(eq(profilesTable.id, orphanedAuthUser.id));
+        await supabaseAdmin.auth.admin.deleteUser(orphanedAuthUser.id);
+      }
+      
+      // Create Supabase Auth user with athlete metadata
+      // The handle_new_user() trigger will auto-create a profile using this metadata
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: email.toLowerCase(),
         password,
         email_confirm: true,
-      });
-      
-      if (authError || !authData?.user) {
-        // If email already exists in Supabase Auth but NOT in our profiles table,
-        // it's an orphaned auth user from a previous failed attempt — clean it up and retry
-        const isAlreadyRegistered = authError?.message?.toLowerCase().includes('already') 
-          || authError?.status === 422;
-        
-        if (isAlreadyRegistered) {
-          console.log('Found orphaned Supabase auth user for email, cleaning up and retrying:', email);
-          
-          // Search through all auth users to find the orphan (paginate to avoid missing it)
-          let orphanId: string | null = null;
-          let page = 1;
-          const perPage = 100;
-          while (!orphanId) {
-            const { data: listData } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-            if (!listData?.users?.length) break;
-            const found = listData.users.find(
-              (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-            );
-            if (found) {
-              orphanId = found.id;
-            } else if (listData.users.length < perPage) {
-              break;
-            } else {
-              page++;
-            }
-          }
-          
-          if (!orphanId) {
-            console.error('Could not find orphaned auth user to clean up for email:', email);
-            return res.status(400).json({ error: 'This email address is already in use. Please try a different email.' });
-          }
-          
-          // Delete the orphaned auth user
-          const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(orphanId);
-          if (deleteError) {
-            console.error('Failed to delete orphaned auth user:', deleteError);
-            return res.status(400).json({ error: 'Failed to clean up previous attempt. Please try a different email or contact support.' });
-          }
-          
-          // Retry creation after cleanup
-          const { data: retryData, error: retryError } = await supabaseAdmin.auth.admin.createUser({
-            email: email.toLowerCase(),
-            password,
-            email_confirm: true,
-          });
-          
-          if (retryError || !retryData?.user) {
-            console.error('Error creating athlete auth on retry:', retryError);
-            return res.status(400).json({ error: retryError?.message || 'Failed to create login after cleanup. Please try again.' });
-          }
-          
-          authUserId = retryData.user.id;
-        } else {
-          console.error('Error creating athlete auth:', authError);
-          return res.status(400).json({ error: authError?.message || 'Failed to create login' });
-        }
-      } else {
-        authUserId = authData.user.id;
-      }
-      
-      // Create profile for the athlete - if this fails, clean up the auth user
-      try {
-        await storage.createProfile({
-          id: authUserId,
-          email: email.toLowerCase(),
+        user_metadata: {
           full_name: `${athlete.first_name} ${athlete.last_name}`,
           role: 'athlete',
           club_id: clubId,
-          athlete_id: athleteId,
-        });
+        },
+      });
+      
+      if (authError || !authData?.user) {
+        console.error('Error creating athlete auth:', authError);
+        return res.status(400).json({ error: authError?.message || 'Failed to create login' });
+      }
+      
+      authUserId = authData.user.id;
+      
+      // The trigger created a profile, now update it with the athlete_id
+      // (the trigger doesn't know about athlete_id since it's not in user_metadata)
+      try {
+        await db.update(profilesTable)
+          .set({ athlete_id: athleteId })
+          .where(eq(profilesTable.id, authUserId));
       } catch (profileError: any) {
-        console.error('Error creating athlete profile, cleaning up auth user:', profileError);
+        console.error('Error updating athlete profile:', profileError);
         await supabaseAdmin.auth.admin.deleteUser(authUserId);
-        const msg = profileError?.message?.includes('unique') || profileError?.message?.includes('duplicate')
-          ? 'This email address is already in use'
-          : 'Failed to create athlete profile. Please try again.';
-        return res.status(400).json({ error: msg });
+        return res.status(400).json({ error: 'Failed to set up athlete profile. Please try again.' });
       }
       
       // Update athlete with login info and link to user account

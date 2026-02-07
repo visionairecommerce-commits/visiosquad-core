@@ -10,7 +10,8 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { AthleteProvider } from "@/contexts/AthleteContext";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { requestNotificationPermission, setupForegroundMessageHandler, isPushNotificationSupported } from "@/lib/push-notifications";
+import { setupForegroundMessageHandler, isPushNotificationSupported, getNotificationPermissionStatus } from "@/lib/push-notifications";
+import { NotificationPrompt } from "@/components/NotificationPrompt";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import CreateClubPage from "@/pages/create-club";
@@ -161,7 +162,7 @@ function OwnerRoutes() {
 function AuthenticatedApp() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const notificationInitialized = useRef(false);
+  const foregroundUnsubscribe = useRef<(() => void) | null>(null);
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -169,36 +170,36 @@ function AuthenticatedApp() {
   };
 
   useEffect(() => {
-    if (!user || notificationInitialized.current) return;
-    
-    let unsubscribe: (() => void) | null = null;
-    
-    const initNotifications = async () => {
-      if (!isPushNotificationSupported()) {
-        console.log('Push notifications not supported');
-        return;
-      }
+    if (!user) return;
 
-      notificationInitialized.current = true;
-
-      try {
-        await requestNotificationPermission();
-        
-        unsubscribe = setupForegroundMessageHandler((notification) => {
-          toast({
-            title: notification.title,
-            description: notification.body,
+    const trySetupHandler = () => {
+      if (!isPushNotificationSupported()) return;
+      const permissionStatus = getNotificationPermissionStatus();
+      if (permissionStatus === 'granted' && !foregroundUnsubscribe.current) {
+        try {
+          foregroundUnsubscribe.current = setupForegroundMessageHandler((notification) => {
+            toast({
+              title: notification.title,
+              description: notification.body,
+            });
           });
-        });
-      } catch (error) {
-        console.error('Failed to initialize notifications:', error);
+        } catch (error) {
+          console.error('Failed to setup foreground handler:', error);
+        }
       }
     };
 
-    initNotifications();
+    trySetupHandler();
+
+    const onFocus = () => trySetupHandler();
+    window.addEventListener('focus', onFocus);
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      window.removeEventListener('focus', onFocus);
+      if (foregroundUnsubscribe.current) {
+        foregroundUnsubscribe.current();
+        foregroundUnsubscribe.current = null;
+      }
     };
   }, [user, toast]);
 
@@ -211,12 +212,15 @@ function AuthenticatedApp() {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto p-6">
-            {user?.role === 'owner' && <OwnerRoutes />}
-            {user?.role === 'admin' && <AdminRoutes />}
-            {user?.role === 'coach' && <CoachRoutes />}
-            {user?.role === 'parent' && <ParentRoutes />}
-            {user?.role === 'athlete' && <AthleteRoutes />}
+          <main className="flex-1 overflow-auto">
+            <NotificationPrompt />
+            <div className="p-6">
+              {user?.role === 'owner' && <OwnerRoutes />}
+              {user?.role === 'admin' && <AdminRoutes />}
+              {user?.role === 'coach' && <CoachRoutes />}
+              {user?.role === 'parent' && <ParentRoutes />}
+              {user?.role === 'athlete' && <AthleteRoutes />}
+            </div>
           </main>
         </div>
       </div>

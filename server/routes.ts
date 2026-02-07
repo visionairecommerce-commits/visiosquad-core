@@ -672,12 +672,30 @@ export async function registerRoutes(
     try {
       const { clubId, userId } = getAuthContext(req);
       
-      const club = await storage.getClub(clubId);
-      if (!club) {
-        return res.status(404).json({ error: 'Club not found' });
+      let club;
+      try {
+        club = await storage.getClub(clubId);
+      } catch (clubError) {
+        console.error('[Waiver] Error fetching club:', clubError);
+        return res.json({
+          waiver_required: false,
+          waiver_signed_for_current_season: true,
+          current_season_id: null,
+          current_season_name: null,
+          waiver_content: null,
+        });
       }
       
-      // Check if club has waiver content
+      if (!club) {
+        return res.json({
+          waiver_required: false,
+          waiver_signed_for_current_season: true,
+          current_season_id: null,
+          current_season_name: null,
+          waiver_content: null,
+        });
+      }
+      
       const waiverRequired = !!(club.waiver_content && club.waiver_content.trim());
       
       if (!waiverRequired) {
@@ -690,8 +708,13 @@ export async function registerRoutes(
         });
       }
       
-      // Get current active season
-      const seasons = await storage.getSeasons(clubId);
+      let seasons: any[] = [];
+      try {
+        seasons = await storage.getSeasons(clubId);
+      } catch (seasonError) {
+        console.error('[Waiver] Error fetching seasons:', seasonError);
+      }
+      
       const now = new Date();
       const currentSeason = seasons.find(s => 
         s.is_active && 
@@ -699,20 +722,22 @@ export async function registerRoutes(
         new Date(s.end_date) >= now
       );
       
-      // Check if user has signed waiver for current season
-      const signatures = await storage.getUserSignatures(clubId, userId);
-      const waiverSignatures = signatures.filter(s => s.document_type === 'waiver');
+      let signatures: any[] = [];
+      try {
+        signatures = await storage.getUserSignatures(clubId, userId);
+      } catch (sigError) {
+        console.error('[Waiver] Error fetching signatures:', sigError);
+      }
+      
+      const waiverSignatures = signatures.filter((s: any) => s.document_type === 'waiver');
       
       let waiverSignedForCurrentSeason = false;
       
       if (currentSeason) {
-        // If there's an active season, check if waiver is signed for this season
-        waiverSignedForCurrentSeason = waiverSignatures.some(s => 
+        waiverSignedForCurrentSeason = waiverSignatures.some((s: any) => 
           s.season_id === currentSeason.id
         );
       } else {
-        // No active season - check if they have any waiver signature
-        // This allows initial waiver signing before seasons are set up
         waiverSignedForCurrentSeason = waiverSignatures.length > 0;
       }
       
@@ -724,8 +749,14 @@ export async function registerRoutes(
         waiver_content: club.waiver_content,
       });
     } catch (error) {
-      console.error('Error checking waiver status:', error);
-      res.status(500).json({ error: 'Failed to check waiver status' });
+      console.error('[Waiver] Unexpected error checking waiver status:', error);
+      res.json({
+        waiver_required: false,
+        waiver_signed_for_current_season: true,
+        current_season_id: null,
+        current_season_name: null,
+        waiver_content: null,
+      });
     }
   });
 

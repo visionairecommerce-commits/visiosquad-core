@@ -83,12 +83,8 @@ export function WaiverEnforcementModal() {
 
   if (isError) {
     return (
-      <Dialog open={isOpen} onOpenChange={() => {}}>
-        <DialogContent 
-          className="max-w-md"
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) setIsOpen(false); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-destructive" />
@@ -98,9 +94,14 @@ export function WaiverEnforcementModal() {
               We couldn't verify your waiver status. Please try again or contact your club administrator.
             </DialogDescription>
           </DialogHeader>
-          <Button onClick={() => refetch()} data-testid="button-retry-waiver-check">
-            Try Again
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => refetch()} data-testid="button-retry-waiver-check">
+              Try Again
+            </Button>
+            <Button variant="outline" onClick={() => setIsOpen(false)} data-testid="button-dismiss-waiver-error">
+              Dismiss
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     );

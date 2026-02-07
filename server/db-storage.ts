@@ -2488,38 +2488,28 @@ export class DatabaseStorage implements IStorage {
     if (error) return { valid: false, error: 'Failed to fetch participants' };
     
     const parentIds: string[] = [];
+    const initiatorProfile = (profiles || []).find((p: any) => p.id === initiatorId);
+    const isInitiatorAdultStaff = initiatorProfile?.role === 'coach' || initiatorProfile?.role === 'admin';
     
-    // Check for athlete participants (minors)
-    const { data: athletes } = await supabase
-      .from('athletes')
-      .select('id, parent_id, first_name, last_name')
-      .eq('club_id', clubId);
-    
-    const athleteMap = new Map((athletes || []).map((a: any) => [a.id, a]));
-    
-    // For any athlete in the chat, we need to auto-add their parent
+    // SafeSport: If any participant is an athlete, auto-add their parent
     for (const profile of profiles || []) {
-      // Check if this user has athletes (is a parent)
-      const { data: userAthletes } = await supabase
-        .from('athletes')
-        .select('id, parent_id')
-        .eq('parent_id', profile.id);
-      
-      // If coach is chatting with an athlete's profile, parent must be included
-      if (profile.role === 'parent' && userAthletes && userAthletes.length > 0) {
-        // This is already a parent, good
+      if (profile.role === 'athlete') {
+        const { data: athleteRecord } = await supabase
+          .from('athletes')
+          .select('parent_id')
+          .eq('user_id', profile.id)
+          .limit(1)
+          .maybeSingle();
+        
+        if (athleteRecord?.parent_id) {
+          if (!participantIds.includes(athleteRecord.parent_id) && athleteRecord.parent_id !== initiatorId) {
+            parentIds.push(athleteRecord.parent_id);
+          }
+        } else if (isInitiatorAdultStaff) {
+          // SafeSport: Block coach/admin-athlete chat if parent cannot be found
+          return { valid: false, error: 'Cannot create chat with athlete: parent account not found for SafeSport compliance.' };
+        }
       }
-    }
-    
-    // SafeSport rule: Block 1-on-1 adult-minor messaging
-    // If only 2 people in chat and one is a coach and one is related to a minor, block it
-    if (participantIds.length === 2) {
-      const roles = (profiles || []).map((p: any) => p.role);
-      const hasCoach = roles.includes('coach');
-      const hasOnlyParent = roles.filter((r: string) => r === 'parent').length === 1 && roles.length === 2;
-      
-      // Coaches can message parents directly (about their athletes)
-      // But we should ensure any coach-athlete discussion includes the parent
     }
     
     return { valid: true, autoAddParentIds: parentIds };

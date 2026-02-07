@@ -4809,7 +4809,7 @@ export async function registerRoutes(
   // ============ MESSAGING SYSTEM ============
 
   // Get user's chat channels
-  app.get('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.get('/api/chat/channels', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const channels = await storage.getChatChannels(clubId, userId);
@@ -4821,7 +4821,7 @@ export async function registerRoutes(
   });
 
   // Create a new chat channel with Telegram-style audience targeting
-  app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.post('/api/chat/channels', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId, userRole } = getAuthContext(req);
       const { channel_type, participant_ids, name, team_id, program_id, event_id, audience_type } = req.body;
@@ -4945,7 +4945,7 @@ export async function registerRoutes(
   });
 
   // Get messages for a channel
-  app.get('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.get('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const { channelId } = req.params;
@@ -4975,7 +4975,7 @@ export async function registerRoutes(
   });
 
   // Send a message
-  app.post('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.post('/api/chat/channels/:channelId/messages', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const { channelId } = req.params;
@@ -5022,7 +5022,7 @@ export async function registerRoutes(
   });
 
   // Get channel participants
-  app.get('/api/chat/channels/:channelId/participants', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.get('/api/chat/channels/:channelId/participants', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { userId } = getAuthContext(req);
       const { channelId } = req.params;
@@ -5044,7 +5044,7 @@ export async function registerRoutes(
   // ============ BULLETIN BOARD ============
 
   // Get bulletin posts
-  app.get('/api/bulletin', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.get('/api/bulletin', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const { team_id, program_id } = req.query;
@@ -5155,7 +5155,7 @@ export async function registerRoutes(
   });
 
   // Mark bulletin as read
-  app.post('/api/bulletin/:postId/read', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.post('/api/bulletin/:postId/read', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const { postId } = req.params;
@@ -5169,7 +5169,7 @@ export async function registerRoutes(
   });
 
   // Hide/unhide bulletin post
-  app.patch('/api/bulletin/:postId/hide', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.patch('/api/bulletin/:postId/hide', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { clubId, userId } = getAuthContext(req);
       const { postId } = req.params;
@@ -5261,7 +5261,7 @@ export async function registerRoutes(
   });
 
   // Legacy endpoint alias
-  app.post('/api/push/register', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.post('/api/push/register', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { userId } = getAuthContext(req);
       const { fcm_token, device_type } = req.body;
@@ -5279,7 +5279,7 @@ export async function registerRoutes(
   });
 
   // Unregister push token
-  app.post('/api/push/unregister', requireRole('admin', 'coach', 'parent'), async (req, res) => {
+  app.post('/api/push/unregister', requireRole('admin', 'coach', 'parent', 'athlete'), async (req, res) => {
     try {
       const { fcm_token } = req.body;
       

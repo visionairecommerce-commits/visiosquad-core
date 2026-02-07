@@ -851,14 +851,27 @@ export async function registerRoutes(
       // Check if email is already used by another profile
       const existingProfile = await storage.getProfileByEmail(email.toLowerCase());
       if (existingProfile) {
-        return res.status(400).json({ error: 'This email address is already in use' });
+        return res.status(400).json({ error: 'This email address is already in use by another account' });
+      }
+      
+      // Check if there's an orphaned Supabase auth user (from a previous failed attempt)
+      const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const orphanedAuthUser = existingUsers?.users?.find(
+        (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+      );
+      
+      let authUserId: string;
+      
+      if (orphanedAuthUser) {
+        // An auth user exists but no profile — clean up the orphan and recreate
+        await supabaseAdmin.auth.admin.deleteUser(orphanedAuthUser.id);
       }
       
       // Create Supabase Auth user for the athlete
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: email.toLowerCase(),
         password,
-        email_confirm: true, // Auto-confirm email
+        email_confirm: true,
       });
       
       if (authError || !authData.user) {
@@ -866,21 +879,25 @@ export async function registerRoutes(
         return res.status(400).json({ error: authError?.message || 'Failed to create login' });
       }
       
+      authUserId = authData.user.id;
+      
       // Create profile for the athlete - if this fails, clean up the auth user
       try {
         await storage.createProfile({
-          id: authData.user.id,
-          email,
+          id: authUserId,
+          email: email.toLowerCase(),
           full_name: `${athlete.first_name} ${athlete.last_name}`,
           role: 'athlete',
           club_id: clubId,
           athlete_id: athleteId,
         });
-      } catch (profileError) {
+      } catch (profileError: any) {
         console.error('Error creating athlete profile, cleaning up auth user:', profileError);
-        // Clean up the Supabase Auth user since profile creation failed
-        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-        return res.status(400).json({ error: 'This email address is already in use' });
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+        const msg = profileError?.message?.includes('unique') || profileError?.message?.includes('duplicate')
+          ? 'This email address is already in use'
+          : 'Failed to create athlete profile. Please try again.';
+        return res.status(400).json({ error: msg });
       }
       
       // Update athlete with login info and link to user account

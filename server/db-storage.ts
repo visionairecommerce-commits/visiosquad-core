@@ -1,4 +1,4 @@
-import { eq, and, isNull, isNotNull, lt, lte, inArray } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, lt, lte, gt, inArray, desc, ne, sql, count } from 'drizzle-orm';
 import { db } from './lib/db';
 import { supabaseAdmin as supabase } from './lib/supabase';
 import {
@@ -2311,21 +2311,16 @@ export class DatabaseStorage implements IStorage {
     participantIds: string[],
     options?: { name?: string; teamId?: string; programId?: string; eventId?: string }
   ): Promise<ChatChannel> {
-    const { data, error } = await supabase
-      .from('chat_channels')
-      .insert({
-        club_id: clubId,
-        created_by: createdBy,
-        channel_type: channelType,
-        name: options?.name,
-        team_id: options?.teamId,
-        program_id: options?.programId,
-        event_id: options?.eventId,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return this.mapChatChannel(data);
+    const [row] = await db.insert(chatChannelsTable).values({
+      club_id: clubId,
+      created_by: createdBy,
+      channel_type: channelType,
+      name: options?.name,
+      team_id: options?.teamId,
+      program_id: options?.programId,
+      event_id: options?.eventId,
+    }).returning();
+    return this.mapChatChannel(row);
   }
 
   async getChatChannels(clubId: string, userId: string): Promise<ChatChannel[]> {
@@ -2348,23 +2343,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined> {
-    const { data, error } = await supabase
-      .from('chat_channels')
-      .select('*')
-      .eq('id', channelId)
-      .eq('club_id', clubId)
-      .single();
-    if (error) return undefined;
-    return this.mapChatChannel(data);
+    const [row] = await db.select().from(chatChannelsTable)
+      .where(and(eq(chatChannelsTable.id, channelId), eq(chatChannelsTable.club_id, clubId)));
+    if (!row) return undefined;
+    return this.mapChatChannel(row);
   }
 
   async getChannelParticipants(channelId: string): Promise<ChannelParticipant[]> {
-    const { data, error } = await supabase
-      .from('channel_participants')
-      .select('*')
-      .eq('channel_id', channelId);
-    if (error) throw error;
-    return (data || []).map((p: any) => this.mapChannelParticipant(p));
+    const rows = await db.select().from(channelParticipantsTable)
+      .where(eq(channelParticipantsTable.channel_id, channelId));
+    return rows.map((p) => this.mapChannelParticipant(p));
   }
 
   async addChannelParticipant(
@@ -2374,106 +2362,58 @@ export class DatabaseStorage implements IStorage {
     athleteId?: string,
     isDirectorAutoAdded?: boolean
   ): Promise<ChannelParticipant> {
-    const { data, error } = await supabase
-      .from('channel_participants')
-      .insert({
-        channel_id: channelId,
-        user_id: userId,
-        role,
-        athlete_id: athleteId,
-        is_director_auto_added: isDirectorAutoAdded || false,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return this.mapChannelParticipant(data);
+    const [row] = await db.insert(channelParticipantsTable).values({
+      channel_id: channelId,
+      user_id: userId,
+      role: role as any,
+      athlete_id: athleteId,
+      is_director_auto_added: isDirectorAutoAdded || false,
+    }).returning();
+    return this.mapChannelParticipant(row);
   }
 
   async deleteChannel(clubId: string, channelId: string): Promise<void> {
-    // First verify the channel belongs to this club (multi-tenant safety)
-    const { data: channel, error: verifyError } = await supabase
-      .from('chat_channels')
-      .select('id')
-      .eq('id', channelId)
-      .eq('club_id', clubId)
-      .single();
-    
-    if (verifyError || !channel) {
-      throw new Error('Channel not found or does not belong to this club');
-    }
-    
-    // Delete messages first (due to foreign key constraint)
-    const { error: messagesError } = await supabase
-      .from('messages')
-      .delete()
-      .eq('channel_id', channelId);
-    
-    if (messagesError) {
-      console.error('Error deleting messages:', messagesError);
-      throw messagesError;
-    }
-    
-    // Delete participants
-    const { error: participantsError } = await supabase
-      .from('channel_participants')
-      .delete()
-      .eq('channel_id', channelId);
-    
-    if (participantsError) {
-      console.error('Error deleting participants:', participantsError);
-      throw participantsError;
-    }
-    
-    // Delete the channel itself
-    const { error: channelError } = await supabase
-      .from('chat_channels')
-      .delete()
-      .eq('id', channelId)
-      .eq('club_id', clubId);
-    
-    if (channelError) throw channelError;
+    const [channel] = await db.select({ id: chatChannelsTable.id }).from(chatChannelsTable)
+      .where(and(eq(chatChannelsTable.id, channelId), eq(chatChannelsTable.club_id, clubId)));
+    if (!channel) throw new Error('Channel not found or does not belong to this club');
+
+    await db.delete(messagesTable).where(eq(messagesTable.channel_id, channelId));
+    await db.delete(channelParticipantsTable).where(eq(channelParticipantsTable.channel_id, channelId));
+    await db.delete(chatChannelsTable).where(and(eq(chatChannelsTable.id, channelId), eq(chatChannelsTable.club_id, clubId)));
   }
 
   async sendMessage(channelId: string, senderId: string, content: string, messageType: 'text' | 'system' = 'text'): Promise<Message> {
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({
-        channel_id: channelId,
-        sender_id: senderId,
-        content,
-        message_type: messageType,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    return this.mapMessage(data);
+    const [row] = await db.insert(messagesTable).values({
+      channel_id: channelId,
+      sender_id: senderId,
+      content,
+      message_type: messageType,
+    }).returning();
+    return this.mapMessage(row);
   }
 
   async getMessages(channelId: string, limit: number = 50, before?: Date): Promise<Message[]> {
-    let query = supabase
-      .from('messages')
-      .select('*')
-      .eq('channel_id', channelId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
+    const conditions = [
+      eq(messagesTable.channel_id, channelId),
+      isNull(messagesTable.deleted_at),
+    ];
     if (before) {
-      query = query.lt('created_at', before.toISOString());
+      conditions.push(lt(messagesTable.created_at, before as any));
     }
-    
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data || []).map((m: any) => this.mapMessage(m)).reverse();
+    const rows = await db.select().from(messagesTable)
+      .where(and(...conditions))
+      .orderBy(desc(messagesTable.created_at))
+      .limit(limit);
+    return rows.map((m) => this.mapMessage(m)).reverse();
   }
 
   async updateLastReadAt(channelId: string, userId: string): Promise<void> {
-    const { error } = await supabase
-      .from('channel_participants')
-      .update({ last_read_at: new Date().toISOString() })
-      .eq('channel_id', channelId)
-      .eq('user_id', userId);
-    if (error) throw error;
+    await db.update(channelParticipantsTable)
+      .set({ last_read_at: new Date() as any })
+      .where(and(
+        eq(channelParticipantsTable.channel_id, channelId),
+        eq(channelParticipantsTable.user_id, userId)
+      ));
   }
 
   async validateChatParticipants(
@@ -2874,60 +2814,70 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChannelReadReceipts(channelId: string): Promise<{ user_id: string; full_name: string; last_read_at: string | null }[]> {
-    const { data: participants, error } = await supabase
-      .from('channel_participants')
-      .select(`
-        user_id,
-        last_read_at,
-        profiles!channel_participants_user_id_fkey(full_name)
-      `)
-      .eq('channel_id', channelId);
-    
-    if (error) throw error;
-    
-    return (participants || []).map((p: any) => ({
-      user_id: p.user_id,
-      full_name: p.profiles?.full_name || 'Unknown User',
-      last_read_at: p.last_read_at,
+    const rows = await db.select({
+      user_id: channelParticipantsTable.user_id,
+      last_read_at: channelParticipantsTable.last_read_at,
+      full_name: profilesTable.full_name,
+    })
+    .from(channelParticipantsTable)
+    .leftJoin(profilesTable, eq(channelParticipantsTable.user_id, profilesTable.id))
+    .where(eq(channelParticipantsTable.channel_id, channelId));
+
+    return rows.map((r) => ({
+      user_id: r.user_id,
+      full_name: r.full_name || 'Unknown User',
+      last_read_at: r.last_read_at ? String(r.last_read_at) : null,
     }));
   }
 
   async getUnreadMessageCount(clubId: string, userId: string): Promise<number> {
-    const { data: participantChannels, error: pError } = await supabase
-      .from('channel_participants')
-      .select('channel_id, last_read_at, chat_channels!inner(club_id)')
-      .eq('user_id', userId)
-      .eq('chat_channels.club_id', clubId);
-    
-    if (pError || !participantChannels || participantChannels.length === 0) return 0;
-    
-    const channelIds = participantChannels.map((pc: any) => pc.channel_id);
-    
-    const { data: allMessages, error: mError } = await supabase
-      .from('messages')
-      .select('channel_id, created_at')
-      .in('channel_id', channelIds)
-      .neq('sender_id', userId)
-      .order('created_at', { ascending: false });
-    
-    if (mError || !allMessages) return 0;
-    
-    const lastReadMap = new Map<string, string>();
-    for (const pc of participantChannels) {
-      if (pc.last_read_at) {
-        lastReadMap.set(pc.channel_id, pc.last_read_at);
+    try {
+      const participantChannels = await db.select({
+        channel_id: channelParticipantsTable.channel_id,
+        last_read_at: channelParticipantsTable.last_read_at,
+      })
+      .from(channelParticipantsTable)
+      .innerJoin(chatChannelsTable, eq(channelParticipantsTable.channel_id, chatChannelsTable.id))
+      .where(and(
+        eq(channelParticipantsTable.user_id, userId),
+        eq(chatChannelsTable.club_id, clubId)
+      ));
+
+      if (participantChannels.length === 0) return 0;
+
+      const channelIds = participantChannels.map((pc) => pc.channel_id);
+      const allMessages = await db.select({
+        channel_id: messagesTable.channel_id,
+        created_at: messagesTable.created_at,
+      })
+      .from(messagesTable)
+      .where(and(
+        inArray(messagesTable.channel_id, channelIds),
+        ne(messagesTable.sender_id, userId)
+      ))
+      .orderBy(desc(messagesTable.created_at));
+
+      const lastReadMap = new Map<string, Date>();
+      for (const pc of participantChannels) {
+        if (pc.last_read_at) {
+          lastReadMap.set(pc.channel_id, new Date(String(pc.last_read_at)));
+        }
       }
-    }
-    
-    const channelsWithUnread = new Set<string>();
-    for (const msg of allMessages) {
-      const lastRead = lastReadMap.get(msg.channel_id);
-      if (!lastRead || msg.created_at > lastRead) {
-        channelsWithUnread.add(msg.channel_id);
+
+      const channelsWithUnread = new Set<string>();
+      for (const msg of allMessages) {
+        const lastRead = lastReadMap.get(msg.channel_id);
+        const msgDate = new Date(String(msg.created_at));
+        if (!lastRead || msgDate > lastRead) {
+          channelsWithUnread.add(msg.channel_id);
+        }
       }
+
+      return channelsWithUnread.size;
+    } catch (error) {
+      console.error('[getUnreadMessageCount] Error:', error);
+      return 0;
     }
-    
-    return channelsWithUnread.size;
   }
 
   async getUnreadBulletinCount(clubId: string, userId: string): Promise<number> {

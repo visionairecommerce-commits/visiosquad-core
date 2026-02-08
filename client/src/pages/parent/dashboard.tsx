@@ -36,15 +36,7 @@ import {
   FileSignature,
   UserX,
   Pencil,
-  Bell,
-  Loader2,
 } from 'lucide-react';
-import {
-  requestNotificationPermission,
-  isPushNotificationSupported,
-  getNotificationPermissionStatus,
-  setupForegroundMessageHandler,
-} from '@/lib/push-notifications';
 
 interface AvailableContractsResponse {
   not_assigned: boolean;
@@ -71,7 +63,6 @@ export default function ParentDashboard() {
   const { activeAthlete, setActiveAthlete, setAthletes } = useAthlete();
   const { club } = useAuth();
   const { toast } = useToast();
-  const [testingNotifications, setTestingNotifications] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingAthlete, setEditingAthlete] = useState<Athlete | null>(null);
@@ -270,88 +261,6 @@ export default function ParentDashboard() {
     <div className="space-y-6">
       <ContractGate />
 
-      <Card data-testid="card-test-notifications">
-        <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <CardTitle className="text-lg">Notification Diagnostics</CardTitle>
-              <CardDescription>
-                Test push notification setup and view permission status
-              </CardDescription>
-            </div>
-          </div>
-          <Button
-            onClick={async () => {
-              setTestingNotifications(true);
-              console.log('[Push Test] ====== TEST STARTED ======');
-              console.log('[Push Test] isPushNotificationSupported:', isPushNotificationSupported());
-              console.log('[Push Test] Current permission:', getNotificationPermissionStatus());
-              try {
-                const token = await requestNotificationPermission();
-                if (token) {
-                  setupForegroundMessageHandler((notification) => {
-                    toast({
-                      title: notification.title,
-                      description: notification.body,
-                    });
-                  });
-                  toast({
-                    title: 'Notifications enabled',
-                    description: `FCM token obtained (${token.length} chars). Check console for details.`,
-                  });
-                } else {
-                  const status = getNotificationPermissionStatus();
-                  toast({
-                    title: 'No token received',
-                    description: `Permission status: ${status}. Check browser console for detailed logs.`,
-                    variant: 'destructive',
-                  });
-                }
-              } catch (err: any) {
-                console.error('[Push Test] Error:', err);
-                toast({
-                  title: 'Notification test failed',
-                  description: err?.message || 'Unknown error. Check console.',
-                  variant: 'destructive',
-                });
-              } finally {
-                console.log('[Push Test] ====== TEST FINISHED ======');
-                setTestingNotifications(false);
-              }
-            }}
-            disabled={testingNotifications}
-            data-testid="button-test-notifications"
-          >
-            {testingNotifications ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Bell className="h-4 w-4 mr-2" />
-            )}
-            Test Notification System
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Browser Support: </span>
-              <span className="font-medium" data-testid="text-push-support">
-                {isPushNotificationSupported() ? 'Yes' : 'No'}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Permission: </span>
-              <span className="font-medium" data-testid="text-push-permission">
-                {getNotificationPermissionStatus()}
-              </span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Click the button and check your browser's developer console (F12) for detailed logs prefixed with [Push].
-          </p>
-        </CardContent>
-      </Card>
-      
       {unviewedFormsCount && unviewedFormsCount.count > 0 && (
         <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4" data-testid="alert-new-forms">
           <div className="flex items-start gap-3">

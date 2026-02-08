@@ -1,4 +1,4 @@
-import { eq, and, isNull, isNotNull, lt, lte } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, lt, lte, inArray } from 'drizzle-orm';
 import { db } from './lib/db';
 import { supabaseAdmin as supabase } from './lib/supabase';
 import {
@@ -2329,14 +2329,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getChatChannels(clubId: string, userId: string): Promise<ChatChannel[]> {
-    const { data, error } = await supabase
-      .from('channel_participants')
-      .select('channel_id, chat_channels(*)')
-      .eq('user_id', userId);
-    if (error) throw error;
-    return (data || [])
-      .filter((p: any) => p.chat_channels?.club_id === clubId)
-      .map((p: any) => this.mapChatChannel(p.chat_channels));
+    try {
+      const results = await db.select({
+        channel: chatChannelsTable,
+      })
+      .from(channelParticipantsTable)
+      .innerJoin(chatChannelsTable, eq(channelParticipantsTable.channel_id, chatChannelsTable.id))
+      .where(and(
+        eq(channelParticipantsTable.user_id, userId),
+        eq(chatChannelsTable.club_id, clubId)
+      ));
+      
+      return results.map(r => this.mapChatChannel(r.channel));
+    } catch (error) {
+      console.error('[getChatChannels] Error:', error);
+      throw error;
+    }
   }
 
   async getChatChannel(clubId: string, channelId: string): Promise<ChatChannel | undefined> {
@@ -2473,58 +2481,71 @@ export class DatabaseStorage implements IStorage {
     participantIds: string[],
     initiatorId: string
   ): Promise<{ valid: boolean; error?: string; autoAddParentIds?: string[] }> {
-    // Handle empty participant list (valid for group chats where creator is only member initially)
     if (participantIds.length === 0) {
       return { valid: true, autoAddParentIds: [] };
     }
     
-    // Get all participant profiles
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('id, role, full_name')
-      .in('id', participantIds)
-      .eq('club_id', clubId);
-    
-    if (error) return { valid: false, error: 'Failed to fetch participants' };
-    
-    const parentIds: string[] = [];
-    const initiatorProfile = (profiles || []).find((p: any) => p.id === initiatorId);
-    const isInitiatorAdultStaff = initiatorProfile?.role === 'coach' || initiatorProfile?.role === 'admin';
-    
-    // SafeSport: If any participant is an athlete, auto-add their parent
-    for (const profile of profiles || []) {
-      if (profile.role === 'athlete') {
-        const { data: athleteRecord } = await supabase
-          .from('athletes')
-          .select('parent_id')
-          .eq('user_id', profile.id)
-          .limit(1)
-          .maybeSingle();
-        
-        if (athleteRecord?.parent_id) {
-          if (!participantIds.includes(athleteRecord.parent_id) && athleteRecord.parent_id !== initiatorId) {
-            parentIds.push(athleteRecord.parent_id);
+    try {
+      console.log('[validateChatParticipants] Validating participants:', { clubId, participantIds, initiatorId });
+      
+      const profiles = await db.select({
+        id: profilesTable.id,
+        role: profilesTable.role,
+        full_name: profilesTable.full_name,
+      })
+      .from(profilesTable)
+      .where(and(
+        inArray(profilesTable.id, participantIds),
+        eq(profilesTable.club_id, clubId)
+      ));
+      
+      console.log('[validateChatParticipants] Found profiles:', profiles.length);
+      
+      const parentIds: string[] = [];
+      const initiatorProfile = profiles.find((p) => p.id === initiatorId);
+      const isInitiatorAdultStaff = initiatorProfile?.role === 'coach' || initiatorProfile?.role === 'admin';
+      
+      for (const profile of profiles) {
+        if (profile.role === 'athlete') {
+          const athleteRecords = await db.select({
+            parent_id: athletesTable.parent_id,
+          })
+          .from(athletesTable)
+          .where(eq(athletesTable.user_id, profile.id))
+          .limit(1);
+          
+          const athleteRecord = athleteRecords[0];
+          if (athleteRecord?.parent_id) {
+            if (!participantIds.includes(athleteRecord.parent_id) && athleteRecord.parent_id !== initiatorId) {
+              parentIds.push(athleteRecord.parent_id);
+            }
+          } else if (isInitiatorAdultStaff) {
+            return { valid: false, error: 'Cannot create chat with athlete: parent account not found for SafeSport compliance.' };
           }
-        } else if (isInitiatorAdultStaff) {
-          // SafeSport: Block coach/admin-athlete chat if parent cannot be found
-          return { valid: false, error: 'Cannot create chat with athlete: parent account not found for SafeSport compliance.' };
         }
       }
+      
+      return { valid: true, autoAddParentIds: parentIds };
+    } catch (error) {
+      console.error('[validateChatParticipants] Error:', error);
+      return { valid: false, error: 'Failed to fetch participants' };
     }
-    
-    return { valid: true, autoAddParentIds: parentIds };
   }
 
   async getDirectorId(clubId: string): Promise<string | undefined> {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('club_id', clubId)
-      .eq('role', 'admin')
-      .limit(1)
-      .single();
-    if (error) return undefined;
-    return data?.id;
+    try {
+      const results = await db.select({ id: profilesTable.id })
+        .from(profilesTable)
+        .where(and(
+          eq(profilesTable.club_id, clubId),
+          eq(profilesTable.role, 'admin')
+        ))
+        .limit(1);
+      return results[0]?.id;
+    } catch (error) {
+      console.error('[getDirectorId] Error:', error);
+      return undefined;
+    }
   }
 
   // Get all user IDs for a team (parents of athletes + coaches)

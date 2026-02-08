@@ -1,0 +1,86 @@
+GoTrueClient@sb-isymzqdmguwrfuujpikf-auth-token:1 (2.93.1) 2026-02-08T01:44:00.705Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key.
+Bd @ index-C9v7gYyz.js:93
+U5 @ index-C9v7gYyz.js:94
+_initSupabaseAuthClient @ index-C9v7gYyz.js:94
+B5 @ index-C9v7gYyz.js:94
+Ky @ index-C9v7gYyz.js:94
+W5 @ index-C9v7gYyz.js:94
+await in W5
+(anonymous) @ index-C9v7gYyz.js:150Understand this warning
+index-C9v7gYyz.js:131 [Push Test] ====== TEST STARTED ======
+index-C9v7gYyz.js:131 [Push Test] isPushNotificationSupported: true
+index-C9v7gYyz.js:131 [Push Test] Current permission: granted
+index-C9v7gYyz.js:96 [Push] requestNotificationPermission() called
+index-C9v7gYyz.js:96 [Push] Permission result: granted
+index-C9v7gYyz.js:96 [Push] Registering Service Worker...
+index-C9v7gYyz.js:96 [Push] SW registered, waiting for ready...
+index-C9v7gYyz.js:96 [Push] SW ready
+index-C9v7gYyz.js:96 [Push] VAPID key length: 87
+index-C9v7gYyz.js:96 [Push] Calling getToken()...
+index-C9v7gYyz.js:96  POST https://firebaseinstallations.googleapis.com/v1/projects/visiosport-notifications/installations 400 (Bad Request)
+(anonymous) @ index-C9v7gYyz.js:96
+Wk @ index-C9v7gYyz.js:96
+U6 @ index-C9v7gYyz.js:96
+await in U6
+Z6 @ index-C9v7gYyz.js:96
+X6 @ index-C9v7gYyz.js:96
+(anonymous) @ index-C9v7gYyz.js:96
+Im @ index-C9v7gYyz.js:96
+await in Im
+eb @ index-C9v7gYyz.js:96
+uB @ index-C9v7gYyz.js:96
+dB @ index-C9v7gYyz.js:96
+getToken @ index-C9v7gYyz.js:96
+rb @ index-C9v7gYyz.js:96
+AB @ index-C9v7gYyz.js:96
+dN @ index-C9v7gYyz.js:96
+DB @ index-C9v7gYyz.js:96
+await in DB
+aE @ index-C9v7gYyz.js:96
+await in aE
+rV @ index-C9v7gYyz.js:96
+ab @ index-C9v7gYyz.js:96
+await in ab
+onClick @ index-C9v7gYyz.js:131
+Mu @ index-C9v7gYyz.js:5
+Fu @ index-C9v7gYyz.js:5
+uR @ index-C9v7gYyz.js:5
+Fw @ index-C9v7gYyz.js:5
+$w @ index-C9v7gYyz.js:5
+(anonymous) @ index-C9v7gYyz.js:5
+Sg @ index-C9v7gYyz.js:8
+Du @ index-C9v7gYyz.js:5
+Sp @ index-C9v7gYyz.js:5
+op @ index-C9v7gYyz.js:5
+kR @ index-C9v7gYyz.js:5Understand this error
+index-C9v7gYyz.js:96 [Push] Error: Installations: Create Installation request failed with error "400 INVALID_ARGUMENT: API key not valid. Please pass a valid API key." (installations/request-failed).
+ab @ index-C9v7gYyz.js:96
+await in ab
+onClick @ index-C9v7gYyz.js:131
+Mu @ index-C9v7gYyz.js:5
+Fu @ index-C9v7gYyz.js:5
+uR @ index-C9v7gYyz.js:5
+Fw @ index-C9v7gYyz.js:5
+$w @ index-C9v7gYyz.js:5
+(anonymous) @ index-C9v7gYyz.js:5
+Sg @ index-C9v7gYyz.js:8
+Du @ index-C9v7gYyz.js:5
+Sp @ index-C9v7gYyz.js:5
+op @ index-C9v7gYyz.js:5
+kR @ index-C9v7gYyz.js:5Understand this error
+index-C9v7gYyz.js:96 [Push] Code: installations/request-failed
+ab @ index-C9v7gYyz.js:96
+await in ab
+onClick @ index-C9v7gYyz.js:131
+Mu @ index-C9v7gYyz.js:5
+Fu @ index-C9v7gYyz.js:5
+uR @ index-C9v7gYyz.js:5
+Fw @ index-C9v7gYyz.js:5
+$w @ index-C9v7gYyz.js:5
+(anonymous) @ index-C9v7gYyz.js:5
+Sg @ index-C9v7gYyz.js:8
+Du @ index-C9v7gYyz.js:5
+Sp @ index-C9v7gYyz.js:5
+op @ index-C9v7gYyz.js:5
+kR @ index-C9v7gYyz.js:5Understand this error
+index-C9v7gYyz.js:131 [Push Test] ====== TEST FINISHED ======

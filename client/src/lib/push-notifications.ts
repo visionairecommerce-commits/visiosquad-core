@@ -90,16 +90,37 @@ export async function requestNotificationPermission(): Promise<string | null> {
       return null;
     }
 
-    console.log('[Push] Permission granted! Registering Service Worker...');
+    console.log('[Push] Permission granted! Unregistering stale Service Workers...');
+    const existingRegs = await navigator.serviceWorker.getRegistrations();
+    for (const reg of existingRegs) {
+      if (reg.active?.scriptURL?.includes('firebase-messaging-sw.js')) {
+        await reg.unregister();
+        console.log('[Push] Unregistered stale SW:', reg.active.scriptURL);
+      }
+    }
+
+    console.log('[Push] Registering fresh Service Worker...');
     const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
       scope: '/',
+      updateViaCache: 'none',
     });
-    console.log('[Push] Service Worker registered successfully:', {
+    console.log('[Push] Service Worker registered:', {
       scope: registration.scope,
       active: !!registration.active,
       installing: !!registration.installing,
       waiting: !!registration.waiting,
     });
+
+    if (registration.installing) {
+      console.log('[Push] Waiting for Service Worker to finish installing...');
+      await new Promise<void>((resolve) => {
+        registration.installing!.addEventListener('statechange', (e) => {
+          const sw = e.target as ServiceWorker;
+          console.log('[Push] SW state changed to:', sw.state);
+          if (sw.state === 'activated') resolve();
+        });
+      });
+    }
 
     console.log('[Push] Waiting for Service Worker to be ready...');
     await navigator.serviceWorker.ready;
@@ -110,28 +131,46 @@ export async function requestNotificationPermission(): Promise<string | null> {
       console.warn('[Push] VAPID key not configured (VITE_PUBLIC_VAPID_KEY is empty)');
       return null;
     }
-    console.log('[Push] VAPID key present, length:', vapidKey.length);
+    console.log('[Push] VAPID key present, length:', vapidKey.length, 'first 10:', vapidKey.substring(0, 10));
 
-    console.log('[Push] Requesting FCM token...');
-    const token = await getToken(firebase.messaging, {
-      vapidKey,
-      serviceWorkerRegistration: registration,
-    });
+    console.log('[Push] Requesting FCM token with vapidKey and SW registration...');
+    let token: string | null = null;
+    try {
+      token = await getToken(firebase.messaging, {
+        vapidKey: vapidKey.trim(),
+        serviceWorkerRegistration: registration,
+      });
+    } catch (tokenError: any) {
+      console.error('[Push] getToken() threw an error:');
+      console.error('[Push]   message:', tokenError?.message);
+      console.error('[Push]   code:', tokenError?.code);
+      console.error('[Push]   customData:', JSON.stringify(tokenError?.customData));
+      if (tokenError?.message?.includes('API key')) {
+        console.error('[Push] ACTION REQUIRED: Your Firebase API key may be invalid or restricted.');
+        console.error('[Push] Go to Google Cloud Console > APIs & Services > Credentials');
+        console.error('[Push] Ensure your API key has these APIs enabled:');
+        console.error('[Push]   - Firebase Cloud Messaging API');
+        console.error('[Push]   - Firebase Installations API');
+        console.error('[Push] Also check Application Restrictions - your domain must be allowed.');
+      }
+      throw tokenError;
+    }
 
     if (token) {
-      console.log('[Push] FCM token obtained successfully:', token.substring(0, 20) + '...' + token.substring(token.length - 10));
-      console.log('[Push] FCM token full length:', token.length);
-      
-      console.log('[Push] Registering token with backend (POST /api/push-subscriptions)...');
+      console.log('[Push] FCM token obtained! length:', token.length, 'preview:', token.substring(0, 20) + '...');
+
+      console.log('[Push] Registering token with backend...');
       await apiRequest('POST', '/api/push-subscriptions', {
         fcm_token: token,
         device_type: 'web',
       });
-      
-      console.log('[Push] FCM token registered with backend successfully');
+
+      console.log('[Push] Token registered with backend successfully');
       return token;
     } else {
-      console.warn('[Push] No FCM token received from getToken() - returned empty/null');
+      console.warn('[Push] getToken() returned empty/null without throwing');
+      console.warn('[Push] This usually means the VAPID key does not match the Firebase project.');
+      console.warn('[Push] Verify VITE_PUBLIC_VAPID_KEY matches your Firebase Console > Cloud Messaging > Web Push certificates');
       return null;
     }
   } catch (error: any) {
@@ -139,7 +178,7 @@ export async function requestNotificationPermission(): Promise<string | null> {
     console.error('[Push] Error name:', error?.name);
     console.error('[Push] Error message:', error?.message);
     if (error?.code) console.error('[Push] Error code:', error.code);
-    if (error?.stack) console.error('[Push] Error stack:', error.stack);
+    if (error?.customData) console.error('[Push] customData:', JSON.stringify(error.customData));
     return null;
   }
 }

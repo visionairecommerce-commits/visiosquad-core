@@ -1,108 +1,99 @@
-// Firebase messaging service worker
-// This file will be served with injected config by the server
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
-// Firebase configuration - these values are injected at build/serve time
-// In development, fetch config from the server
 self.addEventListener('install', (event) => {
+  console.log('[firebase-messaging-sw.js] Installing...');
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  console.log('[firebase-messaging-sw.js] Activating...');
   event.waitUntil(clients.claim());
 });
 
-// Initialize Firebase with config from query params or fetch from server
-let firebaseConfig = null;
+let firebaseInitialized = false;
 
 async function initializeFirebase() {
-  if (firebase.apps.length > 0) return;
-  
+  if (firebaseInitialized) return true;
+  if (firebase.apps.length > 0) {
+    firebaseInitialized = true;
+    return true;
+  }
+
   try {
-    // Fetch config from server
     const response = await fetch('/api/firebase-config');
     if (!response.ok) {
-      console.warn('Could not fetch Firebase config');
-      return;
+      console.error('[firebase-messaging-sw.js] Failed to fetch config:', response.status);
+      return false;
     }
-    firebaseConfig = await response.json();
-    
-    firebase.initializeApp(firebaseConfig);
+    const config = await response.json();
+    console.log('[firebase-messaging-sw.js] Config received, projectId:', config.projectId);
+
+    firebase.initializeApp(config);
     const messaging = firebase.messaging();
-    
-    // Handle background messages
+
     messaging.onBackgroundMessage((payload) => {
-      console.log('[firebase-messaging-sw.js] Received background message:', payload);
-      
-      const notificationTitle = payload.notification?.title || 'New Notification';
-      const notificationOptions = {
+      console.log('[firebase-messaging-sw.js] Background message:', payload);
+      const title = payload.notification?.title || 'New Notification';
+      const options = {
         body: payload.notification?.body || '',
         icon: '/favicon.png',
         badge: '/favicon.png',
         data: payload.data,
         requireInteraction: true,
       };
-
-      self.registration.showNotification(notificationTitle, notificationOptions);
+      self.registration.showNotification(title, options);
     });
-    
+
+    firebaseInitialized = true;
     console.log('[firebase-messaging-sw.js] Firebase initialized successfully');
+    return true;
   } catch (error) {
-    console.error('[firebase-messaging-sw.js] Error initializing Firebase:', error);
+    console.error('[firebase-messaging-sw.js] Init error:', error?.message || error);
+    return false;
   }
 }
 
-// Initialize on first push event if not already initialized
 self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       await initializeFirebase();
-      
       if (!event.data) return;
-      
       try {
         const payload = event.data.json();
-        const notificationTitle = payload.notification?.title || 'New Notification';
-        const notificationOptions = {
+        const title = payload.notification?.title || 'New Notification';
+        const options = {
           body: payload.notification?.body || '',
           icon: '/favicon.png',
           badge: '/favicon.png',
           data: payload.data,
           requireInteraction: true,
         };
-        
-        await self.registration.showNotification(notificationTitle, notificationOptions);
+        await self.registration.showNotification(title, options);
       } catch (error) {
-        console.error('[firebase-messaging-sw.js] Error handling push:', error);
+        console.error('[firebase-messaging-sw.js] Push error:', error);
       }
     })()
   );
 });
 
-// Handle notification click
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  
   const data = event.notification.data || {};
   let url = '/';
-  
   if (data.type === 'chat_message') {
     url = '/messages';
   } else if (data.type === 'bulletin_post') {
     url = '/bulletin';
   }
-  
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Check if there's already a window open
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           client.navigate(url);
           return client.focus();
         }
       }
-      // Open a new window if none exists
       if (clients.openWindow) {
         return clients.openWindow(url);
       }
@@ -110,5 +101,4 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Initialize Firebase immediately
 initializeFirebase();

@@ -1,80 +1,29 @@
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
-self.addEventListener('install', (event) => {
-  console.log('[firebase-messaging-sw.js] Installing...');
-  self.skipWaiting();
-});
+const firebaseConfig = {
+  apiKey: "AIzaSyDbQZsJe7Kk1cBXCWMaeWfBUS32PMieBwM",
+  authDomain: "visiosport-notifications.firebaseapp.com",
+  projectId: "visiosport-notifications",
+  storageBucket: "visiosport-notifications.appspot.com",
+  messagingSenderId: "206308630478",
+  appId: "1:206308630478:web:47bf44885c4c93fee3559f"
+};
 
-self.addEventListener('activate', (event) => {
-  console.log('[firebase-messaging-sw.js] Activating...');
-  event.waitUntil(clients.claim());
-});
+firebase.initializeApp(firebaseConfig);
+const messaging = firebase.messaging();
 
-let firebaseInitialized = false;
-
-async function initializeFirebase() {
-  if (firebaseInitialized) return true;
-  if (firebase.apps.length > 0) {
-    firebaseInitialized = true;
-    return true;
-  }
-
-  try {
-    const response = await fetch('/api/firebase-config');
-    if (!response.ok) {
-      console.error('[firebase-messaging-sw.js] Failed to fetch config:', response.status);
-      return false;
-    }
-    const config = await response.json();
-    console.log('[firebase-messaging-sw.js] Config received, projectId:', config.projectId);
-
-    firebase.initializeApp(config);
-    const messaging = firebase.messaging();
-
-    messaging.onBackgroundMessage((payload) => {
-      console.log('[firebase-messaging-sw.js] Background message:', payload);
-      const title = payload.notification?.title || 'New Notification';
-      const options = {
-        body: payload.notification?.body || '',
-        icon: '/favicon.png',
-        badge: '/favicon.png',
-        data: payload.data,
-        requireInteraction: true,
-      };
-      self.registration.showNotification(title, options);
-    });
-
-    firebaseInitialized = true;
-    console.log('[firebase-messaging-sw.js] Firebase initialized successfully');
-    return true;
-  } catch (error) {
-    console.error('[firebase-messaging-sw.js] Init error:', error?.message || error);
-    return false;
-  }
-}
-
-self.addEventListener('push', (event) => {
-  event.waitUntil(
-    (async () => {
-      await initializeFirebase();
-      if (!event.data) return;
-      try {
-        const payload = event.data.json();
-        const title = payload.notification?.title || 'New Notification';
-        const options = {
-          body: payload.notification?.body || '',
-          icon: '/favicon.png',
-          badge: '/favicon.png',
-          data: payload.data,
-          requireInteraction: true,
-        };
-        await self.registration.showNotification(title, options);
-      } catch (error) {
-        console.error('[firebase-messaging-sw.js] Push error:', error);
-      }
-    })()
-  );
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] Background message:', payload);
+  const title = payload.notification?.title || 'New Notification';
+  const options = {
+    body: payload.notification?.body || '',
+    icon: '/favicon.png',
+    badge: '/favicon.png',
+    data: payload.data,
+    requireInteraction: true,
+  };
+  self.registration.showNotification(title, options);
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -100,5 +49,3 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
-
-initializeFirebase();

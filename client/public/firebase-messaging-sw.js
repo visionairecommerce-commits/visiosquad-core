@@ -2,7 +2,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDbQZsJe7Kk1cBXCWMaeWfBUS32PMieBwM",
+  apiKey: "AIzaSyDbQZsJe7Kk1cBXCWMAeWfBUS32PMieBwM",
   authDomain: "visiosport-notifications.firebaseapp.com",
   projectId: "visiosport-notifications",
   storageBucket: "visiosport-notifications.appspot.com",

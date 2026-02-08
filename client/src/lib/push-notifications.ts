@@ -6,15 +6,16 @@ let firebaseApp: FirebaseApp | null = null;
 let messaging: Messaging | null = null;
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyDbQZsJe7Kk1cBXCWMAeWfBUS32PMieBwM",
+  authDomain: "visiosport-notifications.firebaseapp.com",
+  projectId: "visiosport-notifications",
+  storageBucket: "visiosport-notifications.appspot.com",
+  messagingSenderId: "206308630478",
+  appId: "1:206308630478:web:47bf44885c4c93fee3559f",
 };
 
 function isFirebaseConfigured(): boolean {
+  console.log('[Push] Using API Key:', firebaseConfig.apiKey.substring(0, 5) + '...');
   return !!(
     firebaseConfig.apiKey &&
     firebaseConfig.projectId &&

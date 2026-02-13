@@ -1,0 +1,136 @@
+You are an expert software engineer working in my existing app on Replit.
+
+OBJECTIVE
+Implement frictionless club payments onboarding using Helcim “Connected Accounts” *architecture*, AND implement the “single checkout → two charges” routing logic, while keeping a safe fallback that preserves the current behavior (all money into platform Mercury via the existing Helcim merchant).
+
+IMPORTANT CONSTRAINTS
+- We have NOT received Helcim partner credentials yet (partner token / connected account registration configuration). Therefore you must:
+  1) Build the full framework (DB schema, endpoints, UI, services, webhook receiver, tests) now,
+  2) Implement HELCIM_CONNECTED_ACCOUNTS_ENABLED feature flag,
+  3) Implement stub/mock adapter for the partner registration calls that can be switched to real calls later by setting env vars.
+- Do NOT break existing payments. Current state: all charges go through platform Helcim merchant and deposit into platform Mercury.
+- Minimal diffs. No refactors unless needed.
+- Add automated tests. Tests must not call real Helcim.
+
+FEATURE FLAGS / ENV VARS (Add these)
+- ENABLE_SPLIT_CHECKOUT=true|false (default false)
+- HELCIM_CONNECTED_ACCOUNTS_ENABLED=true|false (default false)
+- HELCIM_PARTNER_TOKEN=... (empty for now)
+- HELCIM_PLATFORM_API_TOKEN=... (already exists)
+- HELCIM_MODE=sandbox|production (default production)
+- HELCIM_WEBHOOK_SECRET=... (if webhooks are verified; if not, implement signature verify stub with TODO)
+- APP_BASE_URL=https://... (for redirect/callback URLs)
+
+DATA MODEL (Add minimal tables/fields)
+1) clubs table: add fields (or create a club_payment_accounts table if clubs already exist):
+   - helcim_connection_status: 'unconnected'|'pending'|'connected'|'failed'
+   - helcim_connected_account_id: string nullable
+   - helcim_connected_account_token_ref: string nullable (preferred)
+   - helcim_connected_at: timestamp nullable
+   - helcim_onboarding_last_error: text nullable
+2) payments table: ensure it can store split payments:
+   - checkout_session_id
+   - split_group_id
+   - charge_role: 'platform_fee'|'club_dues'|'single_charge'
+   - helcim_charge_id
+   - amount
+   - status: 'succeeded'|'failed'|'partial'|'pending'
+   - club_id, parent_id/customer_id
+3) payout_ledger (optional but recommended): store “club dues owed” for the fallback mode (single charge to platform).
+   - club_id, amount_owed, reason, related_payment_id, status
+
+SECURE STORAGE
+- If the app has an existing secrets store pattern, use it. Otherwise store only token references and keep actual tokens in env vars for now.
+- NEVER log tokens.
+
+PART A — CLUB ONBOARDING UX (Frictionless flow scaffolding now)
+Add a “Connect Payments” button in club admin settings:
+- If HELCIM_CONNECTED_ACCOUNTS_ENABLED=false:
+  - show message: “Connected onboarding pending partner approval”
+  - allow “Request connect” which sets status to 'pending' for internal tracking
+- If HELCIM_CONNECTED_ACCOUNTS_ENABLED=true:
+  - Clicking “Connect Payments” starts onboarding:
+    1) POST /api/helcim/connected_accounts/register (creates connected account registration)
+    2) Redirect user to Helcim-hosted onboarding URL returned by adapter
+    3) Helcim redirects back to /settings/payments/helcim/callback with parameters
+    4) Update club helcim_connection_status appropriately
+
+Since we do not have partner token yet, implement an adapter interface:
+- ConnectedAccountsProvider
+  - create_registration(club): returns {onboarding_url, registration_id}
+  - handle_callback(params): returns connected_account_id/token or pending status
+Implement two providers:
+1) StubConnectedAccountsProvider (default when HELCIM_PARTNER_TOKEN is empty OR HELCIM_CONNECTED_ACCOUNTS_ENABLED=false)
+   - returns a local fake onboarding URL like /settings/payments/helcim/fake_onboarding?club_id=...
+   - fake page has a “Complete onboarding” button that marks club connected with fake IDs
+2) RealHelcimConnectedAccountsProvider (implemented but gated):
+   - Uses HELCIM_PARTNER_TOKEN and Helcim connected account registration endpoints
+   - Do NOT enable by default; only used when env vars are present and HELCIM_CONNECTED_ACCOUNTS_ENABLED=true
+
+PART B — WEBHOOK RECEIVER (Build now)
+Create /api/webhooks/helcim endpoint that:
+- Accepts webhook events (connected account updates + payment events if you already use them)
+- Verifies signature if possible (if no secret available, add TODO but structure it)
+- Updates club helcim_connection_status based on connected account webhooks
+- Updates payments records if payment webhooks exist in current system
+
+PART C — CHECKOUT: “Single checkout → two charges” logic (Build now)
+Current behavior (Mode 1 / fallback):
+- Parent pays total (dues + platform fee) via PLATFORM Helcim token to Mercury.
+- Persist payments row with role='single_charge'
+- Record ledger: club_amount_owed = dues portion; platform_revenue = fee portion
+
+New behavior (Mode 2 / split checkout):
+Only when:
+- ENABLE_SPLIT_CHECKOUT=true
+- Club helcim_connection_status='connected'
+- Club has helcim_connected_account_token_ref (or direct token available)
+Then perform TWO charges:
+1) Platform fee charge (platform token) FIRST
+2) Club dues charge (club token) SECOND
+Rules:
+- If platform fee fails: STOP, do not attempt club charge
+- If club dues fails after platform fee success: mark split_group_id as 'partial', raise admin alert, show parent a clear “Payment not completed” message (and keep retry safe)
+- Add application-level idempotency by checkout_session_id:
+  - Replays must not double charge
+- Parent-facing receipt should show 2 line items + total, but still “one checkout experience”.
+
+SERVICE LAYER
+- Extend Helcim client wrapper so you can pass token/context:
+  createCharge({token, amount, customer, description, metadata, idempotencyKey})
+- Keep existing calls working with default platform token.
+
+TESTS (MANDATORY)
+All Helcim calls must be mocked in tests.
+Add tests:
+1) Fee calculation test (percent + flat per participant)
+2) Mode selection tests:
+   - flag off => Mode 1 (single charge)
+   - flag on but club unconnected => Mode 1
+   - flag on + club connected => Mode 2 (two charges)
+3) Ordering test: platform charge called before club charge
+4) Failure tests:
+   - platform charge fails => club charge not called
+   - club charge fails after platform success => partial recorded + admin alert invoked
+5) Idempotency test: same checkout_session_id replay calls Helcim only once
+6) Onboarding tests:
+   - When partner not enabled => stub provider used; fake onboarding marks connected
+   - When enabled but token missing => safely falls back to stub
+
+PATCH DISCIPLINE
+- Do not output full files. Output only precise code blocks replaced/added.
+- For each file changed, explain briefly why.
+
+SELF-VERIFICATION (MUST RUN)
+- Run full test suite and show the exact commands + results.
+- Demonstrate locally (or via tests) these scenarios:
+  A) Default: single charge to platform Mercury (unchanged)
+  B) Stub onboarding: connect club with fake onboarding, then split checkout triggers two charges (mocked)
+  C) Unconnected club: split flag on still uses single charge fallback
+
+START NOW
+1) Identify current checkout/payment endpoint and existing Helcim wrapper.
+2) Implement DB changes + migrations.
+3) Implement onboarding scaffolding + stub provider.
+4) Implement split checkout behind feature flags.
+5) Add tests + run them.

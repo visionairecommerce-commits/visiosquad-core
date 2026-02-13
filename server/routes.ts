@@ -11,6 +11,8 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { insertProgramContractSchema, insertAthleteContractSchema, profilesTable } from "../shared/schema";
 import { addMonths, format, addDays, setHours, setMinutes, getDay, startOfDay, isBefore, parseISO, formatDistanceToNow } from "date-fns";
+import { getConnectedAccountsProvider, isConnectedAccountsEnabled, isUsingStubProvider, shouldUseSplitCheckout } from "./lib/helcim-connected-accounts";
+import { ENABLE_SPLIT_CHECKOUT, HELCIM_CONNECTED_ACCOUNTS_ENABLED } from "./lib/helcim";
 
 // Helper to format time ago
 function formatTimeAgo(date: Date): string {
@@ -6737,6 +6739,172 @@ export async function registerRoutes(
         error: 'Failed to seed test data', 
         details: process.env.NODE_ENV !== 'production' ? errorMessage : undefined 
       });
+    }
+  });
+
+  // ============ CONNECTED ACCOUNTS / SPLIT CHECKOUT ============
+
+  app.get('/api/connected-accounts/status', async (req: Request, res: Response) => {
+    try {
+      const auth = await getAuthContext(req);
+      if (!auth.isAuthenticated || !['admin', 'owner'].includes(auth.role)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      const club = await storage.getClub(auth.clubId);
+      if (!club) return res.status(404).json({ error: 'Club not found' });
+
+      res.json({
+        enabled: isConnectedAccountsEnabled(),
+        splitCheckoutEnabled: ENABLE_SPLIT_CHECKOUT,
+        usingStubProvider: isUsingStubProvider(),
+        connectionStatus: club.helcim_connection_status || 'not_connected',
+        connectedAccountId: club.helcim_connected_account_id || null,
+        connectedAt: club.helcim_connected_at || null,
+        lastError: club.helcim_onboarding_last_error || null,
+      });
+    } catch (error) {
+      console.error('[ConnectedAccounts] Status error:', error);
+      res.status(500).json({ error: 'Failed to fetch connection status' });
+    }
+  });
+
+  app.post('/api/connected-accounts/initiate', async (req: Request, res: Response) => {
+    try {
+      const auth = await getAuthContext(req);
+      if (!auth.isAuthenticated || !['admin', 'owner'].includes(auth.role)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      const club = await storage.getClub(auth.clubId);
+      if (!club) return res.status(404).json({ error: 'Club not found' });
+
+      if (club.helcim_connection_status === 'connected') {
+        return res.status(400).json({ error: 'Club already connected to Helcim' });
+      }
+
+      const provider = getConnectedAccountsProvider();
+      const result = await provider.createRegistration(auth.clubId, club.name);
+
+      await storage.updateClubConnectionStatus(auth.clubId, {
+        helcim_connection_status: 'pending',
+      });
+
+      res.json({
+        onboardingUrl: result.onboardingUrl,
+        registrationId: result.registrationId,
+      });
+    } catch (error) {
+      console.error('[ConnectedAccounts] Initiate error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      await storage.updateClubConnectionStatus(auth.clubId, {
+        helcim_onboarding_last_error: errorMsg,
+      }).catch(() => {});
+      res.status(500).json({ error: 'Failed to initiate Helcim connection' });
+    }
+  });
+
+  app.post('/api/connected-accounts/callback', async (req: Request, res: Response) => {
+    try {
+      const auth = await getAuthContext(req);
+      if (!auth.isAuthenticated || !['admin', 'owner'].includes(auth.role)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      const provider = getConnectedAccountsProvider();
+      const callbackResult = await provider.handleCallback(req.body);
+
+      if (callbackResult.status === 'connected') {
+        await storage.updateClubConnectionStatus(auth.clubId, {
+          helcim_connection_status: 'connected',
+          helcim_connected_account_id: callbackResult.connectedAccountId,
+          helcim_connected_account_token_ref: callbackResult.tokenRef,
+          helcim_connected_at: new Date().toISOString(),
+          helcim_onboarding_last_error: null,
+        });
+
+        res.json({ status: 'connected', connectedAccountId: callbackResult.connectedAccountId });
+      } else if (callbackResult.status === 'pending') {
+        await storage.updateClubConnectionStatus(auth.clubId, {
+          helcim_connection_status: 'pending',
+        });
+        res.json({ status: 'pending' });
+      } else {
+        await storage.updateClubConnectionStatus(auth.clubId, {
+          helcim_connection_status: 'failed',
+          helcim_onboarding_last_error: callbackResult.error || 'Connection failed',
+        });
+        res.json({ status: 'failed', error: callbackResult.error });
+      }
+    } catch (error) {
+      console.error('[ConnectedAccounts] Callback error:', error);
+      res.status(500).json({ error: 'Failed to process callback' });
+    }
+  });
+
+  app.post('/api/connected-accounts/disconnect', async (req: Request, res: Response) => {
+    try {
+      const auth = await getAuthContext(req);
+      if (!auth.isAuthenticated || !['admin', 'owner'].includes(auth.role)) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      await storage.updateClubConnectionStatus(auth.clubId, {
+        helcim_connection_status: 'not_connected',
+        helcim_connected_account_id: null,
+        helcim_connected_account_token_ref: null,
+        helcim_connected_at: null,
+        helcim_onboarding_last_error: null,
+      });
+
+      res.json({ status: 'disconnected' });
+    } catch (error) {
+      console.error('[ConnectedAccounts] Disconnect error:', error);
+      res.status(500).json({ error: 'Failed to disconnect' });
+    }
+  });
+
+  app.get('/api/connected-accounts/feature-flags', async (_req: Request, res: Response) => {
+    res.json({
+      splitCheckoutEnabled: ENABLE_SPLIT_CHECKOUT,
+      connectedAccountsEnabled: HELCIM_CONNECTED_ACCOUNTS_ENABLED,
+      usingStubProvider: isUsingStubProvider(),
+    });
+  });
+
+  app.post('/api/webhooks/connected-accounts', async (req: Request, res: Response) => {
+    try {
+      const { club_id, ...params } = req.body;
+      if (!club_id) {
+        return res.status(400).json({ error: 'club_id required' });
+      }
+
+      const provider = getConnectedAccountsProvider();
+      const callbackResult = await provider.handleCallback(params);
+
+      if (callbackResult.status === 'connected') {
+        await storage.updateClubConnectionStatus(club_id, {
+          helcim_connection_status: 'connected',
+          helcim_connected_account_id: callbackResult.connectedAccountId,
+          helcim_connected_account_token_ref: callbackResult.tokenRef,
+          helcim_connected_at: new Date().toISOString(),
+          helcim_onboarding_last_error: null,
+        });
+      } else if (callbackResult.status === 'pending') {
+        await storage.updateClubConnectionStatus(club_id, {
+          helcim_connection_status: 'pending',
+        });
+      } else {
+        await storage.updateClubConnectionStatus(club_id, {
+          helcim_connection_status: 'failed',
+          helcim_onboarding_last_error: callbackResult.error || 'Connection failed',
+        });
+      }
+
+      res.json({ received: true, status: callbackResult.status });
+    } catch (error) {
+      console.error('[ConnectedAccounts] Webhook error:', error);
+      res.status(500).json({ error: 'Webhook processing failed' });
     }
   });
 

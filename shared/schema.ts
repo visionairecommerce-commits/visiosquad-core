@@ -49,8 +49,14 @@ export const clubsTable = pgTable("clubs", {
   last_billed_at: timestamp("last_billed_at"), // When the club was last billed
   last_billed_period_start: timestamp("last_billed_period_start"), // Start of the last billed period
   // Helcim subscription billing (Model A)
-  helcim_subscription_id: text("helcim_subscription_id"), // Helcim subscription ID for automatic billing
-  helcim_plan_id: integer("helcim_plan_id"), // Helcim plan ID (day-based plan)
+  helcim_subscription_id: text("helcim_subscription_id"),
+  helcim_plan_id: integer("helcim_plan_id"),
+  // Helcim Connected Account fields (for split checkout)
+  helcim_connection_status: text("helcim_connection_status", { enum: ["not_connected", "pending", "connected", "failed"] }).default("not_connected"),
+  helcim_connected_account_id: text("helcim_connected_account_id"),
+  helcim_connected_account_token_ref: text("helcim_connected_account_token_ref"),
+  helcim_connected_at: timestamp("helcim_connected_at"),
+  helcim_onboarding_last_error: text("helcim_onboarding_last_error"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -492,6 +498,9 @@ export const paymentsTable = pgTable("payments", {
   payment_kind: text("payment_kind", { enum: ["recurring_contract", "one_time_event"] }),
   months_count: integer("months_count").default(1),
   fee_version: text("fee_version"),
+  checkout_session_id: text("checkout_session_id"),
+  split_group_id: text("split_group_id"),
+  charge_role: text("charge_role", { enum: ["platform_fee", "club_dues", "single_charge"] }),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -668,8 +677,14 @@ export interface Club {
   last_billed_at?: string; // When the club was last billed
   last_billed_period_start?: string; // Start of the last billed period
   // Helcim subscription billing (Model A)
-  helcim_subscription_id?: string; // Helcim subscription ID for automatic billing
-  helcim_plan_id?: number; // Helcim plan ID (day-based plan)
+  helcim_subscription_id?: string;
+  helcim_plan_id?: number;
+  // Helcim Connected Account (split checkout)
+  helcim_connection_status?: 'not_connected' | 'pending' | 'connected' | 'failed';
+  helcim_connected_account_id?: string;
+  helcim_connected_account_token_ref?: string;
+  helcim_connected_at?: string;
+  helcim_onboarding_last_error?: string;
   created_at: string;
 }
 
@@ -971,6 +986,9 @@ export interface Payment {
   payment_kind?: 'recurring_contract' | 'one_time_event';
   months_count?: number;
   fee_version?: string;
+  checkout_session_id?: string;
+  split_group_id?: string;
+  charge_role?: 'platform_fee' | 'club_dues' | 'single_charge';
   created_at: string;
 }
 

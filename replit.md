@@ -39,6 +39,10 @@ Preferred communication style: Simple, everyday language.
 - **Program Contracts & Pricing**: Directors define pricing tiers and athletes enroll in contracts for recurring billing. Contracts require a linked season (`season_id`), and athlete contract start/end dates are auto-derived from the linked season at enrollment. Admin UI gates contract creation on active season existence.
 - **Athlete Management**: Roster management, payment status tracking, and custom pricing overrides. For beach volleyball clubs, athletes can have sport-specific membership IDs (AVP, BVCA, BVNE, AAU, p1440).
 - **Payment Processing**: Integration with Helcim for credit card and ACH transactions.
+  - **Connected Accounts**: Helcim Connected Accounts support for split payment routing between platform and club merchants. Uses adapter pattern with Stub (dev) and Real providers, gated by `ENABLE_SPLIT_CHECKOUT` and `HELCIM_CONNECTED_ACCOUNTS_ENABLED` feature flags (both default false).
+  - **Split Checkout Decision**: `shouldUseSplitCheckout()` evaluates club connection status and feature flags to determine payment routing.
+  - **Key Files**: `server/lib/helcim-connected-accounts.ts` (adapter), `server/lib/helcim.ts` (flags), API routes under `/api/connected-accounts/*`
+  - **Schema Fields**: `clubs` table has `helcim_connection_status`, `helcim_connected_account_id`, `helcim_connected_account_token_ref`, `helcim_connected_at`, `helcim_onboarding_last_error`; `payments` table has `checkout_session_id`, `split_group_id`, `charge_role`.
 - **Technology and Service Fees**: Implements a parent-paid fee model (`v2_2026_02_zero_loss_discounts`) with dynamic fee calculation based on payment rail (credit, ACH, debit) and discounts.
 - **Scheduling Engine**: Manages practices, clinics, drop-ins, and events, including recurring sessions and facility conflict detection.
 - **Event Management**: Dedicated system for standalone events with separate rosters and pricing.

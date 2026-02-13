@@ -1600,6 +1600,13 @@ export class DatabaseStorage implements IStorage {
       billing_locked_at: c.billing_locked_at?.toISOString?.() ?? c.billing_locked_at ?? undefined,
       last_billed_at: c.last_billed_at?.toISOString?.() ?? c.last_billed_at ?? undefined,
       last_billed_period_start: c.last_billed_period_start?.toISOString?.() ?? c.last_billed_period_start ?? undefined,
+      helcim_subscription_id: c.helcim_subscription_id ?? undefined,
+      helcim_plan_id: c.helcim_plan_id ?? undefined,
+      helcim_connection_status: c.helcim_connection_status ?? 'not_connected',
+      helcim_connected_account_id: c.helcim_connected_account_id ?? undefined,
+      helcim_connected_account_token_ref: c.helcim_connected_account_token_ref ?? undefined,
+      helcim_connected_at: c.helcim_connected_at?.toISOString?.() ?? c.helcim_connected_at ?? undefined,
+      helcim_onboarding_last_error: c.helcim_onboarding_last_error ?? undefined,
       created_at: c.created_at?.toISOString?.() ?? c.created_at,
     };
   }
@@ -3447,6 +3454,30 @@ export class DatabaseStorage implements IStorage {
       .single();
     if (error) throw error;
     return this.mapClub(data);
+  }
+
+  async updateClubConnectionStatus(clubId: string, data: {
+    helcim_connection_status?: string;
+    helcim_connected_account_id?: string | null;
+    helcim_connected_account_token_ref?: string | null;
+    helcim_connected_at?: string | null;
+    helcim_onboarding_last_error?: string | null;
+  }): Promise<Club> {
+    const updateData: Record<string, any> = {};
+    if (data.helcim_connection_status !== undefined) updateData.helcim_connection_status = data.helcim_connection_status;
+    if (data.helcim_connected_account_id !== undefined) updateData.helcim_connected_account_id = data.helcim_connected_account_id;
+    if (data.helcim_connected_account_token_ref !== undefined) updateData.helcim_connected_account_token_ref = data.helcim_connected_account_token_ref;
+    if (data.helcim_connected_at !== undefined) updateData.helcim_connected_at = data.helcim_connected_at;
+    if (data.helcim_onboarding_last_error !== undefined) updateData.helcim_onboarding_last_error = data.helcim_onboarding_last_error;
+
+    const { data: result, error } = await supabase
+      .from('clubs')
+      .update(updateData)
+      .eq('id', clubId)
+      .select()
+      .single();
+    if (error) throw error;
+    return this.mapClub(result);
   }
 
   private mapAutopayCharge(r: any): PlatformAutopayCharge {

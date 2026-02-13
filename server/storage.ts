@@ -836,6 +836,15 @@ export interface IStorage {
   // Update club's Helcim subscription info
   updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club>;
   
+  // Update club's connected account status
+  updateClubConnectionStatus(clubId: string, data: {
+    helcim_connection_status?: string;
+    helcim_connected_account_id?: string | null;
+    helcim_connected_account_token_ref?: string | null;
+    helcim_connected_at?: string | null;
+    helcim_onboarding_last_error?: string | null;
+  }): Promise<Club>;
+  
   // Snack Hub - collaborative snack management for events
   getSnackItems(eventId: string, clubId: string): Promise<SnackItem[]>;
   createSnackItem(eventId: string, clubId: string, data: { category: string; item_name: string; quantity_needed: number; is_custom: boolean; created_by: string }): Promise<SnackItem>;
@@ -2443,6 +2452,16 @@ export class MemStorage implements IStorage {
   }
   
   async updateClubHelcimSubscription(clubId: string, subscriptionId: string, planId: number): Promise<Club> {
+    throw new Error('Not implemented in MemStorage');
+  }
+
+  async updateClubConnectionStatus(clubId: string, data: {
+    helcim_connection_status?: string;
+    helcim_connected_account_id?: string | null;
+    helcim_connected_account_token_ref?: string | null;
+    helcim_connected_at?: string | null;
+    helcim_onboarding_last_error?: string | null;
+  }): Promise<Club> {
     throw new Error('Not implemented in MemStorage');
   }
   

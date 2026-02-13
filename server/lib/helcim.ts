@@ -388,6 +388,14 @@ export const BILLING_RECONCILIATION_ENABLED = process.env.BILLING_RECONCILIATION
 // When false, old club-pays model applies (legacy)
 export const PARENT_PAID_FEES_ENABLED = process.env.PARENT_PAID_FEES_ENABLED === 'true';
 
+// ============ CONNECTED ACCOUNTS / SPLIT CHECKOUT FLAGS ============
+
+export const ENABLE_SPLIT_CHECKOUT = process.env.ENABLE_SPLIT_CHECKOUT === 'true';
+export const HELCIM_CONNECTED_ACCOUNTS_ENABLED = process.env.HELCIM_CONNECTED_ACCOUNTS_ENABLED === 'true';
+export const HELCIM_PARTNER_TOKEN = process.env.HELCIM_PARTNER_TOKEN || '';
+export const HELCIM_MODE = (process.env.HELCIM_MODE || 'production') as 'sandbox' | 'production';
+export const APP_BASE_URL = process.env.APP_BASE_URL || '';
+
 // ============ CARD TYPE DETECTION ============
 
 export type CardFundingType = 'credit' | 'debit' | 'unknown';

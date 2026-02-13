@@ -1164,6 +1164,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        <ConnectedAccountsSection />
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1651,5 +1653,187 @@ export default function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function ConnectedAccountsSection() {
+  const { toast } = useToast();
+
+  interface ConnectionStatus {
+    enabled: boolean;
+    splitCheckoutEnabled: boolean;
+    usingStubProvider: boolean;
+    connectionStatus: 'not_connected' | 'pending' | 'connected' | 'failed';
+    connectedAccountId: string | null;
+    connectedAt: string | null;
+    lastError: string | null;
+  }
+
+  const { data: status, isLoading } = useQuery<ConnectionStatus>({
+    queryKey: ['/api/connected-accounts/status'],
+  });
+
+  const initiateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/connected-accounts/initiate');
+      return res.json();
+    },
+    onSuccess: (data: { onboardingUrl: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/connected-accounts/status'] });
+      if (data.onboardingUrl) {
+        if (data.onboardingUrl.includes('fake-onboarding')) {
+          completeFakeOnboarding();
+        } else {
+          window.open(data.onboardingUrl, '_blank');
+          toast({ title: 'Redirecting to Helcim onboarding...' });
+        }
+      }
+    },
+    onError: () => {
+      toast({ title: 'Failed to start connection', variant: 'destructive' });
+    },
+  });
+
+  const callbackMutation = useMutation({
+    mutationFn: async (params: Record<string, string>) => {
+      const res = await apiRequest('POST', '/api/connected-accounts/callback', params);
+      return res.json();
+    },
+    onSuccess: (data: { status: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/connected-accounts/status'] });
+      if (data.status === 'connected') {
+        toast({ title: 'Payment account connected successfully!' });
+      }
+    },
+  });
+
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/connected-accounts/disconnect');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/connected-accounts/status'] });
+      toast({ title: 'Payment account disconnected' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to disconnect', variant: 'destructive' });
+    },
+  });
+
+  const completeFakeOnboarding = () => {
+    callbackMutation.mutate({ action: 'complete', club_id: '', registration_id: '' });
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading payment connection status...
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!status) return null;
+
+  const statusColor = {
+    not_connected: 'secondary' as const,
+    pending: 'outline' as const,
+    connected: 'default' as const,
+    failed: 'destructive' as const,
+  };
+
+  const statusLabel = {
+    not_connected: 'Not Connected',
+    pending: 'Pending',
+    connected: 'Connected',
+    failed: 'Failed',
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Link className="h-5 w-5" />
+          Payment Connection
+        </CardTitle>
+        <CardDescription>
+          Connect your Helcim merchant account for direct payment processing
+          {status.usingStubProvider && (
+            <Badge variant="outline" className="ml-2">Dev Mode</Badge>
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Status:</span>
+              <Badge
+                variant={statusColor[status.connectionStatus]}
+                data-testid="badge-connection-status"
+              >
+                {statusLabel[status.connectionStatus]}
+              </Badge>
+            </div>
+            {status.connectedAccountId && (
+              <p className="text-xs text-muted-foreground" data-testid="text-account-id">
+                Account: {status.connectedAccountId}
+              </p>
+            )}
+            {status.connectedAt && (
+              <p className="text-xs text-muted-foreground" data-testid="text-connected-at">
+                Connected: {new Date(status.connectedAt).toLocaleDateString()}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {status.connectionStatus === 'not_connected' || status.connectionStatus === 'failed' ? (
+              <Button
+                onClick={() => initiateMutation.mutate()}
+                disabled={initiateMutation.isPending}
+                data-testid="button-connect-helcim"
+              >
+                {initiateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Connect Helcim Account
+              </Button>
+            ) : status.connectionStatus === 'connected' ? (
+              <Button
+                variant="outline"
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+                data-testid="button-disconnect-helcim"
+              >
+                {disconnectMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Disconnect
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {status.lastError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription data-testid="text-connection-error">
+              {status.lastError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {status.splitCheckoutEnabled && status.connectionStatus === 'connected' && (
+          <div className="rounded-md border p-3 bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Check className="h-4 w-4 text-green-600" />
+              <span className="text-sm">Split checkout is active - payments route to your merchant account</span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -60,6 +60,10 @@ async function main() {
   suites.push(await runTest('Dead Code Paths', 'tests/dead-code-paths.test.ts'));
   console.log(`  ${suites[suites.length-1].status === 'PASS' ? '✅' : '❌'} Dead Code Paths: ${suites[suites.length-1].passed}/${suites[suites.length-1].total}`);
 
+  console.log('▶ Running Connected Accounts Tests...');
+  suites.push(await runTest('Connected Accounts', 'tests/connected-accounts.test.ts'));
+  console.log(`  ${suites[suites.length-1].status === 'PASS' ? '✅' : '❌'} Connected Accounts: ${suites[suites.length-1].passed}/${suites[suites.length-1].total}`);
+
   console.log();
   console.log('═'.repeat(70));
   console.log('    FINAL TEST REPORT');

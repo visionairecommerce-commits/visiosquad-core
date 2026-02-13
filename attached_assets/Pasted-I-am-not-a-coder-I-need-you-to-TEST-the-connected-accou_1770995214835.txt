@@ -1,0 +1,54 @@
+I am not a coder. I need you to TEST the connected accounts work you just added and tell me clearly if it passed or failed.
+
+Rules:
+- Do NOT change production behavior.
+- Do NOT refactor unrelated code.
+- Only add tests, test utilities, and minimal fixes if a test reveals a real bug.
+- Never call real Helcim in tests. Mock all Helcim calls.
+- At the end, give me a plain-English report: PASS/FAIL + what was tested + any issues.
+
+Step 1 — Identify how tests are run in this repo
+- Look for package.json scripts, pytest, vitest/jest, or any existing test commands.
+- Tell me the exact command you will run (e.g. npm test, pnpm test, pytest).
+
+Step 2 — Run the full test suite
+- Run the full suite once.
+- If it fails, fix only what is necessary for the new connected accounts code (minimal diffs).
+- Re-run until green.
+
+Step 3 — Add missing tests for the new work (only if they don’t exist)
+Add tests for:
+A) Storage method
+- updateClubConnectionStatus updates the correct club fields
+- invalid club id returns a safe error
+
+B) Routes (API)
+- GET /api/connected-accounts/status returns status for an authenticated admin
+- POST /api/connected-accounts/initiate:
+   - when HELCIM_CONNECTED_ACCOUNTS_ENABLED=false => returns a friendly “pending partner approval / stub mode” response and sets status to pending
+   - when enabled but partner token missing => uses Stub provider safely (no crash)
+- POST /api/connected-accounts/disconnect sets status back to unconnected
+- POST /api/webhooks/connected-accounts:
+   - accepts an event payload and updates club status
+   - does NOT require auth
+   - does not leak secrets in response
+
+C) Feature flags
+- GET /api/connected-accounts/feature-flags reflects env vars correctly
+- shouldUseSplitCheckout returns false unless:
+   - ENABLE_SPLIT_CHECKOUT=true AND HELCIM_CONNECTED_ACCOUNTS_ENABLED=true AND club status is connected
+
+Important:
+- Use the app’s existing test style and helpers.
+- Prefer route-level tests using the server test client if available.
+- Mock storage and Helcim providers cleanly.
+
+Step 4 — Prove the “no behavior change” promise
+- Confirm in tests (or with a lightweight smoke test) that with both flags off:
+   - existing payment flow endpoint(s) still return the same response shape as before
+   - no split checkout code path is active
+
+Step 5 — Output a simple test report
+- Show the exact commands you ran and their output summary.
+- List the tests added (file names) and what each verifies.
+- Confirm: “No real Helcim calls were made.”

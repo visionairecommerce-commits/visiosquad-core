@@ -1,4 +1,29 @@
 {
-  "tools": [],
-  "last_updated": null
+  "tools": [
+    {
+      "name": "Mercury Bank (Acct 1419)",
+      "function": "bank_balance_and_transactions",
+      "status": "ACTIVE",
+      "connection_info": "Mercury_Reader"
+    },
+    {
+      "name": "Telegram",
+      "function": "permission_channel",
+      "status": "ACTIVE",
+      "connection_info": "chat_id:6683959510"
+    },
+    {
+      "name": "GitHub",
+      "function": "code_repo_visiosquad-core",
+      "status": "ACTIVE",
+      "connection_info": "https://github.com/visionairecommerce-commits/visiosquad-core"
+    },
+    {
+      "name": "Replit",
+      "function": "development_hosting",
+      "status": "ACTIVE",
+      "connection_info": "replit_project"
+    }
+  ],
+  "last_updated": "2026-03-03T22:45:00Z"
 }

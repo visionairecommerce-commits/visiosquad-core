@@ -1,0 +1,14 @@
+{
+  "name": "Telegram Webhook Self-Heal",
+  "type": "one-off",
+  "description": "Attempts to validate Telegram bot tokens, re-register webhook for Chat ID 6683959510, and send a webhook test message. Falls back to notifying via alternate channel if unavailable.",
+  "nodes": [
+    { "id": "1", "type": "Function", "name": "Validate Credentials", "config": "// check presence of telegram credentials in n8n and validate via getMe endpoint" },
+    { "id": "2", "type": "HTTP Request", "name": "Telegram - SetWebhook", "config": { "method": "POST", "url": "https://api.telegram.org/bot<TELEGRAM_TOKEN>/setWebhook", "auth": "credential:telegram_token", "body": { "url": "https://<your-webhook-url>/webhook/telegram" } } },
+    { "id": "3", "type": "HTTP Request", "name": "Telegram - Webhook Test Message", "config": { "method": "POST", "url": "https://api.telegram.org/bot<TELEGRAM_TOKEN>/sendMessage", "auth": "credential:telegram_token", "body": { "chat_id": 6683959510, "text": "Aurelius webhook self-heal test: please reply with 'YES' to confirm." } } },
+    { "id": "4", "type": "Function", "name": "Verify Reply & Retry", "config": "// Waits for webhook inbound trigger or polls message history; if no 'YES', retries setWebhook up to 3 times" }
+  ],
+  "notes": "Scaffold requires binding telegram_token and valid webhook base URL in n8n. The workflow will attempt idempotent registration and exponential backoff retries. If webhooks cannot be registered, the workflow will escalate by updating SYSTEM_STATUS.json and creating an incident entry in DIRECTIVES_EVOLUTION.md.",
+  "created_by": "Aurelius agent",
+  "created_at": "2026-03-04T16:18:30Z"
+}

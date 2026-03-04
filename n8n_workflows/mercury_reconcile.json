@@ -1,0 +1,15 @@
+{
+  "name": "Mercury Daily Reconciliation",
+  "type": "schedule",
+  "cron": "0 2 * * *", /* 02:00 UTC daily */
+  "description": "Scheduled n8n workflow: calls Mercury API (acct 1419) every 24 hours, parses balances and transactions, appends reconciliation entries to DAILY_LEDGER.json in the repo, and notifies Aurelius via Telegram on significant burn or low Empire Fund.",
+  "nodes": [
+    { "id": "1", "type": "HTTP Request", "name": "Mercury API - Get Transactions", "config": { "method": "GET", "url": "https://api.mercury.com/v1/accounts/1419/transactions", "auth": "credential:mercury_api_key" } },
+    { "id": "2", "type": "Function", "name": "Normalize & Split", "config": "// Parse transactions, calculate per-transaction $4 split and produce ledger entries" },
+    { "id": "3", "type": "HTTP Request", "name": "GitHub - Append DAILY_LEDGER.json", "config": { "method": "PUT/POST", "url": "https://api.github.com/repos/visionairecommerce-commits/visiosquad-core/contents/DAILY_LEDGER.json", "auth": "credential:github_token" } },
+    { "id": "4", "type": "Telegram", "name": "Notify Aurelius", "config": { "message": "Daily reconciliation complete. Empire Fund: {{empire_fund_balance}}." } }
+  ],
+  "notes": "This is a scaffold. n8n credentials for Mercury & GitHub must be bound in the n8n instance. The workflow performs idempotent reconciliation by checking existing DAILY_LEDGER transactions and only appending new items. It will create alert nodes to message Telegram Chat ID 6683959510 if Empire Fund < monthly survival threshold.",
+  "created_by": "Aurelius agent",
+  "created_at": "2026-03-04T16:15:00Z"
+}

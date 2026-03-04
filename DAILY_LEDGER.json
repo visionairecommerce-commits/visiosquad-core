@@ -1,9 +1,14 @@
 {
-  "date": "2026-03-03",
-  "transactions": [],
-  "tax_reserve_total": 0,
-  "budget_total": 0,
-  "company_profit_total": 0,
-  "aurelius_accrual_total": 0,
-  "notes": "Initialized by Aurelius"
+  "version":"1.0",
+  "created":"2026-03-04T00:00:00Z",
+  "transactions":[],
+  "reserve_rules":{
+    "per_transaction_split":{
+      "operating":1.00,
+      "tax_reserve":1.00,
+      "company_profit":2.00,
+      "empire_fund_percentage_of_profit":0.25
+    }
+  },
+  "notes":"Each revenue event must log one transaction object with automated $4 split. No spending without Telegram YES acknowledgment when required."
 }

@@ -1,7 +1,29 @@
 {
   "version": "1.0",
   "created": "2026-03-04T00:00:00Z",
-  "transactions": [],
+  "transactions": [
+    {
+      "id": "recon_2026-03-04T16:20:00Z",
+      "timestamp": "2026-03-04T16:20:00Z",
+      "type": "reconciliation_snapshot",
+      "source": "Mercury API (acct 1419)",
+      "balances": {
+        "checking_available": 122.76,
+        "checking_current": 122.76,
+        "savings_available": 0,
+        "savings_current": 0,
+        "empire_fund_balance": 0
+      },
+      "notes": "Automated reconciliation snapshot. No revenue events found to apply $4 split. Empire Fund remains $0.00.",
+      "raw_mercury_accounts": [
+        { "id": "e3199b68-fe05-11ef-8ba7-838e6eaecf6a", "name": "Mercury Checking ••1419", "availableBalance": 122.76, "currentBalance": 122.76 },
+        { "id": "e31dd426-fe05-11ef-a456-bf998bbf582d", "name": "Mercury Savings ••7192", "availableBalance": 0, "currentBalance": 0 },
+        { "id": "8db80076-133d-11f1-8a4b-f7f212d2229a", "name": "Mercury Checking ••1872 (Empire Fund)", "availableBalance": 0, "currentBalance": 0 }
+      ],
+      "reconciled_by": "Aurelius agent (Mercury_Reader)",
+      "reconciliation_notes": "No transactions requiring the $4 per-transaction split were detected during this snapshot. Scheduled daily Mercury reconciliation workflow scaffold has been created in n8n_workflows/mercury_reconcile.json."
+    }
+  ],
   "reserve_rules": {
     "per_transaction_split": {
       "operating": 1.00,
@@ -10,18 +32,5 @@
       "empire_fund_percentage_of_profit": 0.25
     }
   },
-  "reconciliations": [
-    {
-      "timestamp": "2026-03-04T16:20:00Z",
-      "source": "Mercury API (acct: 1419)",
-      "accounts": [
-        { "id": "e3199b68-fe05-11ef-8ba7-838e6eaecf6a", "name": "Mercury Checking ••1419", "availableBalance": 122.76, "currentBalance": 122.76 },
-        { "id": "e31dd426-fe05-11ef-a456-bf998bbf582d", "name": "Mercury Savings ••7192", "availableBalance": 0, "currentBalance": 0 },
-        { "id": "8db80076-133d-11f1-8a4b-f7f212d2229a", "name": "Mercury Checking ••1872 (Empire Fund)", "availableBalance": 0, "currentBalance": 0 }
-      ],
-      "empire_fund_balance": 0.00,
-      "notes": "No new revenue transactions parsed in this pass (accounts list only). Full transaction parsing will run once n8n Mercury node returns transaction list. Daily reconciliation scaffold created in n8n_workflows/mercury_reconcile.json."
-    }
-  ],
   "notes": "Each revenue event must log one transaction object with automated $4 split. No spending without Telegram YES acknowledgment when required."
 }

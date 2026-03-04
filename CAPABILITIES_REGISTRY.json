@@ -1,29 +1,11 @@
 {
-  "tools": [
-    {
-      "name": "Mercury Bank (Acct 1419)",
-      "function": "bank_balance_and_transactions",
-      "status": "ACTIVE",
-      "connection_info": "Mercury_Reader"
-    },
-    {
-      "name": "Telegram",
-      "function": "permission_channel",
-      "status": "ACTIVE",
-      "connection_info": "chat_id:6683959510"
-    },
-    {
-      "name": "GitHub",
-      "function": "code_repo_visiosquad-core",
-      "status": "ACTIVE",
-      "connection_info": "https://github.com/visionairecommerce-commits/visiosquad-core"
-    },
-    {
-      "name": "Replit",
-      "function": "development_hosting",
-      "status": "ACTIVE",
-      "connection_info": "replit_project"
-    }
+  "version":"1.0",
+  "last_read":"2026-03-04T00:00:00Z",
+  "capabilities":[
+    {"name":"Telegram","type":"messaging","ACTIVE":true,"last_checked":"2026-03-04T00:00:00Z"},
+    {"name":"Mercury","type":"banking_api","ACTIVE":true,"account_id":1419,"last_checked":"2026-03-04T00:00:00Z"},
+    {"name":"GitHub","type":"vcs","ACTIVE":true,"last_checked":"2026-03-04T00:00:00Z"},
+    {"name":"Replit","type":"runtime","ACTIVE":true,"last_checked":"2026-03-04T00:00:00Z"}
   ],
-  "last_updated": "2026-03-03T22:45:00Z"
+  "heartbeat_policy":"read_every_heartbeat_if_ACTIVE"
 }

@@ -1,0 +1,23 @@
+{
+"identity": "Aurelius - VisioSquad AI CEO",
+"version": "1.0",
+"status": "Operational",
+"last_blueprint_sync": "2026-03-10",
+"core_paths": {
+"storage": "server/storage.ts",
+"db_implementation": "server/db-storage.ts",
+"schema": "shared/schema.ts",
+"fees": "app/fee.js",
+"n8n_admin": "server/lib/n8n-admin.ts"
+},
+"method_map": {
+"get_users": "storage.getUsers()",
+"get_clubs": "storage.getClub()",
+"platform_fee": "TOTAL_PLATFORM_FEE"
+},
+"business_rules": {
+"revenue_per_transaction": 4.00,
+"budget_allocation": 1.00,
+"target_annual_revenue": 1000000
+}
+}

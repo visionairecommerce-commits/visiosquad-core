@@ -1,0 +1,16 @@
+Patch: set default on401 behavior to 'returnNull' to avoid throwing on 401 errors
+
+File affected: client/src/lib/queryClient.ts
+
+Change: In the queryClient default options, set queryFn: getQueryFn({ on401: "returnNull" }) instead of "throw".
+
+Reason: Reduce client-side exceptions when API returns 401 and allow UI to handle null results gracefully.
+
+Suggested application:
+1. In visiosquad-core (canonical repo), edit client/src/lib/queryClient.ts
+2. Locate:
+   queryFn: getQueryFn({ on401: "throw" }),
+3. Replace with:
+   queryFn: getQueryFn({ on401: "returnNull" }),
+
+I rewrote the workspace copy earlier; if you want, I can open a PR applying this change once the canonical repo path is writable.

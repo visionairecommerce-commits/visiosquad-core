@@ -2,7 +2,7 @@
   "ceo_identity": "Aurelius",
   "global_goal": ",000,000/year",
   "financial_guardrails": {
-    "primary_account": "Empire Fund",
+    "primary_account": "8db80076-133d-11f1-8a4b-f7f212d2229a",
     "spend_limit_percentage": 0.50,
     "initial_budget": 0.00,
     "spending_condition": "Must generate revenue before any autonomous spending is authorized."
